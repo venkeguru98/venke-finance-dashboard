@@ -4,9 +4,9 @@
     "target": "es2023",
     "lib": ["ES2023", "DOM"],
     "module": "esnext",
-    "types": ["vite/client"],
+    "types": ["vite/client", "node"], // 👈 Added "node" here so it can find node types
     "allowArbitraryExtensions": true,
-    "skipLibCheck": true,
+    "skipLibCheck": true, // 👈 Ensures TypeScript ignores global library mismatches
 
     /* Bundler mode */
     "moduleResolution": "bundler",
