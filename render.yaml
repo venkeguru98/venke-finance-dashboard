@@ -1,0 +1,47 @@
+# Render.com Deployment Blueprint
+# Push to GitHub, then connect repo at https://dashboard.render.com
+
+services:
+  - type: web
+    name: venke-finance-dashboard
+    runtime: node
+    region: singapore   # Change to: oregon, frankfurt, ohio, virginia as needed
+    plan: free          # Upgrade to 'starter' for always-on (no sleep)
+
+    buildCommand: |
+      npm install --prefix server
+      npm install --prefix client
+      npm run build --prefix client
+      npm run build --prefix server
+
+    startCommand: node server/dist/server.js
+
+    healthCheckPath: /api/health
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000        # Render assigns this automatically
+      - key: JWT_SECRET
+        generateValue: true  # Render auto-generates a secure random value
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: DATABASE_URL
+        fromDatabase:
+          name: venke-finance-db
+          property: connectionString
+      - key: ALLOWED_ORIGINS
+        value: https://venke-finance-dashboard.onrender.com
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false         # Set manually in Render dashboard
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+
+databases:
+  - name: venke-finance-db
+    databaseName: venke_finance
+    user: venke_admin
+    plan: free
