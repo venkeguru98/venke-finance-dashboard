@@ -12,6 +12,7 @@ import authRoutes from './routes/auth';
 dotenv.config();
 
 const app = express();
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 5000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const startTime = Date.now();
