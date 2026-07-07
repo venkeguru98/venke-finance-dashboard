@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Moon, Sun, User, Palette, Database, Trash2, Download, Plus, X, ShieldAlert, Sparkles, FolderSync } from 'lucide-react';
+import { Moon, Sun, User, Palette, Database, Trash2, Download, Plus, X, ShieldAlert, Sparkles, FolderSync, Send } from 'lucide-react';
 import axios from 'axios';
 import { QRCodeSVG } from 'qrcode.react';
 import Button from '../components/ui/Button';
@@ -35,8 +35,26 @@ export default function Settings() {
   const [backups, setBackups] = useState<any[]>([]);
   const [restoring, setRestoring] = useState(false);
 
+  // Telegram States
+  const [telegramToken, setTelegramToken] = useState('');
+  const [telegramBotUrl, setTelegramBotUrl] = useState('');
+  const [isTelegramLinked, setIsTelegramLinked] = useState(false);
+  const [isBotConfigured, setIsBotConfigured] = useState(false);
+
   const fetchCategories = () => {
     axios.get(`${API}/categories`).then(res => setCategories(res.data)).catch(() => {});
+  };
+
+  const fetchTelegramDetails = async () => {
+    try {
+      const res = await axios.get(`${API}/telegram/link-token`);
+      setTelegramToken(res.data.token);
+      setTelegramBotUrl(res.data.botUrl);
+      setIsTelegramLinked(res.data.isLinked);
+      setIsBotConfigured(res.data.isBotConfigured);
+    } catch (e) {
+      console.error('[Fetch Telegram Details Error]', e);
+    }
   };
 
   const fetchSystemStatus = () => {
@@ -53,6 +71,7 @@ export default function Settings() {
     fetchCategories();
     axios.get(`${API}/transactions`).then(res => setTxCount(res.data.length)).catch(() => {});
     fetchSystemStatus();
+    fetchTelegramDetails();
   }, []);
 
   const toggleTheme = () => {
@@ -267,6 +286,74 @@ export default function Settings() {
               </div>
             </button>
           </div>
+        </div>
+      </section>
+
+      {/* Telegram Automation Integration */}
+      <section className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
+        <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex justify-between items-center">
+          <h2 className="font-bold flex items-center text-slate-900 dark:text-white">
+            <Send className="w-5 h-5 mr-2 text-primary" /> Telegram SMS & Chat Automation Bot
+          </h2>
+          {isTelegramLinked && (
+            <span className="px-3 py-1 bg-green-500/10 text-green-500 rounded-full text-[10px] font-black uppercase">
+              Connected
+            </span>
+          )}
+        </div>
+        <div className="p-6 space-y-4 text-xs text-slate-350">
+          {!isBotConfigured ? (
+            <div className="p-4.5 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-250 dark:border-yellow-900 rounded-2xl space-y-2">
+              <p className="font-bold text-yellow-700 dark:text-yellow-400">⚠️ Telegram Bot is not configured on the server</p>
+              <p className="text-slate-550 dark:text-slate-400 leading-relaxed font-semibold">
+                To enable mobile auto-logging, please configure the <code>TELEGRAM_BOT_TOKEN</code> environment variable on your server deployment (Render/Railway).
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <p className="font-semibold leading-relaxed text-slate-550 dark:text-slate-400">
+                Automate your accounting by copy-pasting your phone's transaction SMS alerts or sending natural sentences to our Telegram bot!
+              </p>
+              
+              <div className="p-5 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-850 flex flex-wrap items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <p className="font-bold text-slate-800 dark:text-slate-200 text-sm">
+                    {isTelegramLinked ? '🟢 Connected to Telegram Account' : '🔒 Telegram account not linked'}
+                  </p>
+                  <p className="text-[10px] text-slate-400 font-semibold">
+                    {isTelegramLinked ? 'Your database accepts incoming logs from Telegram chat.' : 'Link your account to start automated logging.'}
+                  </p>
+                </div>
+                
+                <div className="flex items-center gap-3">
+                  {!isTelegramLinked && (
+                    <div className="bg-slate-200 dark:bg-slate-800 px-3.5 py-2 rounded-xl text-center">
+                      <span className="text-[10px] text-slate-400 block font-bold uppercase">Linking Code</span>
+                      <span className="text-slate-800 dark:text-white font-extrabold text-xs tracking-wider select-all">{telegramToken}</span>
+                    </div>
+                  )}
+                  <a
+                    href={telegramBotUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center bg-primary hover:bg-blue-700 text-white font-bold py-2.5 px-4.5 rounded-xl transition shadow-md shadow-primary/20"
+                  >
+                    <Send className="w-3.5 h-3.5 mr-2" /> Link Telegram Bot
+                  </a>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <p className="font-bold text-slate-900 dark:text-white">🚀 Quick Setup Instructions:</p>
+                <ol className="list-decimal pl-5 space-y-1.5 font-semibold text-slate-500 leading-relaxed">
+                  <li>Click <b>Link Telegram Bot</b> above to open the chat window on Telegram.</li>
+                  <li>Click <b>Start</b> (or send <code>/start {telegramToken}</code>).</li>
+                  <li>Your account will link immediately!</li>
+                  <li>Try typing: <code>spent 250 on tea</code> or forward any bank transaction SMS alerts.</li>
+                </ol>
+              </div>
+            </div>
+          )}
         </div>
       </section>
 

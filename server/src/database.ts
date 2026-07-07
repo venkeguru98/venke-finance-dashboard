@@ -177,6 +177,15 @@ export const initializeDatabase = async () => {
         });
       });
     }
+
+    // Apply Schema Migrations for Telegram Integrations
+    try {
+      await execute('ALTER TABLE users ADD COLUMN telegram_chat_id TEXT NULL');
+    } catch (e) {}
+    try {
+      await execute('ALTER TABLE users ADD COLUMN telegram_token TEXT NULL');
+    } catch (e) {}
+
   } catch (error) {
     console.error('Failed to initialize database schema', error);
   }
