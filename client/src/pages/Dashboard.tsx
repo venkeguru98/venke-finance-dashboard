@@ -4,7 +4,6 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { Plus, Search, RefreshCw, Calendar, Flame, LayoutGrid, CheckCircle2, Target, AlertTriangle, TrendingUp, Info, X } from 'lucide-react';
 import axios from 'axios';
 import Button from '../components/ui/Button';
-import confetti from 'canvas-confetti';
 
 const API = window.location.port === '5173' ? 'http://localhost:5000/api' : '/api';
 const COLORS = ['#F59E0B', '#8B5CF6', '#3B82F6', '#EC4899', '#10B981', '#EF4444', '#06B6D4', '#F97316'];
@@ -51,14 +50,12 @@ export default function Dashboard() {
   });
   const [isCustomizing, setIsCustomizing] = useState(false);
 
-  // AI Logger States
-  const [aiText, setAiText] = useState('');
-  const [aiLoading, setAiLoading] = useState(false);
-  const [parsedData, setParsedData] = useState<any>(null);
+
 
   // Modals inside Dashboard for Quick Actions
   const [isAddTxOpen, setIsAddTxOpen] = useState(false);
   const [txFormType, setTxFormType] = useState<'income' | 'expense'>('expense');
+  const [isQuickActionsOpen, setIsQuickActionsOpen] = useState(false);
   const [txFormData, setTxFormData] = useState({
     amount: '',
     notes: '',
@@ -98,56 +95,7 @@ export default function Dashboard() {
     }
   };
 
-  const handleAiParse = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!aiText.trim()) return;
-    setAiLoading(true);
-    setParsedData(null);
-    try {
-      const res = await axios.post(`${API}/ai/parse`, { text: aiText });
-      if (res.data.success) {
-        setParsedData(res.data.parsed);
-      }
-    } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to parse natural language.');
-    } finally {
-      setAiLoading(false);
-    }
-  };
 
-  const handleAiSave = async () => {
-    if (!parsedData || parsedData.length === 0) return;
-    try {
-      await Promise.all(
-        parsedData.map((item: any) =>
-          axios.post(`${API}/transactions`, {
-            date: item.date,
-            amount: item.amount,
-            type: item.type,
-            category_id: item.category_id,
-            payment_method: item.payment_method,
-            notes: item.notes
-          })
-        )
-      );
-      confetti({
-        particleCount: 120,
-        spread: 80,
-        origin: { y: 0.8 }
-      });
-      setAiText('');
-      setParsedData(null);
-      fetchAll();
-    } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to save transactions.');
-    }
-  };
-
-  const handleRemoveParsedItem = (index: number) => {
-    if (!parsedData) return;
-    const updated = parsedData.filter((_: any, i: number) => i !== index);
-    setParsedData(updated.length > 0 ? updated : null);
-  };
 
   useEffect(() => { fetchAll(); }, []);
 
@@ -425,99 +373,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* AI Expense Logger Widget */}
-      <div className="bg-slate-950/40 border border-slate-800 p-5 rounded-3xl space-y-4">
-        <div className="flex items-center space-x-2">
-          <span className="text-lg">🤖</span>
-          <h2 className="text-md font-bold text-white">AI Quick Logger</h2>
-        </div>
-        <form onSubmit={handleAiParse} className="flex gap-2">
-          <input
-            type="text"
-            value={aiText}
-            onChange={e => setAiText(e.target.value)}
-            placeholder="Type e.g., 'Spent 500 on Food today using UPI' or 'Received 40000 salary yesterday'..."
-            className="flex-1 px-4 py-3 rounded-2xl border border-slate-850 bg-slate-900/50 text-white placeholder:text-slate-500 text-xs focus:outline-none focus:ring-1 focus:ring-primary focus:border-transparent transition-all"
-            disabled={aiLoading}
-          />
-          <Button type="submit" disabled={aiLoading || !aiText.trim()} className="py-2.5 px-5">
-            {aiLoading ? 'Parsing...' : 'Analyze'}
-          </Button>
-        </form>
 
-        {parsedData && parsedData.length > 0 && (
-          <div className="space-y-3">
-            <p className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Parsed Preview ({parsedData.length} items)</p>
-            <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
-              {parsedData.map((item: any, idx: number) => (
-                <div key={idx} className="p-3.5 bg-slate-900/40 border border-slate-850 rounded-2xl flex items-center justify-between gap-3 animate-in slide-in-from-top-2 duration-150">
-                  <div className="space-y-1 text-xs">
-                    <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
-                      <span className={`inline-block px-2 py-0.5 rounded-full text-[8px] font-extrabold uppercase ${
-                        item.type === 'income' ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
-                      }`}>
-                        {item.type}
-                      </span>
-                      <span className="bg-primary/10 text-primary px-2 py-0.5 rounded-full text-[8px] font-extrabold uppercase">
-                        {item.category_name}
-                      </span>
-                      <span className="bg-slate-850 text-slate-350 px-2 py-0.5 rounded-full text-[8px] font-extrabold uppercase">
-                        {item.payment_method}
-                      </span>
-                    </div>
-                    <p className="font-bold text-white mt-1">{item.notes}</p>
-                    <p className="text-[9px] text-slate-500 font-semibold">{item.date}</p>
-                  </div>
-                  <div className="flex items-center space-x-3.5">
-                    <p className="text-sm font-black text-white whitespace-nowrap">₹{item.amount.toLocaleString('en-IN')}</p>
-                    <button 
-                      onClick={() => handleRemoveParsedItem(idx)}
-                      type="button"
-                      className="p-1 text-slate-500 hover:text-red-400 rounded-lg hover:bg-slate-850/50 transition-all"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="flex justify-end pt-1">
-              <Button onClick={handleAiSave} className="bg-green-600 hover:bg-green-700 text-white text-xs py-2.5 px-4 font-bold shadow-md shadow-green-500/20">
-                Log All {parsedData.length} Transactions
-              </Button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* MONTH-OVER-MONTH COMPARISON WIDGET */}
-      {widgets.momWidget && (
-        <MonthOverMonthComparisonWidget data={totalsData} navigate={navigate} />
-      )}
-
-      {/* QUICK ACTIONS ROW */}
-      {widgets.quickActions && (
-        <div className="bg-white dark:bg-slate-950 p-4.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Quick Actions</p>
-          <div className="flex flex-wrap gap-2.5">
-            <button onClick={() => { setTxFormType('income'); setIsAddTxOpen(true); }} className="flex items-center space-x-1.5 text-xs font-bold bg-green-500 hover:bg-green-600 text-white px-4 py-2.5 rounded-xl transition shadow-sm">
-              <Plus className="w-4 h-4" /> <span>Add Income</span>
-            </button>
-            <button onClick={() => { setTxFormType('expense'); setIsAddTxOpen(true); }} className="flex items-center space-x-1.5 text-xs font-bold bg-red-500 hover:bg-red-600 text-white px-4 py-2.5 rounded-xl transition shadow-sm">
-              <Plus className="w-4 h-4" /> <span>Add Expense</span>
-            </button>
-            <a href="/budgets" className="flex items-center space-x-1.5 text-xs font-bold bg-blue-500 hover:bg-blue-600 text-white px-4 py-2.5 rounded-xl transition shadow-sm">
-              <Plus className="w-4 h-4" /> <span>Create Budget</span>
-            </a>
-            <a href="/goals" className="flex items-center space-x-1.5 text-xs font-bold bg-purple-500 hover:bg-purple-600 text-white px-4 py-2.5 rounded-xl transition shadow-sm">
-              <Plus className="w-4 h-4" /> <span>Create Goal</span>
-            </a>
-            <button onClick={() => alert('Feature coming soon in multi-account sync!')} className="flex items-center space-x-1.5 text-xs font-bold bg-slate-800 dark:bg-slate-100 hover:bg-slate-900 text-white dark:text-slate-900 px-4 py-2.5 rounded-xl transition shadow-sm">
-              <span>Transfer Money</span>
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* SUMMARY CARDS WIDGET */}
       {widgets.summaryCards && (
@@ -1071,6 +927,87 @@ export default function Dashboard() {
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* FLOATING QUICK ACTIONS BUTTON & DRAWER */}
+      {widgets.quickActions && (
+        <>
+          {/* FLOATING ACTION BUTTON */}
+          <button
+            onClick={() => setIsQuickActionsOpen(true)}
+            className="fixed bottom-6 right-6 z-40 bg-primary hover:bg-blue-600 active:scale-95 text-white p-4.5 rounded-full shadow-xl shadow-primary/30 flex items-center justify-center transition-all hover:scale-110"
+            title="Quick Actions"
+          >
+            <Plus className="w-6 h-6 animate-pulse" />
+          </button>
+
+          {/* FLOATING TASKBAR DRAWER */}
+          {isQuickActionsOpen && (
+            <div className="fixed inset-0 z-50 overflow-hidden">
+              {/* Backdrop overlay */}
+              <div 
+                className="absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity" 
+                onClick={() => setIsQuickActionsOpen(false)}
+              />
+
+              {/* Sidebar drawer body */}
+              <div className="absolute right-0 top-0 bottom-0 w-80 bg-white dark:bg-slate-950 border-l border-slate-200 dark:border-slate-800 shadow-2xl p-6 flex flex-col space-y-6 animate-in slide-in-from-right duration-200">
+                <div className="flex justify-between items-center pb-3 border-b border-slate-100 dark:border-slate-800">
+                  <div>
+                    <h3 className="font-bold text-md text-slate-900 dark:text-white">Quick Actions</h3>
+                    <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mt-0.5">Shortcuts taskbar</p>
+                  </div>
+                  <button 
+                    onClick={() => setIsQuickActionsOpen(false)}
+                    className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-900 transition"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="flex-1 flex flex-col space-y-3 justify-start">
+                  <button 
+                    onClick={() => { setTxFormType('income'); setIsAddTxOpen(true); setIsQuickActionsOpen(false); }} 
+                    className="w-full flex items-center space-x-3 text-xs font-bold bg-green-500/10 hover:bg-green-500/20 text-green-600 dark:text-green-400 p-4 rounded-2xl transition-all border border-green-500/20"
+                  >
+                    <Plus className="w-4 h-4" /> <span>Add Income</span>
+                  </button>
+                  <button 
+                    onClick={() => { setTxFormType('expense'); setIsAddTxOpen(true); setIsQuickActionsOpen(false); }} 
+                    className="w-full flex items-center space-x-3 text-xs font-bold bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 p-4 rounded-2xl transition-all border border-red-500/20"
+                  >
+                    <Plus className="w-4 h-4" /> <span>Add Expense</span>
+                  </button>
+                  <a 
+                    href="/budgets" 
+                    className="w-full flex items-center space-x-3 text-xs font-bold bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 p-4 rounded-2xl transition-all border border-blue-500/20"
+                  >
+                    <Plus className="w-4 h-4" /> <span>Create Budget</span>
+                  </a>
+                  <a 
+                    href="/goals" 
+                    className="w-full flex items-center space-x-3 text-xs font-bold bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 dark:text-purple-400 p-4 rounded-2xl transition-all border border-purple-500/20"
+                  >
+                    <Plus className="w-4 h-4" /> <span>Create Goal</span>
+                  </a>
+                  <button 
+                    onClick={() => { alert('Feature coming soon in multi-account sync!'); setIsQuickActionsOpen(false); }}
+                    className="w-full flex items-center space-x-3 text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-350 p-4 rounded-2xl transition-all border border-slate-200 dark:border-slate-850"
+                  >
+                    <span>Transfer Money</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* MONTH-OVER-MONTH COMPARISON WIDGET AT BOTTOM */}
+      {widgets.momWidget && (
+        <div className="mt-8 pt-6 border-t border-slate-250 dark:border-slate-800">
+          <MonthOverMonthComparisonWidget data={totalsData} navigate={navigate} />
         </div>
       )}
     </div>
