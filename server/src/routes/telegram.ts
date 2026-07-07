@@ -100,10 +100,12 @@ router.post('/webhook', async (req: Request, res: Response) => {
       const user = await get('SELECT id FROM users WHERE telegram_chat_id = ?', [String(chatId)]);
       if (!user) return;
 
-      if (data.startsWith('undo:')) {
+      if (data.startsWith('undo:') || data.startsWith('del_search:')) {
         const txId = data.split(':')[1];
+        const tx = await get('SELECT amount, notes FROM transactions WHERE id = ? AND user_id = ?', [txId, user.id]);
+        const detail = tx ? ` (₹${tx.amount} - ${tx.notes || ''})` : '';
         await execute('DELETE FROM transactions WHERE id = ? AND user_id = ?', [txId, user.id]);
-        await editMessageText(chatId, messageId, '❌ <b>Transaction deleted successfully.</b>');
+        await editMessageText(chatId, messageId, `❌ <b>Deleted transaction${detail} successfully.</b>`);
       }
 
       else if (data.startsWith('cats:')) {
@@ -181,6 +183,88 @@ router.post('/webhook', async (req: Request, res: Response) => {
       const user = await get('SELECT id FROM users WHERE telegram_chat_id = ?', [String(chatId)]);
       if (!user) {
         await sendMessage(chatId, '🔒 <b>Your Telegram account is not linked.</b>\n\nPlease go to Settings ➔ Link Telegram on your Dashboard to configure.');
+        return;
+      }
+
+      // ─── Command: /recent or /delete ────────────────────────────────────
+      if (text === '/recent' || text === '/delete' || text === '/list') {
+        const txs = await query(
+          `SELECT t.*, c.name as category_name FROM transactions t 
+           LEFT JOIN categories c ON t.category_id = c.id
+           WHERE t.user_id = ? 
+           ORDER BY t.date DESC, t.id DESC LIMIT 5`,
+          [user.id]
+        );
+
+        if (txs.length === 0) {
+          await sendMessage(chatId, '📝 <b>No transactions found in your ledger.</b>');
+          return;
+        }
+
+        let response = '📝 <b>Recent Transactions:</b>\n\n';
+        const keyboard: any[] = [];
+
+        txs.forEach((tx: any, index: number) => {
+          response += `<b>${index + 1}.</b> ${tx.date} — <b>₹${tx.amount.toLocaleString('en-IN')}</b>\n` +
+            `• <i>${tx.notes || 'No description'}</i> (${tx.category_name || 'Others'})\n\n`;
+          
+          keyboard.push([
+            { text: `❌ Delete #${index + 1} (₹${tx.amount})`, callback_data: `del_search:${tx.id}` }
+          ]);
+        });
+
+        await sendMessage(chatId, response, { inline_keyboard: keyboard });
+        return;
+      }
+
+      // ─── Command: /search or /find ──────────────────────────────────────
+      if (text.startsWith('/search ') || text.startsWith('/find ')) {
+        const parts = text.split(' ');
+        const searchTerm = parts.slice(1).join(' ').trim();
+        if (!searchTerm) {
+          await sendMessage(chatId, '🔍 Please provide a search term (e.g. <code>/search petrol</code>).');
+          return;
+        }
+
+        const queryTerm = `%${searchTerm}%`;
+        const txs = await query(
+          `SELECT t.*, c.name as category_name FROM transactions t 
+           LEFT JOIN categories c ON t.category_id = c.id
+           WHERE t.user_id = ? AND (t.notes LIKE ? OR c.name LIKE ?)
+           ORDER BY t.date DESC, t.id DESC LIMIT 5`,
+          [user.id, queryTerm, queryTerm]
+        );
+
+        if (txs.length === 0) {
+          await sendMessage(chatId, `🔍 <b>No transactions found matching "${searchTerm}".</b>`);
+          return;
+        }
+
+        let response = `🔍 <b>Search results for "${searchTerm}":</b>\n\n`;
+        const keyboard: any[] = [];
+
+        txs.forEach((tx: any, index: number) => {
+          response += `<b>${index + 1}.</b> ${tx.date} — <b>₹${tx.amount.toLocaleString('en-IN')}</b>\n` +
+            `• <i>${tx.notes || 'No description'}</i> (${tx.category_name || 'Others'})\n\n`;
+          
+          keyboard.push([
+            { text: `❌ Delete (₹${tx.amount})`, callback_data: `del_search:${tx.id}` }
+          ]);
+        });
+
+        await sendMessage(chatId, response, { inline_keyboard: keyboard });
+        return;
+      }
+
+      // ─── Command: /balance ───────────────────────────────────────────────
+      if (text === '/balance') {
+        const txs = await query('SELECT amount, type FROM transactions WHERE user_id = ?', [user.id]);
+        const income = txs.filter((t: any) => t.type === 'income').reduce((sum: number, t: any) => sum + t.amount, 0);
+        const expense = txs.filter((t: any) => t.type === 'expense').reduce((sum: number, t: any) => sum + t.amount, 0);
+        const savings = txs.filter((t: any) => t.type === 'savings').reduce((sum: number, t: any) => sum + t.amount, 0);
+        const balance = income - expense - savings;
+
+        await sendMessage(chatId, `💵 <b>Current Balance Status</b>\n───────────────────\n• <b>Net Balance:</b> ₹${balance.toLocaleString('en-IN')}\n• <b>Total Income:</b> ₹${income.toLocaleString('en-IN')}\n• <b>Total Expenses:</b> ₹${expense.toLocaleString('en-IN')}\n• <b>Total Savings:</b> ₹${savings.toLocaleString('en-IN')}`);
         return;
       }
 
