@@ -34,11 +34,25 @@ if (isPg) {
   }
 }
 
-// Convert SQLite '?' parameters to Postgres '$1, $2' parameters
+// Convert SQLite '?' parameters and functions to PostgreSQL counterparts
 const convertSql = (sql: string): string => {
   if (!isPg) return sql;
+  let converted = sql;
+
+  // 1. Convert strftime('%Y-%m', date) -> to_char(date, 'YYYY-MM')
+  converted = converted.replace(/strftime\s*\(\s*'%Y-%m'\s*,\s*([^)]+)\)/gi, "to_char($1, 'YYYY-MM')");
+
+  // 2. Convert strftime('%d', date) -> to_char(date, 'DD')
+  converted = converted.replace(/strftime\s*\(\s*'%d'\s*,\s*([^)]+)\)/gi, "to_char($1, 'DD')");
+
+  // 3. Convert GROUP_CONCAT(expr, separator) -> string_agg(expr::text, separator)
+  converted = converted.replace(/GROUP_CONCAT\s*\(([^,]+)\s*,\s*('[^']+')\)/gi, "string_agg(($1)::text, $2)");
+
+  // 4. Convert parameter placeholders '?' to '$1, $2, ...'
   let index = 1;
-  return sql.replace(/\?/g, () => `$${index++}`);
+  converted = converted.replace(/\?/g, () => `$${index++}`);
+
+  return converted;
 };
 
 export const query = async (sql: string, params: any[] = []): Promise<any[]> => {
