@@ -151,10 +151,10 @@ const startServer = async () => {
   app.use('/api/auth', authLimiter, authRoutes);
 
   // ─── API Routes (protected by auth middleware inside router) ──────────────
-  app.use('/api', apiRoutes);
+  app.use('/api/telegram', telegramRoutes);
   app.use('/api/ai', aiRoutes);
   app.use('/api/recurring-rules', recurringRoutes);
-  app.use('/api/telegram', telegramRoutes);
+  app.use('/api', apiRoutes);
 
   // ─── Static Uploads (local fallback) ─────────────────────────────────────
   app.use('/uploads', express.static(path.resolve(__dirname, '../../uploads')));
