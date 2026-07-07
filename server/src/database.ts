@@ -150,6 +150,21 @@ export const initializeDatabase = async () => {
           }
         }
       }
+      
+      // Sync sequences to prevent duplicate key errors on inserts
+      const tables = [
+        'users', 'categories', 'transactions', 'budgets', 'goals', 'recurring_rules',
+        'savings_investments', 'notifications', 'debts', 'deposits', 'transfers',
+        'chit_funds', 'notes', 'documents', 'ledger_entries'
+      ];
+      for (const table of tables) {
+        try {
+          await pgPool.query(`SELECT setval(pg_get_serial_sequence('${table}', 'id'), COALESCE(max(id), 1)) FROM ${table}`);
+        } catch (seqErr) {
+          // Ignore error if table or sequence doesn't exist yet
+        }
+      }
+
       console.log('PostgreSQL database schema initialized.');
     } else if (sqliteDb) {
       return new Promise<void>((resolve, reject) => {

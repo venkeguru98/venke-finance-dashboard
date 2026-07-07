@@ -64,16 +64,24 @@ export default function Settings() {
 
   const addCategory = async (e: React.FormEvent) => {
     e.preventDefault();
-    await axios.post(`${API}/categories`, catForm).catch(() => {});
-    fetchCategories();
-    setIsAddCatOpen(false);
-    setCatForm({ name: '', type: 'expense', color: '#3B82F6' });
+    try {
+      await axios.post(`${API}/categories`, catForm);
+      fetchCategories();
+      setIsAddCatOpen(false);
+      setCatForm({ name: '', type: 'expense', color: '#3B82F6' });
+    } catch (err: any) {
+      alert(err.response?.data?.error || err.message || 'Failed to add category');
+    }
   };
 
   const deleteCategory = async (id: number) => {
     if (!window.confirm('Delete this category? Existing transactions won\'t be affected.')) return;
-    await axios.delete(`${API}/categories/${id}`).catch(() => {});
-    setCategories(prev => prev.filter(c => c.id !== id));
+    try {
+      await axios.delete(`${API}/categories/${id}`);
+      setCategories(prev => prev.filter(c => c.id !== id));
+    } catch (err: any) {
+      alert(err.response?.data?.error || err.message || 'Failed to delete category');
+    }
   };
 
   const clearAllData = async () => {
