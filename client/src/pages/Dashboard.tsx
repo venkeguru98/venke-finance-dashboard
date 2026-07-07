@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
-import { Plus, Search, RefreshCw, Calendar, Flame, LayoutGrid, CheckCircle2, Target, AlertTriangle, TrendingUp, Info } from 'lucide-react';
+import { Plus, Search, RefreshCw, Calendar, Flame, LayoutGrid, CheckCircle2, Target, AlertTriangle, TrendingUp, Info, X } from 'lucide-react';
 import axios from 'axios';
 import Button from '../components/ui/Button';
 import confetti from 'canvas-confetti';
@@ -116,27 +116,37 @@ export default function Dashboard() {
   };
 
   const handleAiSave = async () => {
-    if (!parsedData) return;
+    if (!parsedData || parsedData.length === 0) return;
     try {
-      await axios.post(`${API}/transactions`, {
-        date: parsedData.date,
-        amount: parsedData.amount,
-        type: parsedData.type,
-        category_id: parsedData.category_id,
-        payment_method: parsedData.payment_method,
-        notes: parsedData.notes
-      });
+      await Promise.all(
+        parsedData.map((item: any) =>
+          axios.post(`${API}/transactions`, {
+            date: item.date,
+            amount: item.amount,
+            type: item.type,
+            category_id: item.category_id,
+            payment_method: item.payment_method,
+            notes: item.notes
+          })
+        )
+      );
       confetti({
-        particleCount: 100,
-        spread: 70,
+        particleCount: 120,
+        spread: 80,
         origin: { y: 0.8 }
       });
       setAiText('');
       setParsedData(null);
       fetchAll();
     } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to save transaction.');
+      alert(err.response?.data?.error || 'Failed to save transactions.');
     }
+  };
+
+  const handleRemoveParsedItem = (index: number) => {
+    if (!parsedData) return;
+    const updated = parsedData.filter((_: any, i: number) => i !== index);
+    setParsedData(updated.length > 0 ? updated : null);
   };
 
   useEffect(() => { fetchAll(); }, []);
@@ -435,31 +445,45 @@ export default function Dashboard() {
           </Button>
         </form>
 
-        {parsedData && (
-          <div className="p-4 bg-slate-900/40 border border-slate-850 rounded-2xl flex flex-wrap items-center justify-between gap-4 animate-in slide-in-from-top duration-200">
-            <div className="space-y-1 text-xs">
-              <div className="flex items-center space-x-2">
-                <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase ${
-                  parsedData.type === 'income' ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
-                }`}>
-                  {parsedData.type}
-                </span>
-                <span className="bg-primary/10 text-primary px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase">
-                  {parsedData.category_name}
-                </span>
-                <span className="bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase">
-                  {parsedData.payment_method}
-                </span>
-              </div>
-              <p className="font-bold text-white mt-1.5">{parsedData.notes}</p>
-              <p className="text-[10px] text-slate-400">Date: {parsedData.date}</p>
+        {parsedData && parsedData.length > 0 && (
+          <div className="space-y-3">
+            <p className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Parsed Preview ({parsedData.length} items)</p>
+            <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+              {parsedData.map((item: any, idx: number) => (
+                <div key={idx} className="p-3.5 bg-slate-900/40 border border-slate-850 rounded-2xl flex items-center justify-between gap-3 animate-in slide-in-from-top-2 duration-150">
+                  <div className="space-y-1 text-xs">
+                    <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
+                      <span className={`inline-block px-2 py-0.5 rounded-full text-[8px] font-extrabold uppercase ${
+                        item.type === 'income' ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
+                      }`}>
+                        {item.type}
+                      </span>
+                      <span className="bg-primary/10 text-primary px-2 py-0.5 rounded-full text-[8px] font-extrabold uppercase">
+                        {item.category_name}
+                      </span>
+                      <span className="bg-slate-850 text-slate-350 px-2 py-0.5 rounded-full text-[8px] font-extrabold uppercase">
+                        {item.payment_method}
+                      </span>
+                    </div>
+                    <p className="font-bold text-white mt-1">{item.notes}</p>
+                    <p className="text-[9px] text-slate-500 font-semibold">{item.date}</p>
+                  </div>
+                  <div className="flex items-center space-x-3.5">
+                    <p className="text-sm font-black text-white whitespace-nowrap">₹{item.amount.toLocaleString('en-IN')}</p>
+                    <button 
+                      onClick={() => handleRemoveParsedItem(idx)}
+                      type="button"
+                      className="p-1 text-slate-500 hover:text-red-400 rounded-lg hover:bg-slate-850/50 transition-all"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
-            <div className="flex items-center gap-4">
-              <div className="text-right">
-                <p className="text-lg font-black text-white">₹{parsedData.amount.toLocaleString('en-IN')}</p>
-              </div>
+            <div className="flex justify-end pt-1">
               <Button onClick={handleAiSave} className="bg-green-600 hover:bg-green-700 text-white text-xs py-2.5 px-4 font-bold shadow-md shadow-green-500/20">
-                Log Transaction
+                Log All {parsedData.length} Transactions
               </Button>
             </div>
           </div>

@@ -82,6 +82,82 @@ function parseType(text: string): 'income' | 'expense' | 'savings' {
   return 'expense';
 }
 
+// Helper to parse a single line of natural language input
+function parseSingleLine(text: string, categories: any[], userId: number): any {
+  const cleanText = text.trim();
+  if (!cleanText) return null;
+
+  // 1. Parse Amount
+  let amount = 0;
+  const amountRegexes = [
+    /(?:₹|inr|rs\.?|rupees?)\s*([\d,]+(?:\.\d+)?)/i,
+    /([\d,]+(?:\.\d+)?)\s*(?:₹|inr|rs\.?|rupees?)/i,
+    /\b([\d,]+(?:\.\d+)?)\b/
+  ];
+
+  for (const rx of amountRegexes) {
+    const match = cleanText.match(rx);
+    if (match) {
+      const val = parseFloat(match[1].replace(/,/g, ''));
+      if (!isNaN(val) && val > 0) {
+        amount = val;
+        break;
+      }
+    }
+  }
+
+  // 2. Parse Type
+  const type = parseType(cleanText);
+
+  // 3. Match Category
+  let matchedCategory = null;
+  const lowerText = cleanText.toLowerCase();
+
+  const typedCategories = categories.filter(c => c.type === type);
+  for (const cat of typedCategories) {
+    if (lowerText.includes(cat.name.toLowerCase())) {
+      matchedCategory = cat;
+      break;
+    }
+  }
+
+  if (!matchedCategory) {
+    for (const cat of categories) {
+      if (lowerText.includes(cat.name.toLowerCase())) {
+        matchedCategory = cat;
+        break;
+      }
+    }
+  }
+
+  if (!matchedCategory) {
+    const fallbackCat = categories.find(c => c.name.toLowerCase() === 'others' && c.type === type) 
+      || categories.find(c => c.type === type) 
+      || categories[0];
+    matchedCategory = fallbackCat;
+  }
+
+  // 4. Parse Date
+  const date = parseNaturalDate(cleanText);
+
+  // 5. Parse Payment Method
+  const paymentMethod = parsePaymentMethod(cleanText);
+
+  // 6. Generate Clean Notes/Description
+  let notes = cleanText;
+  notes = notes.charAt(0).toUpperCase() + notes.slice(1);
+
+  return {
+    amount,
+    type,
+    category_id: matchedCategory ? matchedCategory.id : null,
+    category_name: matchedCategory ? matchedCategory.name : 'Others',
+    date,
+    payment_method: paymentMethod,
+    notes
+  };
+}
+
 router.post('/parse', async (req: Request, res: Response) => {
   const { text } = req.body;
   if (!text || typeof text !== 'string') {
@@ -91,91 +167,27 @@ router.post('/parse', async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
 
-    // 1. Parse Amount
-    // Regex matches numbers with optional commas and decimals, prioritizing symbols: ₹ 1200 or 1200 rupees or just 1200
-    let amount = 0;
-    const amountRegexes = [
-      /(?:₹|inr|rs\.?|rupees?)\s*([\d,]+(?:\.\d+)?)/i,
-      /([\d,]+(?:\.\d+)?)\s*(?:₹|inr|rs\.?|rupees?)/i,
-      /\b([\d,]+(?:\.\d+)?)\b/
-    ];
-
-    for (const rx of amountRegexes) {
-      const match = text.match(rx);
-      if (match) {
-        // Remove commas and parse float
-        const val = parseFloat(match[1].replace(/,/g, ''));
-        if (!isNaN(val) && val > 0) {
-          amount = val;
-          break;
-        }
-      }
-    }
-
-    // 2. Parse Type
-    const type = parseType(text);
-
-    // 3. Match Category
-    // Load categories (user's custom categories + global categories)
+    // Load categories once
     const categories = await query(
       'SELECT id, name, type FROM categories WHERE user_id IS NULL OR user_id = ?',
       [userId]
     );
 
-    let matchedCategory = null;
-    const lowerText = text.toLowerCase();
+    // Split text by comma or newline
+    const lines = text.split(/,|\n/).map(l => l.trim()).filter(l => l.length > 0);
+    const parsedItems: any[] = [];
 
-    // Prioritize categories matching the transaction type
-    const typedCategories = categories.filter(c => c.type === type);
-    for (const cat of typedCategories) {
-      if (lowerText.includes(cat.name.toLowerCase())) {
-        matchedCategory = cat;
-        break;
+    for (const line of lines) {
+      const parsed = parseSingleLine(line, categories, userId);
+      // Only include if we found a valid amount (avoids empty/garbage sentences)
+      if (parsed && parsed.amount > 0) {
+        parsedItems.push(parsed);
       }
     }
-
-    // If still not matched, search other types
-    if (!matchedCategory) {
-      for (const cat of categories) {
-        if (lowerText.includes(cat.name.toLowerCase())) {
-          matchedCategory = cat;
-          break;
-        }
-      }
-    }
-
-    // Fallbacks
-    if (!matchedCategory) {
-      // Find 'Others' or first category corresponding to type
-      const fallbackCat = categories.find(c => c.name.toLowerCase() === 'others' && c.type === type) 
-        || categories.find(c => c.type === type) 
-        || categories[0];
-      matchedCategory = fallbackCat;
-    }
-
-    // 4. Parse Date
-    const date = parseNaturalDate(text);
-
-    // 5. Parse Payment Method
-    const paymentMethod = parsePaymentMethod(text);
-
-    // 6. Generate Clean Notes/Description
-    // Remove parsed entities from notes to leave a clean description if possible
-    let notes = text.trim();
-    // Cap first letter
-    notes = notes.charAt(0).toUpperCase() + notes.slice(1);
 
     res.json({
       success: true,
-      parsed: {
-        amount,
-        type,
-        category_id: matchedCategory ? matchedCategory.id : null,
-        category_name: matchedCategory ? matchedCategory.name : 'Others',
-        date,
-        payment_method: paymentMethod,
-        notes
-      }
+      parsed: parsedItems
     });
 
   } catch (error: any) {
