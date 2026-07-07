@@ -108,9 +108,15 @@ router.post('/webhook', async (req: Request, res: Response) => {
 
       else if (data.startsWith('cats:')) {
         const txId = data.split(':')[1];
+        
+        // Fetch the transaction details to find its type
+        const tx = await get('SELECT type FROM transactions WHERE id = ? AND user_id = ?', [txId, user.id]);
+        if (!tx) return;
+
+        // Query only categories matching the transaction type (income, expense, or savings)
         const categories = await query(
-          'SELECT id, name, type FROM categories WHERE user_id IS NULL OR user_id = ? ORDER BY name ASC',
-          [user.id]
+          'SELECT id, name, type FROM categories WHERE (user_id IS NULL OR user_id = ?) AND type = ? ORDER BY name ASC',
+          [user.id, tx.type]
         );
 
         // Map all categories into the inline buttons
