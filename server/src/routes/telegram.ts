@@ -113,8 +113,8 @@ router.post('/webhook', async (req: Request, res: Response) => {
           [user.id]
         );
 
-        // Limit to top 8 categories to avoid too large keyboards
-        const buttons = categories.slice(0, 8).map((cat: any) => ({
+        // Map all categories into the inline buttons
+        const buttons = categories.map((cat: any) => ({
           text: `${cat.type === 'income' ? '🟢' : '🔴'} ${cat.name}`,
           callback_data: `setcat:${txId}:${cat.id}:${cat.name}`
         }));
