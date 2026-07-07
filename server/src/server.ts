@@ -100,6 +100,18 @@ app.use((req, _res, next) => {
   next();
 });
 
+// ─── 500 Response Logger Middleware ────────────────────────────────────────
+app.use((req, res, next) => {
+  const originalJson = res.json;
+  res.json = function (body) {
+    if (res.statusCode === 500) {
+      console.error(`[500 ERROR on ${req.method} ${req.path}]:`, body);
+    }
+    return originalJson.call(this, body);
+  };
+  next();
+});
+
 function getLocalIpAddress() {
   const interfaces = os.networkInterfaces();
   for (const name of Object.keys(interfaces)) {
