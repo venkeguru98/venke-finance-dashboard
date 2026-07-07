@@ -13,6 +13,7 @@ import CalendarView from './pages/Calendar';
 import Settings from './pages/Settings';
 import FinancialRecords from './pages/FinancialRecords';
 import Login from './pages/Login';
+import Bills from './pages/Bills';
 
 // Configure Axios globally to include JWT Bearer Token on all requests
 axios.interceptors.request.use((config) => {
@@ -101,6 +102,7 @@ function App() {
           <Route path="/financial-records" element={<FinancialRecords />} />
           <Route path="/budgets" element={<Budgets />} />
           <Route path="/goals" element={<Goals />} />
+          <Route path="/bills" element={<Bills />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/calendar" element={<CalendarView />} />
           <Route path="/import" element={<Import />} />

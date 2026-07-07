@@ -8,6 +8,8 @@ import os from 'os';
 import { initializeDatabase } from './database';
 import apiRoutes from './routes/api';
 import authRoutes from './routes/auth';
+import aiRoutes from './routes/ai';
+import recurringRoutes from './routes/recurring';
 
 dotenv.config();
 
@@ -149,6 +151,8 @@ const startServer = async () => {
 
   // ─── API Routes (protected by auth middleware inside router) ──────────────
   app.use('/api', apiRoutes);
+  app.use('/api/ai', aiRoutes);
+  app.use('/api/recurring-rules', recurringRoutes);
 
   // ─── Static Uploads (local fallback) ─────────────────────────────────────
   app.use('/uploads', express.static(path.resolve(__dirname, '../../uploads')));

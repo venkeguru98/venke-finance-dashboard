@@ -1,0 +1,187 @@
+import { Router, Request, Response } from 'express';
+import { query } from '../database';
+import { authMiddleware } from '../middleware/auth';
+
+const router = Router();
+
+// Secure all endpoints in this router
+router.use(authMiddleware);
+
+// Helper to format Date object into YYYY-MM-DD local time string
+function formatDateLocal(date: Date): string {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+// Helper to parse dates like "on 1st", "on 15th", "yesterday", or raw dates
+function parseNaturalDate(text: string): string {
+  const now = new Date();
+  const lower = text.toLowerCase();
+
+  if (lower.includes('yesterday')) {
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    return formatDateLocal(yesterday);
+  }
+  if (lower.includes('today')) {
+    return formatDateLocal(now);
+  }
+
+  // Matches "on 1st", "on 15th", "on 23rd", "on 5"
+  const dayMatch = lower.match(/\bon\s+(\d+)(?:st|nd|rd|th)?\b/i);
+  if (dayMatch) {
+    const day = parseInt(dayMatch[1], 10);
+    if (day >= 1 && day <= 31) {
+      const d = new Date(now.getFullYear(), now.getMonth(), day);
+      return formatDateLocal(d);
+    }
+  }
+
+  // Matches direct date strings (e.g. 2026-07-01 or 01-07-2026 or 01/07/2026)
+  const isoMatch = lower.match(/\b(\d{4})[-/](\d{2})[-/](\d{2})\b/);
+  if (isoMatch) {
+    return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+  }
+  const indianMatch = lower.match(/\b(\d{2})[-/](\d{2})[-/](\d{4})\b/);
+  if (indianMatch) {
+    return `${indianMatch[3]}-${indianMatch[2]}-${indianMatch[1]}`;
+  }
+
+  return formatDateLocal(now);
+}
+
+// Helper to guess payment method
+function parsePaymentMethod(text: string): string {
+  const lower = text.toLowerCase();
+  if (lower.includes('upi') || lower.includes('gpay') || lower.includes('phonepe') || lower.includes('paytm') || lower.includes('scan')) {
+    return 'UPI';
+  }
+  if (lower.includes('cash') || lower.includes('hand')) {
+    return 'Cash';
+  }
+  if (lower.includes('card') || lower.includes('credit') || lower.includes('debit')) {
+    return 'Credit Card';
+  }
+  if (lower.includes('bank') || lower.includes('transfer') || lower.includes('neft') || lower.includes('rtgs')) {
+    return 'Bank Transfer';
+  }
+  return 'UPI'; // Default fallback
+}
+
+// Helper to guess type (income, expense, savings)
+function parseType(text: string): 'income' | 'expense' | 'savings' {
+  const lower = text.toLowerCase();
+  if (lower.includes('salary') || lower.includes('got') || lower.includes('received') || lower.includes('earned') || lower.includes('income') || lower.includes('bonus')) {
+    return 'income';
+  }
+  if (lower.includes('invested') || lower.includes('saved') || lower.includes('sip') || lower.includes('mutual fund') || lower.includes('deposit') || lower.includes('gold')) {
+    return 'savings';
+  }
+  return 'expense';
+}
+
+router.post('/parse', async (req: Request, res: Response) => {
+  const { text } = req.body;
+  if (!text || typeof text !== 'string') {
+    return res.status(400).json({ error: 'Text input is required.' });
+  }
+
+  try {
+    const userId = req.user!.id;
+
+    // 1. Parse Amount
+    // Regex matches numbers with optional commas and decimals, prioritizing symbols: ₹ 1200 or 1200 rupees or just 1200
+    let amount = 0;
+    const amountRegexes = [
+      /(?:₹|inr|rs\.?|rupees?)\s*([\d,]+(?:\.\d+)?)/i,
+      /([\d,]+(?:\.\d+)?)\s*(?:₹|inr|rs\.?|rupees?)/i,
+      /\b([\d,]+(?:\.\d+)?)\b/
+    ];
+
+    for (const rx of amountRegexes) {
+      const match = text.match(rx);
+      if (match) {
+        // Remove commas and parse float
+        const val = parseFloat(match[1].replace(/,/g, ''));
+        if (!isNaN(val) && val > 0) {
+          amount = val;
+          break;
+        }
+      }
+    }
+
+    // 2. Parse Type
+    const type = parseType(text);
+
+    // 3. Match Category
+    // Load categories (user's custom categories + global categories)
+    const categories = await query(
+      'SELECT id, name, type FROM categories WHERE user_id IS NULL OR user_id = ?',
+      [userId]
+    );
+
+    let matchedCategory = null;
+    const lowerText = text.toLowerCase();
+
+    // Prioritize categories matching the transaction type
+    const typedCategories = categories.filter(c => c.type === type);
+    for (const cat of typedCategories) {
+      if (lowerText.includes(cat.name.toLowerCase())) {
+        matchedCategory = cat;
+        break;
+      }
+    }
+
+    // If still not matched, search other types
+    if (!matchedCategory) {
+      for (const cat of categories) {
+        if (lowerText.includes(cat.name.toLowerCase())) {
+          matchedCategory = cat;
+          break;
+        }
+      }
+    }
+
+    // Fallbacks
+    if (!matchedCategory) {
+      // Find 'Others' or first category corresponding to type
+      const fallbackCat = categories.find(c => c.name.toLowerCase() === 'others' && c.type === type) 
+        || categories.find(c => c.type === type) 
+        || categories[0];
+      matchedCategory = fallbackCat;
+    }
+
+    // 4. Parse Date
+    const date = parseNaturalDate(text);
+
+    // 5. Parse Payment Method
+    const paymentMethod = parsePaymentMethod(text);
+
+    // 6. Generate Clean Notes/Description
+    // Remove parsed entities from notes to leave a clean description if possible
+    let notes = text.trim();
+    // Cap first letter
+    notes = notes.charAt(0).toUpperCase() + notes.slice(1);
+
+    res.json({
+      success: true,
+      parsed: {
+        amount,
+        type,
+        category_id: matchedCategory ? matchedCategory.id : null,
+        category_name: matchedCategory ? matchedCategory.name : 'Others',
+        date,
+        payment_method: paymentMethod,
+        notes
+      }
+    });
+
+  } catch (error: any) {
+    console.error('[AI Parse Error]', error);
+    res.status(500).json({ error: 'Failed to parse text.' });
+  }
+});
+
+export default router;

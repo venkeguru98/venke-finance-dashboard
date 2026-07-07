@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
 import { 
   LayoutDashboard, ReceiptText, Upload, Settings, Bell, Search, UserCircle, 
-  Wallet, Target, LineChart, CalendarDays, PieChart, Menu, X 
+  Wallet, Target, LineChart, CalendarDays, PieChart, Menu, X, CalendarRange 
 } from 'lucide-react';
 
 export default function Layout({ children, onLogout }: { children: ReactNode; onLogout?: () => void }) {
@@ -17,6 +17,7 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
     { to: '/financial-records', icon: <Wallet size={20} />, label: 'Records' },
     { to: '/budgets', icon: <PieChart size={20} />, label: 'Budgets' },
     { to: '/goals', icon: <Target size={20} />, label: 'Goals' },
+    { to: '/bills', icon: <CalendarRange size={20} />, label: 'Bills' },
     { to: '/analytics', icon: <LineChart size={20} />, label: 'Analytics' },
     { to: '/calendar', icon: <CalendarDays size={20} />, label: 'Calendar' },
   ];

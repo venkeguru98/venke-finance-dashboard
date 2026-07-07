@@ -4,6 +4,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { Plus, Search, RefreshCw, Calendar, Flame, LayoutGrid, CheckCircle2, Target, AlertTriangle, TrendingUp, Info } from 'lucide-react';
 import axios from 'axios';
 import Button from '../components/ui/Button';
+import confetti from 'canvas-confetti';
 
 const API = window.location.port === '5173' ? 'http://localhost:5000/api' : '/api';
 const COLORS = ['#F59E0B', '#8B5CF6', '#3B82F6', '#EC4899', '#10B981', '#EF4444', '#06B6D4', '#F97316'];
@@ -35,6 +36,7 @@ export default function Dashboard() {
   const [categories, setCategories] = useState<any[]>([]);
   const [monthlyData, setMonthlyData] = useState<any[]>([]);
   const [categoryData, setCategoryData] = useState<any[]>([]);
+  const [rules, setRules] = useState<any[]>([]);
 
   // UI States
   const [loading, setLoading] = useState(true);
@@ -48,6 +50,11 @@ export default function Dashboard() {
     return saved ? JSON.parse(saved) : DEFAULT_WIDGETS;
   });
   const [isCustomizing, setIsCustomizing] = useState(false);
+
+  // AI Logger States
+  const [aiText, setAiText] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [parsedData, setParsedData] = useState<any>(null);
 
   // Modals inside Dashboard for Quick Actions
   const [isAddTxOpen, setIsAddTxOpen] = useState(false);
@@ -64,12 +71,13 @@ export default function Dashboard() {
     setLoading(true);
     setError('');
     try {
-      const [chartsRes, txRes, budgetsRes, goalsRes, categoriesRes] = await Promise.all([
+      const [chartsRes, txRes, budgetsRes, goalsRes, categoriesRes, rulesRes] = await Promise.all([
         axios.get(`${API}/analytics/charts`),
         axios.get(`${API}/transactions`),
         axios.get(`${API}/budgets`),
         axios.get(`${API}/goals`),
-        axios.get(`${API}/categories`)
+        axios.get(`${API}/categories`),
+        axios.get(`${API}/recurring-rules`)
       ]);
       setMonthlyData(chartsRes.data.monthly || []);
       setCategoryData(chartsRes.data.categories || []);
@@ -77,14 +85,57 @@ export default function Dashboard() {
       setBudgets(budgetsRes.data || []);
       setGoals(goalsRes.data || []);
       setCategories(categoriesRes.data || []);
+      setRules(rulesRes.data || []);
       setLastUpdated(new Date().toLocaleTimeString());
     } catch (e: any) {
       // 401 errors are handled by the Axios interceptor (auto-redirects to login)
       if (e?.response?.status === 401) return;
       console.error('[Dashboard fetchAll error]', e);
-      setError(e.message || 'Could not connect to the server. Make sure the backend is running on port 5000.');
+      const serverErr = e.response?.data?.error || e.message || 'Could not connect to the server.';
+      setError(serverErr);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAiParse = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!aiText.trim()) return;
+    setAiLoading(true);
+    setParsedData(null);
+    try {
+      const res = await axios.post(`${API}/ai/parse`, { text: aiText });
+      if (res.data.success) {
+        setParsedData(res.data.parsed);
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to parse natural language.');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleAiSave = async () => {
+    if (!parsedData) return;
+    try {
+      await axios.post(`${API}/transactions`, {
+        date: parsedData.date,
+        amount: parsedData.amount,
+        type: parsedData.type,
+        category_id: parsedData.category_id,
+        payment_method: parsedData.payment_method,
+        notes: parsedData.notes
+      });
+      confetti({
+        particleCount: 100,
+        spread: 70,
+        origin: { y: 0.8 }
+      });
+      setAiText('');
+      setParsedData(null);
+      fetchAll();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to save transaction.');
     }
   };
 
@@ -170,6 +221,18 @@ export default function Dashboard() {
   // Available Balance calculations
   const availableBalance = totalsData.current.balance;
   const availableBalancePctOfIncome = totalsData.current.income > 0 ? (availableBalance / totalsData.current.income) * 100 : 0;
+
+  // Recurring bills due this month that are not yet paid
+  const currentMonthStr = new Date().toISOString().slice(0, 7); // "YYYY-MM"
+  const unpaidBillsSum = rules
+    .filter(r => {
+      const isDueThisMonth = r.next_date.startsWith(currentMonthStr);
+      const wasPaidThisMonth = r.last_triggered && r.last_triggered.startsWith(currentMonthStr);
+      return isDueThisMonth && !wasPaidThisMonth;
+    })
+    .reduce((sum, r) => sum + r.amount, 0);
+
+  const forecastedBalance = availableBalance - unpaidBillsSum;
   
   let availableColor = 'text-green-500';
   let availableBg = 'bg-green-500';
@@ -352,6 +415,57 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* AI Expense Logger Widget */}
+      <div className="bg-slate-950/40 border border-slate-800 p-5 rounded-3xl space-y-4">
+        <div className="flex items-center space-x-2">
+          <span className="text-lg">🤖</span>
+          <h2 className="text-md font-bold text-white">AI Quick Logger</h2>
+        </div>
+        <form onSubmit={handleAiParse} className="flex gap-2">
+          <input
+            type="text"
+            value={aiText}
+            onChange={e => setAiText(e.target.value)}
+            placeholder="Type e.g., 'Spent 500 on Food today using UPI' or 'Received 40000 salary yesterday'..."
+            className="flex-1 px-4 py-3 rounded-2xl border border-slate-850 bg-slate-900/50 text-white placeholder:text-slate-500 text-xs focus:outline-none focus:ring-1 focus:ring-primary focus:border-transparent transition-all"
+            disabled={aiLoading}
+          />
+          <Button type="submit" disabled={aiLoading || !aiText.trim()} className="py-2.5 px-5">
+            {aiLoading ? 'Parsing...' : 'Analyze'}
+          </Button>
+        </form>
+
+        {parsedData && (
+          <div className="p-4 bg-slate-900/40 border border-slate-850 rounded-2xl flex flex-wrap items-center justify-between gap-4 animate-in slide-in-from-top duration-200">
+            <div className="space-y-1 text-xs">
+              <div className="flex items-center space-x-2">
+                <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase ${
+                  parsedData.type === 'income' ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
+                }`}>
+                  {parsedData.type}
+                </span>
+                <span className="bg-primary/10 text-primary px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase">
+                  {parsedData.category_name}
+                </span>
+                <span className="bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase">
+                  {parsedData.payment_method}
+                </span>
+              </div>
+              <p className="font-bold text-white mt-1.5">{parsedData.notes}</p>
+              <p className="text-[10px] text-slate-400">Date: {parsedData.date}</p>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="text-right">
+                <p className="text-lg font-black text-white">₹{parsedData.amount.toLocaleString('en-IN')}</p>
+              </div>
+              <Button onClick={handleAiSave} className="bg-green-600 hover:bg-green-700 text-white text-xs py-2.5 px-4 font-bold shadow-md shadow-green-500/20">
+                Log Transaction
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* MONTH-OVER-MONTH COMPARISON WIDGET */}
       {widgets.momWidget && (
         <MonthOverMonthComparisonWidget data={totalsData} navigate={navigate} />
@@ -435,8 +549,9 @@ export default function Dashboard() {
               `Monthly Income:      ₹${totalsData.current.income.toLocaleString('en-IN')}`,
               `− Expenses:          ₹${totalsData.current.expenses.toLocaleString('en-IN')}`,
               `− Monthly Savings:   ₹${totalsData.current.savings.toLocaleString('en-IN')}`,
+              ...(unpaidBillsSum > 0 ? [`− Unpaid Bills:      ₹${unpaidBillsSum.toLocaleString('en-IN')}`] : []),
               `────────────────────────────`,
-              `Available Balance:   ₹${availableBalance.toLocaleString('en-IN')}`
+              `Forecast Balance:    ₹${forecastedBalance.toLocaleString('en-IN')}`
             ]}
           >
             <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 text-[10px] font-semibold text-slate-500 space-y-1">
@@ -452,10 +567,18 @@ export default function Dashboard() {
                 <span>Savings</span>
                 <span className="text-blue-400 font-bold">-₹{totalsData.current.savings.toLocaleString('en-IN')}</span>
               </div>
+              {unpaidBillsSum > 0 && (
+                <div className="flex justify-between text-amber-500 font-bold">
+                  <span>Unpaid Bills</span>
+                  <span>-₹{unpaidBillsSum.toLocaleString('en-IN')}</span>
+                </div>
+              )}
               <div className="border-t border-dashed border-slate-200 dark:border-slate-800 my-1"></div>
               <div className={`text-center font-extrabold mt-1 text-[10px] py-0.5 rounded ${statusBadgeBg} ${statusBadgeText}`}>
                 {totalsData.current.income === 0 ? (
                   "Add income to start tracking"
+                ) : unpaidBillsSum > 0 ? (
+                  `Forecast: ₹${forecastedBalance.toLocaleString('en-IN')}`
                 ) : availableBalance >= 0 ? (
                   `Available: ₹${availableBalance.toLocaleString('en-IN')}`
                 ) : (
