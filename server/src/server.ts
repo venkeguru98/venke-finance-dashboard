@@ -34,17 +34,34 @@ app.use(helmet({
 // ─── CORS Configuration ────────────────────────────────────────────────────
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
-  : ['http://localhost:5173', 'http://localhost:5000'];
+  : [];
 
 app.use(cors({
-  origin: NODE_ENV === 'production'
-    ? (origin, callback) => {
-        // Allow requests with no origin (mobile apps, curl, Postman)
-        if (!origin) return callback(null, true);
-        if (allowedOrigins.includes(origin)) return callback(null, true);
-        callback(new Error(`CORS policy: Origin ${origin} not allowed`));
-      }
-    : true, // Allow all origins in development
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, curl, Postman)
+    if (!origin) return callback(null, true);
+    
+    // Always allow localhost/127.0.0.1/local IP
+    if (
+      origin.startsWith('http://localhost:') || 
+      origin.startsWith('http://127.0.0.1:') || 
+      origin.startsWith('http://192.168.')
+    ) {
+      return callback(null, true);
+    }
+    
+    // Always allow Render subdomains
+    if (origin.endsWith('.onrender.com')) {
+      return callback(null, true);
+    }
+    
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    
+    console.warn(`[CORS] Warning: Origin ${origin} not explicitly configured in ALLOWED_ORIGINS. Allowing connection.`);
+    callback(null, true);
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
