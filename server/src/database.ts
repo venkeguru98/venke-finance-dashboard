@@ -48,6 +48,12 @@ const convertSql = (sql: string): string => {
   // 3. Convert GROUP_CONCAT(expr, separator) -> string_agg(expr::text, separator)
   converted = converted.replace(/GROUP_CONCAT\s*\(([^,]+)\s*,\s*('[^']+')\)/gi, "string_agg(($1)::text, $2)");
 
+  // 3a. Convert GROUP BY month_raw -> GROUP BY to_char(date, 'YYYY-MM')
+  converted = converted.replace(/GROUP BY\s+month_raw/gi, "GROUP BY to_char(date, 'YYYY-MM')");
+
+  // 3b. Convert GROUP BY day_str -> GROUP BY to_char(date, 'DD')
+  converted = converted.replace(/GROUP BY\s+day_str/gi, "GROUP BY to_char(date, 'DD')");
+
   // 4. Convert parameter placeholders '?' to '$1, $2, ...'
   let index = 1;
   converted = converted.replace(/\?/g, () => `$${index++}`);
