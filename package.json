@@ -1,0 +1,14 @@
+{
+  "name": "venke-finance-dashboard",
+  "version": "3.0.0",
+  "description": "VENKE Finance Dashboard - Full Stack Personal Finance App",
+  "scripts": {
+    "build": "cd client && npm install && npm run build && cd ../server && npm install && npm run build",
+    "start": "node server/dist/server.js",
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && npm run dev"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
