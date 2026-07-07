@@ -81,7 +81,8 @@ export default function Dashboard() {
     } catch (e: any) {
       // 401 errors are handled by the Axios interceptor (auto-redirects to login)
       if (e?.response?.status === 401) return;
-      setError('Could not connect to the server. Make sure the backend is running on port 5000.');
+      console.error('[Dashboard fetchAll error]', e);
+      setError(e.message || 'Could not connect to the server. Make sure the backend is running on port 5000.');
     } finally {
       setLoading(false);
     }
