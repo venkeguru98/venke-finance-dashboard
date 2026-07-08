@@ -213,6 +213,121 @@ CREATE TABLE IF NOT EXISTS ledger_entries (
     payment_type TEXT DEFAULT 'UPI',
     notes TEXT,
     attachment_path TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- LIC Policies Table
+CREATE TABLE IF NOT EXISTS lic_policies (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    policy_name TEXT NOT NULL,
+    policy_number TEXT NOT NULL,
+    monthly_premium REAL NOT NULL,
+    start_date DATE NOT NULL,
+    maturity_date DATE NOT NULL,
+    premium_due_day INTEGER NOT NULL,
+    policy_term INTEGER NOT NULL,
+    sum_assured REAL NOT NULL,
+    expected_maturity_amount REAL NOT NULL,
+    status TEXT CHECK(status IN ('Running', 'Completed')) DEFAULT 'Running',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- LIC Premium History Table
+CREATE TABLE IF NOT EXISTS lic_premium_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    policy_id INTEGER NOT NULL,
+    month INTEGER NOT NULL,
+    year INTEGER NOT NULL,
+    amount_paid REAL NOT NULL,
+    paid_date DATE NOT NULL,
+    status TEXT CHECK(status IN ('Paid', 'Pending')) DEFAULT 'Paid',
+    remarks TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(policy_id) REFERENCES lic_policies(id) ON DELETE CASCADE
+);
+
+-- Digital Gold Investments Table
+CREATE TABLE IF NOT EXISTS digital_gold (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    investment_name TEXT NOT NULL,
+    platform TEXT NOT NULL,
+    start_date DATE NOT NULL,
+    end_date DATE,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Digital Gold Monthly Transactions Table
+CREATE TABLE IF NOT EXISTS digital_gold_transactions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    gold_id INTEGER NOT NULL,
+    month INTEGER NOT NULL,
+    year INTEGER NOT NULL,
+    amount REAL NOT NULL,
+    remarks TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(gold_id) REFERENCES digital_gold(id) ON DELETE CASCADE
+);
+
+-- Recreate Chit Funds Table with new structural columns
+DROP TABLE IF EXISTS chit_funds;
+CREATE TABLE chit_funds (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    chit_name TEXT NOT NULL,
+    monthly_installment REAL NOT NULL,
+    start_date DATE NOT NULL,
+    closing_date DATE NOT NULL,
+    total_months INTEGER NOT NULL,
+    organizer_name TEXT,
+    notes TEXT,
+    status TEXT CHECK(status IN ('Running', 'Completed', 'Closed')) DEFAULT 'Running',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Chit Payments Schedule Table
+CREATE TABLE IF NOT EXISTS chit_payments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chit_id INTEGER NOT NULL,
+    month INTEGER NOT NULL,
+    year INTEGER NOT NULL,
+    installment_amount REAL NOT NULL,
+    status TEXT CHECK(status IN ('Paid', 'Pending', 'Late')) DEFAULT 'Pending',
+    payment_date DATE,
+    remarks TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(chit_id) REFERENCES chit_funds(id) ON DELETE CASCADE
+);
+
+-- Offline Savings Accounts Table
+CREATE TABLE IF NOT EXISTS savings_accounts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    account_name TEXT NOT NULL,
+    opening_balance REAL NOT NULL,
+    current_balance REAL NOT NULL,
+    description TEXT,
+    color_tag TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Offline Savings Transactions Table
+CREATE TABLE IF NOT EXISTS savings_transactions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    account_id INTEGER NOT NULL,
+    type TEXT CHECK(type IN ('Credit', 'Debit', 'Transfer')) NOT NULL,
+    amount REAL NOT NULL,
+    date DATE NOT NULL,
+    description TEXT,
+    transfer_account_id INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(account_id) REFERENCES savings_accounts(id) ON DELETE CASCADE,
+    FOREIGN KEY(transfer_account_id) REFERENCES savings_accounts(id) ON DELETE SET NULL
 );

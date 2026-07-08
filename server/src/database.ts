@@ -155,7 +155,9 @@ export const initializeDatabase = async () => {
       const tables = [
         'users', 'categories', 'transactions', 'budgets', 'goals', 'recurring_rules',
         'savings_investments', 'notifications', 'debts', 'deposits', 'transfers',
-        'chit_funds', 'notes', 'documents', 'ledger_entries'
+        'chit_funds', 'notes', 'documents', 'ledger_entries',
+        'lic_policies', 'lic_premium_history', 'digital_gold', 'digital_gold_transactions',
+        'chit_payments', 'savings_accounts', 'savings_transactions'
       ];
       for (const table of tables) {
         try {

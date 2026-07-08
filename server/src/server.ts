@@ -11,6 +11,7 @@ import authRoutes from './routes/auth';
 import aiRoutes from './routes/ai';
 import recurringRoutes from './routes/recurring';
 import telegramRoutes from './routes/telegram';
+import recordsRoutes from './routes/records';
 
 dotenv.config();
 
@@ -154,6 +155,7 @@ const startServer = async () => {
   app.use('/api/telegram', telegramRoutes);
   app.use('/api/ai', aiRoutes);
   app.use('/api/recurring-rules', recurringRoutes);
+  app.use('/api/records', recordsRoutes);
   app.use('/api', apiRoutes);
 
   // ─── Static Uploads (local fallback) ─────────────────────────────────────
