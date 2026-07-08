@@ -85,6 +85,154 @@ export default function Dashboard() {
     });
   };
 
+  // Drawer States
+  const [selectedInsight, setSelectedInsight] = useState<any | null>(null);
+  const [drawerSearch, setDrawerSearch] = useState('');
+  const [drawerPaymentMethod, setDrawerPaymentMethod] = useState('All');
+  const [drawerDateStart, setDrawerDateStart] = useState('');
+  const [drawerDateEnd, setDrawerDateEnd] = useState('');
+  const [drawerMinAmount, setDrawerMinAmount] = useState('');
+  const [drawerMaxAmount, setDrawerMaxAmount] = useState('');
+  const [drawerSortBy, setDrawerSortBy] = useState<'newest' | 'oldest' | 'high' | 'low'>('newest');
+  const [collapsedMonths, setCollapsedMonths] = useState<string[]>([]);
+
+  // Drawer resets & defaults
+  useEffect(() => {
+    if (selectedInsight) {
+      setDrawerSearch('');
+      setDrawerPaymentMethod('All');
+      setDrawerDateStart('');
+      setDrawerDateEnd('');
+      setDrawerMinAmount('');
+      setDrawerMaxAmount('');
+      setDrawerSortBy('newest');
+
+      // Pre-collapse older months
+      const catTx = transactions.filter(t => t.category_id === selectedInsight.id);
+      const uniqueMonths = Array.from(new Set(catTx.map(t => t.date.slice(0, 7)))).sort().reverse();
+      const currentMonthPrefix = new Date().toISOString().slice(0, 7);
+      const toCollapse = uniqueMonths.filter(m => m !== currentMonthPrefix);
+      setCollapsedMonths(toCollapse);
+    }
+  }, [selectedInsight, transactions]);
+
+  // Drawer Category Cycling Navigation
+  const handlePrevCategory = () => {
+    const list = getTrendInsights();
+    const idx = list.findIndex(i => i.id === selectedInsight.id);
+    if (idx > 0) {
+      setSelectedInsight(list[idx - 1]);
+    } else {
+      setSelectedInsight(list[list.length - 1]);
+    }
+  };
+
+  const handleNextCategory = () => {
+    const list = getTrendInsights();
+    const idx = list.findIndex(i => i.id === selectedInsight.id);
+    if (idx < list.length - 1) {
+      setSelectedInsight(list[idx + 1]);
+    } else {
+      setSelectedInsight(list[0]);
+    }
+  };
+
+  // Drawer Transaction Exporting
+  const handleExportCSV = (txList: any[], catName: string) => {
+    const headers = ['Date', 'Description', 'Amount', 'Payment Method', 'Category'];
+    const rows = txList.map(t => [
+      t.date,
+      t.notes || '',
+      t.amount,
+      t.payment_method || '',
+      catName
+    ]);
+    const csvContent = [headers.join(','), ...rows.map(r => r.map(val => `"${val}"`).join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `${catName.replace(/\s+/g, '_')}_Transactions.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Filter logic inside Drawer
+  const getFilteredTransactions = () => {
+    if (!selectedInsight) return [];
+    let list = transactions.filter(t => t.category_id === selectedInsight.id);
+
+    if (drawerSearch.trim()) {
+      const q = drawerSearch.toLowerCase();
+      list = list.filter(t => (t.notes || '').toLowerCase().includes(q) || (t.tags || '').toLowerCase().includes(q));
+    }
+
+    if (drawerPaymentMethod !== 'All') {
+      list = list.filter(t => t.payment_method === drawerPaymentMethod);
+    }
+
+    if (drawerDateStart) {
+      list = list.filter(t => t.date >= drawerDateStart);
+    }
+    if (drawerDateEnd) {
+      list = list.filter(t => t.date <= drawerDateEnd);
+    }
+
+    if (drawerMinAmount) {
+      list = list.filter(t => t.amount >= Number(drawerMinAmount));
+    }
+    if (drawerMaxAmount) {
+      list = list.filter(t => t.amount <= Number(drawerMaxAmount));
+    }
+
+    if (drawerSortBy === 'newest') {
+      list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    } else if (drawerSortBy === 'oldest') {
+      list.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    } else if (drawerSortBy === 'high') {
+      list.sort((a, b) => b.amount - a.amount);
+    } else if (drawerSortBy === 'low') {
+      list.sort((a, b) => a.amount - b.amount);
+    }
+
+    return list;
+  };
+
+  // Grouped Collapsible list constructor
+  const getGroupedTransactions = (list: any[]) => {
+    const groups: { [key: string]: any[] } = {};
+    list.forEach(t => {
+      const monthPrefix = t.date.slice(0, 7);
+      if (!groups[monthPrefix]) {
+        groups[monthPrefix] = [];
+      }
+      groups[monthPrefix].push(t);
+    });
+
+    return Object.keys(groups).sort().reverse().map(key => {
+      const txs = groups[key];
+      const total = txs.reduce((sum, t) => sum + t.amount, 0);
+      const avg = total / txs.length;
+      const amounts = txs.map(t => t.amount);
+      const max = Math.max(...amounts);
+      const min = Math.min(...amounts);
+      
+      const dObj = new Date(key + '-02');
+      const label = dObj.toLocaleString('default', { month: 'long', year: 'numeric' });
+
+      return {
+        key,
+        label,
+        txs,
+        total,
+        avg,
+        max,
+        min
+      };
+    });
+  };
+
 
 
   // Modals inside Dashboard for Quick Actions
@@ -369,7 +517,8 @@ export default function Dashboard() {
         lastTransactionDay,
         avgMonthlySpend,
         colorClass,
-        notEnoughHistory
+        notEnoughHistory,
+        txCount: currMonthTx.length
       };
     }).filter(insight => insight.currMonthTotal > 0 || insight.prevMonthTotal > 0);
   };
@@ -747,12 +896,17 @@ export default function Dashboard() {
               className="flex overflow-x-auto gap-5 pb-3 pt-1 no-scrollbar cursor-grab active:cursor-grabbing scroll-smooth select-none w-full"
             >
               {getTrendInsights().map((item, idx) => (
-                <InsightCard 
+                <div 
                   key={item.id} 
-                  item={item} 
-                  index={idx} 
-                  getCategoryIcon={getCategoryIcon} 
-                />
+                  onClick={() => setSelectedInsight(item)}
+                  className="shrink-0"
+                >
+                  <InsightCard 
+                    item={item} 
+                    index={idx} 
+                    getCategoryIcon={getCategoryIcon} 
+                  />
+                </div>
               ))}
             </div>
           )}
@@ -1246,6 +1400,352 @@ export default function Dashboard() {
           <MonthOverMonthComparisonWidget data={totalsData} navigate={navigate} />
         </div>
       )}
+
+      {/* INSIGHT DRILL-DOWN DRAWER */}
+      {selectedInsight && (
+        <>
+          {/* Backdrop overlay */}
+          <div 
+            className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity duration-200 animate-in fade-in"
+            onClick={() => setSelectedInsight(null)}
+          />
+
+          {/* Drawer Panel */}
+          <div className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-2xl bg-slate-950 border-l border-slate-800 dark:border-slate-900 shadow-2xl flex flex-col h-screen overflow-hidden animate-in slide-in-from-right duration-300">
+            {/* Header */}
+            <div className="p-6 border-b border-slate-900 flex justify-between items-center bg-slate-950 shrink-0">
+              <div className="flex items-center space-x-3">
+                <span className="text-2xl p-2 bg-slate-900 rounded-xl">
+                  {getCategoryIcon(selectedInsight.name)}
+                </span>
+                <div>
+                  <h3 className="font-bold text-lg text-white flex items-center gap-1.5">
+                    {selectedInsight.name} Transactions
+                  </h3>
+                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Financial Insights Drill-down</p>
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                {/* Category Navigation Controls */}
+                <button
+                  onClick={handlePrevCategory}
+                  className="p-2 rounded-lg bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-400 hover:text-white transition"
+                  title="Previous Category"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={handleNextCategory}
+                  className="p-2 rounded-lg bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-400 hover:text-white transition"
+                  title="Next Category"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+
+                <button 
+                  onClick={() => setSelectedInsight(null)}
+                  className="p-2 rounded-lg bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-400 hover:text-white transition ml-2"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Scrollable Content Container */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6 no-scrollbar">
+              {/* Quick Stats Grid */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-slate-900/40 border border-slate-850 p-4 rounded-xl space-y-1">
+                  <span className="text-[10px] text-slate-500 font-bold uppercase">This Month</span>
+                  <p className="text-lg font-black text-white font-mono">
+                    ₹<AnimatedNumber value={selectedInsight.currMonthTotal} />
+                  </p>
+                </div>
+                <div className="bg-slate-900/40 border border-slate-850 p-4 rounded-xl space-y-1">
+                  <span className="text-[10px] text-slate-500 font-bold uppercase">Last Month</span>
+                  <p className="text-lg font-black text-slate-350 font-mono">
+                    ₹<AnimatedNumber value={selectedInsight.prevMonthTotal} />
+                  </p>
+                </div>
+                <div className="bg-slate-900/40 border border-slate-850 p-4 rounded-xl space-y-1">
+                  <span className="text-[10px] text-slate-500 font-bold uppercase">Difference</span>
+                  <p className={`text-lg font-black font-mono ${selectedInsight.difference > 0 ? (selectedInsight.type === 'savings' ? 'text-green-400' : 'text-red-400') : (selectedInsight.type === 'savings' ? 'text-red-400' : 'text-green-400')}`}>
+                    {selectedInsight.difference > 0 ? '+' : '-'}₹<AnimatedNumber value={Math.abs(selectedInsight.difference)} />
+                  </p>
+                </div>
+                <div className="bg-slate-900/40 border border-slate-850 p-4 rounded-xl space-y-1">
+                  <span className="text-[10px] text-slate-500 font-bold uppercase">Count</span>
+                  <p className="text-lg font-black text-purple-400 font-mono">
+                    <AnimatedNumber value={getFilteredTransactions().length} /> Tx
+                  </p>
+                </div>
+              </div>
+
+              {/* Charts Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {/* Monthly area chart */}
+                <div className="bg-slate-900/40 border border-slate-850 p-4 rounded-xl space-y-3">
+                  <h4 className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">6-Month Trend</h4>
+                  <div className="h-28">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={selectedInsight.sparklineData} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
+                        <XAxis dataKey="month" stroke="#64748b" fontSize={9} tickLine={false} axisLine={false} />
+                        <YAxis stroke="#64748b" fontSize={9} tickLine={false} axisLine={false} tickFormatter={v => `₹${v}`} />
+                        <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#1e293b', borderRadius: '8px', fontSize: '10px' }} />
+                        <Area type="monotone" dataKey="amount" stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.1} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* Payment Methods breakdown */}
+                <div className="bg-slate-900/40 border border-slate-850 p-4 rounded-xl space-y-3">
+                  <h4 className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Payment Methods</h4>
+                  <div className="h-28 flex items-center justify-between">
+                    <div className="w-[100px] h-full shrink-0">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie 
+                            data={Object.entries(
+                              getFilteredTransactions().reduce((acc: any, curr: any) => {
+                                const m = curr.payment_method || 'UPI';
+                                acc[m] = (acc[m] || 0) + curr.amount;
+                                return acc;
+                              }, {})
+                            ).map(([name, value]) => ({ name, value }))} 
+                            cx="50%" 
+                            cy="50%" 
+                            innerRadius={18} 
+                            outerRadius={30} 
+                            dataKey="value"
+                          >
+                            {Object.entries(
+                              getFilteredTransactions().reduce((acc: any, curr: any) => {
+                                const m = curr.payment_method || 'UPI';
+                                acc[m] = (acc[m] || 0) + curr.amount;
+                                return acc;
+                              }, {})
+                            ).map((_entry, idx) => (
+                              <Cell key={`cell-${idx}`} fill={['#3b82f6', '#10b981', '#f59e0b', '#ec4899'][idx % 4]} />
+                            ))}
+                          </Pie>
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="flex-1 pl-4 space-y-1.5 text-[10px] font-bold text-slate-400">
+                      {Object.entries(
+                        getFilteredTransactions().reduce((acc: any, curr: any) => {
+                          const m = curr.payment_method || 'UPI';
+                          acc[m] = (acc[m] || 0) + curr.amount;
+                          return acc;
+                        }, {})
+                      ).map(([name, value]: any, idx) => (
+                        <div key={name} className="flex justify-between items-center">
+                          <span className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ec4899'][idx % 4] }} />
+                            {name}
+                          </span>
+                          <span className="text-white font-mono">₹{value.toLocaleString()}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Filters Header & Inputs */}
+              <div className="bg-slate-900/40 border border-slate-850 p-4.5 rounded-xl space-y-4 text-xs font-semibold">
+                <div className="flex justify-between items-center border-b border-slate-850 pb-2">
+                  <h4 className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Filters & Controls</h4>
+                  <button 
+                    onClick={() => {
+                      setDrawerSearch('');
+                      setDrawerPaymentMethod('All');
+                      setDrawerDateStart('');
+                      setDrawerDateEnd('');
+                      setDrawerMinAmount('');
+                      setDrawerMaxAmount('');
+                      setDrawerSortBy('newest');
+                    }}
+                    className="text-[9px] text-purple-400 hover:text-purple-300 font-extrabold uppercase"
+                  >
+                    Reset Filters
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  <div className="col-span-2 md:col-span-1">
+                    <label className="block text-slate-500 mb-1 text-[10px]">Search Description</label>
+                    <input 
+                      type="text" placeholder="e.g. Lunch, taxi..."
+                      value={drawerSearch}
+                      onChange={e => setDrawerSearch(e.target.value)}
+                      className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:ring-1 focus:ring-purple-500 text-[11px]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-500 mb-1 text-[10px]">Payment Method</label>
+                    <select
+                      value={drawerPaymentMethod}
+                      onChange={e => setDrawerPaymentMethod(e.target.value)}
+                      className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:ring-1 focus:ring-purple-500 text-[11px] font-medium"
+                    >
+                      <option value="All">All Methods</option>
+                      <option value="UPI">UPI</option>
+                      <option value="Cash">Cash</option>
+                      <option value="Card">Card</option>
+                      <option value="Net Banking">Net Banking</option>
+                      <option value="Bank Transfer">Bank Transfer</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-slate-500 mb-1 text-[10px]">Sort By</label>
+                    <select
+                      value={drawerSortBy}
+                      onChange={e => setDrawerSortBy(e.target.value as any)}
+                      className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:ring-1 focus:ring-purple-500 text-[11px] font-medium"
+                    >
+                      <option value="newest">Newest First</option>
+                      <option value="oldest">Oldest First</option>
+                      <option value="high">Highest Amount</option>
+                      <option value="low">Lowest Amount</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-500 mb-1 text-[10px]">Min Amount (₹)</label>
+                    <input 
+                      type="number" placeholder="Min"
+                      value={drawerMinAmount}
+                      onChange={e => setDrawerMinAmount(e.target.value)}
+                      className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:ring-1 focus:ring-purple-500 text-[11px]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-500 mb-1 text-[10px]">Max Amount (₹)</label>
+                    <input 
+                      type="number" placeholder="Max"
+                      value={drawerMaxAmount}
+                      onChange={e => setDrawerMaxAmount(e.target.value)}
+                      className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:ring-1 focus:ring-purple-500 text-[11px]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-500 mb-1 text-[10px]">Start Date</label>
+                    <input 
+                      type="date"
+                      value={drawerDateStart}
+                      onChange={e => setDrawerDateStart(e.target.value)}
+                      className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:ring-1 focus:ring-purple-500 text-[11px]"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Action buttons (Export/Print) */}
+              <div className="flex flex-wrap gap-3 shrink-0">
+                <Button 
+                  onClick={() => handleExportCSV(getFilteredTransactions(), selectedInsight.name)} 
+                  variant="ghost" 
+                  className="text-xs py-2 px-4 border border-slate-800 hover:bg-slate-900 flex items-center gap-1.5 text-slate-350"
+                >
+                  📥 Export CSV
+                </Button>
+                <Button 
+                  onClick={() => window.print()} 
+                  variant="ghost" 
+                  className="text-xs py-2 px-4 border border-slate-800 hover:bg-slate-900 flex items-center gap-1.5 text-slate-350"
+                >
+                  🖨️ Print
+                </Button>
+              </div>
+
+              {/* Collapsible Monthly Grouped Transaction Lists */}
+              <div className="space-y-4">
+                {getGroupedTransactions(getFilteredTransactions()).length === 0 ? (
+                  <div className="py-12 text-center text-slate-500 text-xs font-semibold border border-dashed border-slate-800 rounded-2xl">
+                    No transactions match current filters.
+                  </div>
+                ) : (
+                  getGroupedTransactions(getFilteredTransactions()).map(monthGroup => {
+                    const isCollapsed = collapsedMonths.includes(monthGroup.key);
+                    return (
+                      <div key={monthGroup.key} className="border border-slate-900 rounded-2xl overflow-hidden bg-slate-950">
+                        {/* Month Header (clickable) */}
+                        <div 
+                          onClick={() => {
+                            if (isCollapsed) {
+                              setCollapsedMonths(collapsedMonths.filter(m => m !== monthGroup.key));
+                            } else {
+                              setCollapsedMonths([...collapsedMonths, monthGroup.key]);
+                            }
+                          }}
+                          className="p-4 bg-slate-900/60 hover:bg-slate-900 cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-slate-900 select-none"
+                        >
+                          <div>
+                            <h4 className="font-extrabold text-sm text-white">{monthGroup.label}</h4>
+                            <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
+                              {monthGroup.txs.length} Transactions · Total: ₹{monthGroup.total.toLocaleString()}
+                            </p>
+                          </div>
+                          
+                          <div className="flex items-center justify-between md:justify-end gap-4 text-xs font-bold text-slate-400">
+                            <div className="text-left md:text-right text-[10px] text-slate-550 font-medium">
+                              <span>Avg: ₹{Math.round(monthGroup.avg)}</span>
+                              <span className="mx-1.5">·</span>
+                              <span>Max: ₹{monthGroup.max}</span>
+                              <span className="mx-1.5">·</span>
+                              <span>Min: ₹{monthGroup.min}</span>
+                            </div>
+                            <span className="text-[10px] text-purple-400">{isCollapsed ? 'Expand ▲' : 'Collapse ▼'}</span>
+                          </div>
+                        </div>
+
+                        {/* Month Transaction list */}
+                        {!isCollapsed && (
+                          <div className="p-3.5 space-y-2.5 bg-slate-950/20 max-h-96 overflow-y-auto no-scrollbar">
+                            {monthGroup.txs.map(t => (
+                              <div key={t.id} className="p-3 bg-slate-900/40 rounded-xl border border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                                <div className="flex items-center space-x-3">
+                                  <div className="text-center bg-slate-950 px-2 py-1 rounded-lg border border-slate-800 shrink-0 min-w-[50px]">
+                                    <p className="text-[10px] text-slate-400 font-bold uppercase">
+                                      {new Date(t.date).toLocaleDateString('default', { month: 'short' })}
+                                    </p>
+                                    <p className="text-sm font-black text-white font-mono">
+                                      {new Date(t.date).getDate()}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="font-bold text-slate-200">{t.notes || '—'}</p>
+                                    <div className="flex items-center space-x-1.5 text-[10px] text-slate-500 font-medium mt-0.5">
+                                      <span className="bg-slate-900 px-1.5 py-0.5 rounded text-[9px] font-semibold text-slate-400">{t.payment_method}</span>
+                                      {t.tags && <span className="bg-slate-900 px-1.5 py-0.5 rounded text-[9px] font-semibold text-slate-400">{t.tags}</span>}
+                                    </div>
+                                  </div>
+                                </div>
+                                
+                                <div className="text-right">
+                                  <p className="font-black text-sm text-red-400 font-mono">
+                                    -₹{Number(t.amount).toLocaleString('en-IN')}
+                                  </p>
+                                  <p className="text-[9px] text-slate-500 font-semibold uppercase">
+                                    {new Date(t.date).toLocaleDateString('default', { month: 'long' })}
+                                  </p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -1496,68 +1996,70 @@ interface InsightCardProps {
 }
 
 function InsightCard({ item, index, getCategoryIcon }: InsightCardProps) {
-  const isIncrease = item.difference > 0;
-  const hasChange = item.difference !== 0;
+  const prevMonthTotal = item.prevMonthTotal || 0;
   const notEnoughHistory = item.notEnoughHistory;
 
-  // Color selection: green for decrease in expenses, red for increase in expenses, blue for neutral
-  let badgeColorClass = 'bg-blue-500/10 text-blue-500 border border-blue-500/25';
-  let badgeText = '— 0%';
-  let lineColor = '#3b82f6';
+  // 1. Redesign Badge logic based on the 4 cases:
+  let badgeColorClass = 'bg-blue-500/10 text-blue-500 border border-blue-500/20';
+  let badgeText = 'NEW';
 
-  if (hasChange) {
-    if (isIncrease) {
-      badgeColorClass = item.type === 'savings'
-        ? 'bg-green-500/10 text-green-500 border border-green-500/25'
-        : 'bg-red-500/10 text-red-500 border border-red-500/25';
-      badgeText = `▲ +${Math.round(item.pctChange)}%`;
-      lineColor = item.type === 'savings' ? '#10b981' : '#ef4444';
-    } else {
-      badgeColorClass = item.type === 'savings'
-        ? 'bg-red-500/10 text-red-500 border border-red-500/25'
-        : 'bg-green-500/10 text-green-500 border border-green-500/25';
-      badgeText = `▼ -${Math.round(Math.abs(item.pctChange))}%`;
-      lineColor = item.type === 'savings' ? '#ef4444' : '#10b981';
-    }
+  if (notEnoughHistory) {
+    // Case 4: Insufficient history
+    badgeText = 'No Data';
+    badgeColorClass = 'bg-blue-500/10 text-blue-500 border border-blue-500/20';
+  } else if (prevMonthTotal === 0) {
+    // Case 1: Previous month was zero
+    badgeText = 'First Month';
+    badgeColorClass = 'bg-blue-500/10 text-blue-500 border border-blue-500/20';
+  } else if (item.difference > 0) {
+    // Case 2: Spending increased
+    badgeText = `+₹${Math.round(item.difference)} ↑${Math.round(item.pctChange)}%`;
+    badgeColorClass = item.type === 'savings'
+      ? 'bg-green-500/10 text-green-500 border border-green-500/20'
+      : 'bg-red-500/10 text-red-500 border border-red-500/20';
+  } else if (item.difference < 0) {
+    // Case 3: Spending decreased
+    badgeText = `-₹${Math.round(Math.abs(item.difference))} ↓${Math.round(Math.abs(item.pctChange))}%`;
+    badgeColorClass = item.type === 'savings'
+      ? 'bg-red-500/10 text-red-500 border border-red-500/20'
+      : 'bg-green-500/10 text-green-500 border border-green-500/20';
+  } else {
+    badgeText = 'No Change';
+    badgeColorClass = 'bg-slate-500/10 text-slate-400 border border-slate-500/20';
   }
 
-  // Find the last month label in sparkline
+  const lineColor = badgeColorClass.includes('text-green-500') 
+    ? '#10b981' 
+    : badgeColorClass.includes('text-red-500') 
+      ? '#ef4444' 
+      : '#3b82f6';
+
   const lastMonthLabel = item.sparklineData[item.sparklineData.length - 1]?.month;
 
-  // Format contextual label based on category
-  let contextLabel = `Last transaction: ${item.lastTransactionDay || '—'}`;
-  if (item.name.toLowerCase().includes('food') && item.highestSpendDay) {
-    contextLabel = `Highest spend: ${item.highestSpendDay}`;
-  } else if ((item.name.toLowerCase().includes('fuel') || item.name.toLowerCase().includes('travel')) && item.lastTransactionDay) {
-    contextLabel = `Last refill: ${item.lastTransactionDay}`;
-  } else if (item.type === 'savings') {
-    contextLabel = `Avg saved: ₹${Math.round(item.avgMonthlySpend).toLocaleString('en-IN')}`;
-  } else {
-    contextLabel = `Avg spend: ₹${Math.round(item.avgMonthlySpend).toLocaleString('en-IN')}`;
-  }
+  // Format contextual label for average spending/savings
+  const avgLabel = item.type === 'savings' 
+    ? `Avg Saved: ₹${Math.round(item.avgMonthlySpend).toLocaleString('en-IN')}`
+    : `Avg Spent: ₹${Math.round(item.avgMonthlySpend).toLocaleString('en-IN')}`;
 
   return (
     <div 
       className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl w-[285px] h-[265px] flex-shrink-0 flex flex-col justify-between hover:-translate-y-1.5 hover:scale-[1.02] hover:shadow-lg dark:hover:bg-slate-900/60 dark:hover:border-slate-750 transition-all duration-250 ease-out cursor-grab active:cursor-grabbing animate-slide-up relative overflow-hidden group select-none"
       style={{ animationDelay: `${index * 100}ms` }}
     >
-      {/* Top section: Icon & Trend Badge */}
+      {/* Top row: Icon and Badge */}
       <div className="flex justify-between items-center w-full">
         <span className="text-2xl p-2 bg-slate-50 dark:bg-slate-900 rounded-xl flex-shrink-0" role="img" aria-label={item.name}>
           {getCategoryIcon(item.name)}
         </span>
-
-        {!notEnoughHistory && (
-          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[9px] font-black tracking-wider uppercase shrink-0 transition-transform group-hover:scale-105 duration-200 ${badgeColorClass}`}>
-            {badgeText}
-          </span>
-        )}
+        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black tracking-wider uppercase shrink-0 transition-transform group-hover:scale-105 duration-200 ${badgeColorClass}`}>
+          {badgeText}
+        </span>
       </div>
 
-      {/* Middle Section: Category Name & Amount */}
-      <div className="mt-3.5 space-y-1 flex-1">
+      {/* Middle Section: Category Name & Current Month Total */}
+      <div className="mt-3 space-y-1 flex-1">
         <h4 
-          className="text-xs font-black text-slate-400 uppercase tracking-wider line-clamp-2 min-h-[32px] flex items-center cursor-help"
+          className="text-xs font-black text-slate-400 uppercase tracking-wider line-clamp-1 flex items-center cursor-help"
           title={item.name}
         >
           {item.name}
@@ -1567,28 +2069,22 @@ function InsightCard({ item, index, getCategoryIcon }: InsightCardProps) {
         </p>
       </div>
 
-      {/* Bottom-Middle Section: Difference vs Last Month & Avg Spend */}
-      <div className="mt-3 space-y-0.5 text-[10px] font-semibold flex-shrink-0">
-        {notEnoughHistory ? (
-          <div className="space-y-0.5 py-1">
-            <p className="text-amber-500 font-extrabold uppercase tracking-wide">Not enough history yet</p>
-            <p className="text-slate-500 font-medium leading-normal">Start adding transactions to view trends.</p>
-          </div>
-        ) : (
-          <>
-            <p className="text-slate-500 font-semibold leading-normal">
-              <span className={isIncrease ? (item.type === 'savings' ? 'text-green-500' : 'text-red-400') : (item.type === 'savings' ? 'text-red-400' : 'text-green-400')}>
-                {isIncrease ? '+' : '-'}₹<AnimatedNumber value={Math.abs(item.difference)} />
-              </span>{' '}
-              vs last month
-            </p>
-            <p className="text-slate-400 font-medium">{contextLabel}</p>
-          </>
-        )}
+      {/* Stats details section */}
+      <div className="mt-2 space-y-1 text-[10px] font-bold text-slate-500">
+        <div className="flex justify-between">
+          <span>Last Month: <span className="text-slate-750 dark:text-slate-300 font-mono">₹{Math.round(prevMonthTotal).toLocaleString('en-IN')}</span></span>
+          <span className="text-purple-400 font-extrabold">{item.txCount || 0} Tx</span>
+        </div>
+        <div className="flex justify-between items-center">
+          <span className="text-slate-400 font-medium">{avgLabel}</span>
+          {item.lastTransactionDay && (
+            <span className="text-slate-400 font-medium">Last: {item.lastTransactionDay}</span>
+          )}
+        </div>
       </div>
 
       {/* Mini Sparkline anchored to the bottom */}
-      <div className="w-full h-12 mt-2 -mx-5 -mb-5 relative overflow-hidden rounded-b-2xl self-end">
+      <div className="w-full h-12 mt-2 -mx-5 -mb-5 relative overflow-hidden rounded-b-2xl self-end shrink-0">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={item.sparklineData} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
             <defs>
