@@ -235,10 +235,10 @@ export default function ChitModule({ onBack }: ChitModuleProps) {
                     </div>
 
                     <div className="flex items-center justify-between text-xs border-t border-slate-900 pt-3">
-                      <div>
-                        <p className="text-[10px] text-slate-500 font-bold uppercase">Installment</p>
-                        <p className="font-black text-white mt-0.5">₹{c.monthly_installment.toLocaleString('en-IN')}</p>
-                      </div>
+                       <div>
+                         <p className="text-[10px] text-slate-500 font-bold uppercase">This Month Due</p>
+                         <p className="font-black text-white mt-0.5">₹{c.currentMonthDue.toLocaleString('en-IN')}</p>
+                       </div>
                       <div className="text-right">
                         <p className="text-[10px] text-slate-500 font-bold uppercase">Paid Progress</p>
                         <p className="font-black text-purple-400 mt-0.5">{c.completionPct}%</p>
@@ -528,7 +528,7 @@ export default function ChitModule({ onBack }: ChitModuleProps) {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-slate-950 border border-slate-800 rounded-3xl w-full max-w-sm p-6 space-y-5 animate-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center border-b border-slate-900 pb-3">
-              <h3 className="font-bold text-md text-white">Record Monthly Payment</h3>
+              <h3 className="font-bold text-md text-white">Edit Installment / Record Payment</h3>
               <button onClick={() => setShowPaymentModal(false)} className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-900">
                 <XIcon />
               </button>
@@ -536,7 +536,7 @@ export default function ChitModule({ onBack }: ChitModuleProps) {
 
             <form onSubmit={handlePaymentSubmit} className="space-y-4 text-xs font-semibold text-slate-350">
               <div>
-                <label className="block text-slate-400 mb-1">Installment Amount * (Can edit if dividend reduced it)</label>
+                <label className="block text-slate-400 mb-1">Installment Amount (₹) * (Varies each month due to dividends)</label>
                 <input
                   type="number" required
                   value={paymentForm.installment_amount}
