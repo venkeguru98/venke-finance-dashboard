@@ -14,6 +14,18 @@ const formatLocalYYYYMM = (date: Date) => {
   return `${y}-${m}`;
 };
 
+export const formatIndianRupee = (num: number) => {
+  const isNegative = num < 0;
+  const absNum = Math.abs(num);
+  if (absNum === 0) return '₹0.00';
+  const hasDecimal = absNum % 1 !== 0;
+  const formatted = absNum.toLocaleString('en-IN', {
+    minimumFractionDigits: hasDecimal ? 2 : 0,
+    maximumFractionDigits: 2
+  });
+  return (isNegative ? '-₹' : '₹') + formatted;
+};
+
 // Default widget visibility states
 const DEFAULT_WIDGETS = {
   summaryCards: true,
@@ -950,13 +962,13 @@ export default function Dashboard() {
             availableMonths={availableMonths} onSelectMonth={handleSelectMonth}
             onClick={() => openKpiDrawer('balance')}>
             <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 text-[10px] font-semibold text-slate-500 space-y-1">
-              <div className="flex justify-between"><span>Income</span><span className="text-slate-900 dark:text-white font-bold">₹{totalsData.current.income.toLocaleString('en-IN')}</span></div>
-              <div className="flex justify-between"><span>Expenses</span><span className="text-red-400 font-bold">-₹{totalsData.current.expenses.toLocaleString('en-IN')}</span></div>
-              <div className="flex justify-between"><span>Savings</span><span className="text-blue-400 font-bold">-₹{totalsData.current.savings.toLocaleString('en-IN')}</span></div>
-              {unpaidBillsSum > 0 && <div className="flex justify-between text-amber-500 font-bold"><span>Unpaid</span><span>-₹{unpaidBillsSum.toLocaleString('en-IN')}</span></div>}
+              <div className="flex justify-between"><span>Income</span><span className="text-slate-900 dark:text-white font-bold">{formatIndianRupee(totalsData.current.income)}</span></div>
+              <div className="flex justify-between"><span>Expenses</span><span className="text-red-400 font-bold">-{formatIndianRupee(totalsData.current.expenses)}</span></div>
+              <div className="flex justify-between"><span>Savings</span><span className="text-blue-400 font-bold">-{formatIndianRupee(totalsData.current.savings)}</span></div>
+              {unpaidBillsSum > 0 && <div className="flex justify-between text-amber-500 font-bold"><span>Unpaid</span><span>-{formatIndianRupee(unpaidBillsSum)}</span></div>}
               <div className="border-t border-dashed border-slate-200 dark:border-slate-800 my-1"></div>
               <div className={`text-center font-extrabold mt-1 text-[10px] py-0.5 rounded ${statusBadgeBg} ${statusBadgeText}`}>
-                {totalsData.current.income === 0 ? 'Add income to start tracking' : availableBalance >= 0 ? `Available: ₹${availableBalance.toLocaleString('en-IN')}` : `Overspent: -₹${Math.abs(availableBalance).toLocaleString('en-IN')}`}
+                {totalsData.current.income === 0 ? 'Add income to start tracking' : availableBalance >= 0 ? `Available: ${formatIndianRupee(availableBalance)}` : `Overspent: ${formatIndianRupee(availableBalance)}`}
               </div>
             </div>
           </SummaryCard>
@@ -967,16 +979,16 @@ export default function Dashboard() {
             availableMonths={availableMonths} onSelectMonth={handleSelectMonth}
             onClick={() => openKpiDrawer('netbalance')}>
             <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 text-[10px] font-semibold text-slate-500 space-y-1">
-              <div className="flex justify-between"><span>Income</span><span className="text-slate-900 dark:text-white font-bold">₹{totalsData.current.income.toLocaleString('en-IN')}</span></div>
-              <div className="flex justify-between"><span>Expenses</span><span className="text-red-400 font-bold">-₹{totalsData.current.expenses.toLocaleString('en-IN')}</span></div>
-              <div className="flex justify-between"><span>Savings</span><span className="text-blue-400 font-bold">-₹{totalsData.current.savings.toLocaleString('en-IN')}</span></div>
+              <div className="flex justify-between"><span>Income</span><span className="text-slate-900 dark:text-white font-bold">{formatIndianRupee(totalsData.current.income)}</span></div>
+              <div className="flex justify-between"><span>Expenses</span><span className="text-red-400 font-bold">-{formatIndianRupee(totalsData.current.expenses)}</span></div>
+              <div className="flex justify-between"><span>Savings</span><span className="text-blue-400 font-bold">-{formatIndianRupee(totalsData.current.savings)}</span></div>
               <div className="border-t border-dashed border-slate-200 dark:border-slate-800 my-1"></div>
               <div className={`text-center font-extrabold mt-1 text-[10px] py-0.5 rounded ${statusBadgeBg} ${statusBadgeText}`}>
-                {totalsData.current.income === 0 ? 'Add income to start tracking' : totalsData.current.balance >= 0 ? `Net: ₹${totalsData.current.balance.toLocaleString('en-IN')}` : `Deficit: -₹${Math.abs(totalsData.current.balance).toLocaleString('en-IN')}`}
+                {totalsData.current.income === 0 ? 'Add income to start tracking' : totalsData.current.balance >= 0 ? `Net: ${formatIndianRupee(totalsData.current.balance)}` : `Deficit: ${formatIndianRupee(totalsData.current.balance)}`}
               </div>
             </div>
           </SummaryCard>
-          <SummaryCard title="Savings Rate" monthLabel={currentMonthLabel}
+          <SummaryCard title="Savings Rate" monthLabel={currentMonthLabel} cardKey="savingsrate"
             amount={savingsRate} isPercentage pctChange={totalsData.metrics.savingsRate.pctChange}
             prevMonthLabel={totalsData.metrics.savingsRate.prevMonthLabel}
             availableMonths={availableMonths} onSelectMonth={handleSelectMonth}
@@ -1668,19 +1680,19 @@ export default function Dashboard() {
                 <div className="bg-slate-900/40 border border-slate-850 p-4 rounded-xl space-y-1">
                   <span className="text-[10px] text-slate-500 font-bold uppercase">This Month</span>
                   <p className="text-lg font-black text-white font-mono">
-                    ₹<AnimatedNumber value={selectedInsight.currMonthTotal} />
+                    <AnimatedNumber value={selectedInsight.currMonthTotal} />
                   </p>
                 </div>
                 <div className="bg-slate-900/40 border border-slate-850 p-4 rounded-xl space-y-1">
                   <span className="text-[10px] text-slate-500 font-bold uppercase">{selectedInsight.prevMonthLabel || 'Last Month'}</span>
                   <p className="text-lg font-black text-slate-350 font-mono">
-                    ₹<AnimatedNumber value={selectedInsight.prevMonthTotal} />
+                    <AnimatedNumber value={selectedInsight.prevMonthTotal} />
                   </p>
                 </div>
                 <div className="bg-slate-900/40 border border-slate-850 p-4 rounded-xl space-y-1">
                   <span className="text-[10px] text-slate-500 font-bold uppercase">Difference</span>
                   <p className={`text-lg font-black font-mono ${selectedInsight.difference > 0 ? (selectedInsight.type === 'savings' ? 'text-green-400' : 'text-red-400') : (selectedInsight.type === 'savings' ? 'text-red-400' : 'text-green-400')}`}>
-                    {selectedInsight.difference > 0 ? '+' : '-'}₹<AnimatedNumber value={Math.abs(selectedInsight.difference)} />
+                    {selectedInsight.difference > 0 ? '+' : '-'}<AnimatedNumber value={Math.abs(selectedInsight.difference)} />
                   </p>
                 </div>
                 <div className="bg-slate-900/40 border border-slate-850 p-4 rounded-xl space-y-1">
@@ -2052,17 +2064,17 @@ function MonthOverMonthComparisonWidget({ data, navigate }: { data: any; navigat
                   
                   <div className="space-y-0.5">
                     <p className="text-xs text-slate-600 dark:text-slate-400 font-semibold">
-                      This Month: <span className="font-bold text-slate-900 dark:text-white font-mono">₹{c.currentVal.toLocaleString('en-IN')}</span>
+                      This Month: <span className="font-bold text-slate-900 dark:text-white font-mono">{formatIndianRupee(c.currentVal)}</span>
                     </p>
                     <p className="text-xs text-slate-500">
-                      {c.prevLabel || 'Last Month'}: <span className="font-medium text-slate-700 dark:text-slate-300 font-mono">₹{c.prevVal.toLocaleString('en-IN')}</span>
+                      {c.prevLabel || 'Last Month'}: <span className="font-medium text-slate-700 dark:text-slate-300 font-mono">{formatIndianRupee(c.prevVal)}</span>
                     </p>
                   </div>
 
                   <div className={`mt-3 pt-2 border-t border-slate-200/50 dark:border-slate-800/50 flex items-center space-x-1.5 text-xs font-black ${trendColor}`}>
                     <span>{isPositive ? '▲' : '▼'}</span>
                     <span>
-                      {isPositive ? '+' : '-'}₹{Math.abs(c.diff).toLocaleString('en-IN')} ({c.pct.toFixed(1)}%)
+                      {c.diff >= 0 ? '+' : ''}{formatIndianRupee(c.diff)} ({c.pct.toFixed(1)}%)
                     </span>
                   </div>
 
@@ -2070,10 +2082,10 @@ function MonthOverMonthComparisonWidget({ data, navigate }: { data: any; navigat
                   <div className="absolute inset-0 bg-slate-900/95 dark:bg-slate-950/98 text-white p-3.5 flex flex-col justify-between opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none rounded-xl">
                     <p className="text-[10px] font-black text-primary uppercase tracking-wider">Comparison Values</p>
                     <div className="text-[10px] space-y-0.5 font-semibold text-slate-300">
-                      <p>Diff: ₹{c.diff.toLocaleString('en-IN')}</p>
+                      <p>Diff: {formatIndianRupee(c.diff)}</p>
                       <p>Ratio change: {c.pct.toFixed(2)}%</p>
-                      <p>Prev ({c.prevLabel}): ₹{c.prevVal.toLocaleString('en-IN')}</p>
-                      <p>Curr: ₹{c.currentVal.toLocaleString('en-IN')}</p>
+                      <p>Prev ({c.prevLabel}): {formatIndianRupee(c.prevVal)}</p>
+                      <p>Curr: {formatIndianRupee(c.currentVal)}</p>
                     </div>
                   </div>
                 </div>
@@ -2086,7 +2098,7 @@ function MonthOverMonthComparisonWidget({ data, navigate }: { data: any; navigat
             <p>• Income {metrics.income.pctChange >= 0 ? 'increased' : 'decreased'} by <span className={metrics.income.pctChange >= 0 ? 'text-green-500' : 'text-red-500'}>{Math.abs(metrics.income.pctChange).toFixed(1)}%</span> compared to {metrics.income.prevMonthLabel || 'previous month'}.</p>
             <p>• Expenses {metrics.expenses.pctChange <= 0 ? 'decreased' : 'increased'} by <span className={metrics.expenses.pctChange <= 0 ? 'text-green-500' : 'text-red-500'}>{Math.abs(metrics.expenses.pctChange).toFixed(1)}%</span> compared to {metrics.expenses.prevMonthLabel || 'previous month'}.</p>
             <p>• Savings {metrics.savings.pctChange >= 0 ? 'increased' : 'decreased'} by <span className={metrics.savings.pctChange >= 0 ? 'text-green-500' : 'text-red-500'}>{Math.abs(metrics.savings.pctChange).toFixed(1)}%</span> compared to {metrics.savings.prevMonthLabel || 'previous month'}.</p>
-            <p>• Net Balance improved by <span className={current.balance - metrics.balance.previous >= 0 ? 'text-green-500' : 'text-red-500'}>₹{Math.abs(current.balance - metrics.balance.previous).toLocaleString('en-IN')}</span> compared to {metrics.balance.prevMonthLabel || 'previous month'}.</p>
+            <p>• Net Balance improved by <span className={current.balance - metrics.balance.previous >= 0 ? 'text-green-500' : 'text-red-500'}>{formatIndianRupee(Math.abs(current.balance - metrics.balance.previous))}</span> compared to {metrics.balance.prevMonthLabel || 'previous month'}.</p>
           </div>
         </>
       )}
@@ -2102,11 +2114,11 @@ const NetBalanceTooltip = ({ active, payload }: any) => {
       <div className="bg-slate-950/95 border border-slate-800 rounded-xl p-4 shadow-xl space-y-2 text-xs font-semibold text-slate-300">
         <p className="font-extrabold text-white text-sm border-b border-slate-800 pb-1">{data.monthLabel}</p>
         <div className="space-y-1">
-          <div className="flex justify-between space-x-6"><span>Income</span><span className="text-green-400 font-mono">₹{data.income.toLocaleString('en-IN')}</span></div>
-          <div className="flex justify-between space-x-6"><span>Expenses</span><span className="text-red-400 font-mono">₹{data.expenses.toLocaleString('en-IN')}</span></div>
-          <div className="flex justify-between space-x-6"><span>Savings</span><span className="text-blue-400 font-mono">₹{data.savings.toLocaleString('en-IN')}</span></div>
+          <div className="flex justify-between space-x-6"><span>Income</span><span className="text-green-400 font-mono">{formatIndianRupee(data.income)}</span></div>
+          <div className="flex justify-between space-x-6"><span>Expenses</span><span className="text-red-400 font-mono">{formatIndianRupee(data.expenses)}</span></div>
+          <div className="flex justify-between space-x-6"><span>Savings</span><span className="text-blue-400 font-mono">{formatIndianRupee(data.savings)}</span></div>
           <div className="border-t border-dashed border-slate-800 my-1"></div>
-          <div className="flex justify-between space-x-6 font-extrabold text-white"><span>Net Balance</span><span className="text-primary font-mono">₹{data.netBalance.toLocaleString('en-IN')}</span></div>
+          <div className="flex justify-between space-x-6 font-extrabold text-white"><span>Net Balance</span><span className="text-primary font-mono">{formatIndianRupee(data.netBalance)}</span></div>
         </div>
       </div>
     );
@@ -2166,9 +2178,21 @@ function SummaryCard({
 
   const hasMultiple = availableMonths.length > 1;
 
+  const accentBorders: Record<string, { border: string; hover: string }> = {
+    income:      { border: 'border-t-[3px] border-t-emerald-500/80', hover: 'group-hover:border-t-emerald-400' },
+    expenses:    { border: 'border-t-[3px] border-t-rose-500/80',   hover: 'group-hover:border-t-rose-400' },
+    savings:     { border: 'border-t-[3px] border-t-blue-500/80',  hover: 'group-hover:border-t-blue-400' },
+    balance:     { border: 'border-t-[3px] border-t-amber-500/80', hover: 'group-hover:border-t-amber-400' },
+    netbalance:  { border: 'border-t-[3px] border-t-purple-500/80', hover: 'group-hover:border-t-purple-400' },
+    savingsrate: { border: 'border-t-[3px] border-t-teal-500/80',  hover: 'group-hover:border-t-teal-400' },
+  };
+
+  const accent = cardKey ? accentBorders[cardKey] : accentBorders['savingsrate'];
+  const accentClasses = accent ? `${accent.border} ${accent.hover} transition-all duration-250` : '';
+
   return (
     <div
-      className={`bg-white dark:bg-slate-950 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-xl hover:-translate-y-1 hover:border-primary/40 hover:ring-2 hover:ring-primary/10 transition-all duration-200 relative overflow-visible group ${onClick ? 'cursor-pointer' : ''}`}
+      className={`bg-white dark:bg-slate-950 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-xl hover:-translate-y-1 hover:border-primary/40 hover:ring-2 hover:ring-primary/10 transition-all duration-200 relative overflow-visible group ${accentClasses} ${onClick ? 'cursor-pointer' : ''}`}
       onClick={onClick}
     >
       {/* Decorative background circle inside wrapper to clip bounds correctly */}
@@ -2229,7 +2253,7 @@ function SummaryCard({
       <div className="flex justify-between items-end">
         <div>
           <h2 className="text-2xl font-black text-slate-900 dark:text-white font-mono">
-            {isPercentage ? `${amount.toFixed(1)}%` : `₹${Number(amount).toLocaleString('en-IN')}`}
+            {isPercentage ? `${amount.toFixed(1)}%` : <AnimatedNumber value={Number(amount)} />}
           </h2>
           {prevMonthLabel ? (
             <span className={`text-[10px] font-bold mt-1 inline-block ${isGood ? 'text-green-500' : 'text-red-500'}`}>
@@ -2656,7 +2680,9 @@ function AnimatedNumber({ value, prefix = "" }: { value: number; prefix?: string
     return () => cancelAnimationFrame(animFrameId);
   }, [value]);
 
-  return <>{prefix}{Math.round(displayValue).toLocaleString('en-IN')}</>;
+  const formatted = formatIndianRupee(displayValue);
+  const finalStr = prefix ? prefix + formatted.replace('₹', '') : formatted;
+  return <>{finalStr}</>;
 }
 
 interface InsightCardProps {
@@ -2680,12 +2706,12 @@ function InsightCard({ item, index, getCategoryIcon }: InsightCardProps) {
     badgeText = 'First recorded month';
     badgeColorClass = 'bg-blue-500/10 text-blue-500 border border-blue-500/20';
   } else if (item.difference > 0) {
-    badgeText = `▲ +₹${Math.round(item.difference)} vs ${item.prevMonthLabel}`;
+    badgeText = `▲ +${formatIndianRupee(Math.round(item.difference))} vs ${item.prevMonthLabel}`;
     badgeColorClass = item.type === 'savings'
       ? 'bg-green-500/10 text-green-500 border border-green-500/20'
       : 'bg-red-500/10 text-red-500 border border-red-500/20';
   } else if (item.difference < 0) {
-    badgeText = `▼ -₹${Math.round(Math.abs(item.difference))} vs ${item.prevMonthLabel}`;
+    badgeText = `▼ -${formatIndianRupee(Math.round(Math.abs(item.difference)))} vs ${item.prevMonthLabel}`;
     badgeColorClass = item.type === 'savings'
       ? 'bg-red-500/10 text-red-500 border border-red-500/20'
       : 'bg-green-500/10 text-green-500 border border-green-500/20';
@@ -2703,8 +2729,8 @@ function InsightCard({ item, index, getCategoryIcon }: InsightCardProps) {
   const lastMonthLabel = item.sparklineData[item.sparklineData.length - 1]?.month;
 
   const avgLabel = item.type === 'savings' 
-    ? `Avg Saved: ₹${Math.round(item.avgMonthlySpend).toLocaleString('en-IN')}`
-    : `Avg Spent: ₹${Math.round(item.avgMonthlySpend).toLocaleString('en-IN')}`;
+    ? `Avg Saved: ${formatIndianRupee(Math.round(item.avgMonthlySpend))}`
+    : `Avg Spent: ${formatIndianRupee(Math.round(item.avgMonthlySpend))}`;
 
   return (
     <div 
@@ -2730,14 +2756,14 @@ function InsightCard({ item, index, getCategoryIcon }: InsightCardProps) {
           {item.name}
         </h4>
         <p className="text-2xl font-black text-slate-900 dark:text-white font-mono tracking-tight">
-          ₹<AnimatedNumber value={item.currMonthTotal} />
+          <AnimatedNumber value={item.currMonthTotal} />
         </p>
       </div>
 
       {/* Stats details section */}
       <div className="mt-2 space-y-1 text-[10px] font-bold text-slate-500">
         <div className="flex justify-between">
-          <span>{item.prevMonthLabel || 'Last Month'}: <span className="text-slate-750 dark:text-slate-300 font-mono">₹{Math.round(prevMonthTotal).toLocaleString('en-IN')}</span></span>
+          <span>{item.prevMonthLabel || 'Last Month'}: <span className="text-slate-750 dark:text-slate-300 font-mono">{formatIndianRupee(Math.round(prevMonthTotal))}</span></span>
           <span className="text-purple-400 font-extrabold">{item.txCount || 0} Tx</span>
         </div>
         <div className="flex justify-between items-center">
