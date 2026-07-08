@@ -357,11 +357,33 @@ router.post('/webhook', async (req: Request, res: Response) => {
       }
 
       // Intercept Chit / Cheetu query or payment logs
-      if (lowercaseText.includes('chit') || lowercaseText.includes('cheetu')) {
-        const chits = await query(
-          `SELECT * FROM chit_funds WHERE user_id = ? AND status = 'Running'`,
-          [user.id]
-        );
+      const chits = await query(
+        `SELECT * FROM chit_funds WHERE user_id = ? AND status = 'Running'`,
+        [user.id]
+      );
+      
+      const getChitKeyword = (c: any) => {
+        if (!c.notes) return '';
+        const match = c.notes.match(/(?:keyword|key)\s*[:=]\s*([a-zA-Z0-9_-]+)/i);
+        if (match) return match[1].toLowerCase().trim();
+        const match2 = c.notes.match(/(?:keyword|key)\s+([a-zA-Z0-9_-]+)/i);
+        if (match2) return match2[1].toLowerCase().trim();
+        const trimmed = c.notes.trim();
+        if (/^[a-zA-Z0-9_-]+$/.test(trimmed)) return trimmed.toLowerCase();
+        return '';
+      };
+
+      const chitsWithKeywords = chits.map((c: any) => ({
+        ...c,
+        keyword: getChitKeyword(c)
+      })).filter((c: any) => c.keyword !== '');
+
+      const validKeywords = chitsWithKeywords.map((c: any) => c.keyword);
+      const words = lowercaseText.split(/\s+/);
+      const hasChitKeyword = words.some((w: string) => validKeywords.includes(w));
+      const isChitAttempt = lowercaseText.includes('chit') || lowercaseText.includes('cheetu') || hasChitKeyword;
+
+      if (isChitAttempt) {
         if (chits.length === 0) {
           await sendMessage(chatId, '❌ <b>No active running Chit Funds found.</b>\nPlease create a chit group on your dashboard first.');
           return;
@@ -370,22 +392,20 @@ router.post('/webhook', async (req: Request, res: Response) => {
         // Determine if it is a logging request (has amounts/payment action verbs)
         const hasAmountLog = lowercaseText.includes('paid') || lowercaseText.includes('spent') || lowercaseText.includes('pay') || lowercaseText.includes('log') || /\b\d{3,6}\b/.test(lowercaseText.replace(/\b20\d{2}\b/, ''));
 
+        // Find matched chit
+        let matchedChit = chitsWithKeywords.find(c => words.includes(c.keyword));
+        if (!matchedChit) {
+          matchedChit = chits.find(c => lowercaseText.includes(c.chit_name.toLowerCase()));
+        }
+
         if (!hasAmountLog) {
           // Display dues for matching chit fund(s) for current month
           const currentMonth = new Date().getMonth() + 1;
           const currentYear = new Date().getFullYear();
           const monthName = new Date().toLocaleString('default', { month: 'long' });
 
-          let matchedChits = chits;
-          // Filter by defined chit name if provided in the message
-          const cleanQuery = text.replace(/cheetu/gi, '').replace(/chit/gi, '').replace(/fund/gi, '').replace(/dues/gi, '').replace(/due/gi, '').trim().toLowerCase();
-          if (cleanQuery.length > 0) {
-            const filtered = chits.filter(c => c.chit_name.toLowerCase().includes(cleanQuery));
-            if (filtered.length > 0) {
-              matchedChits = filtered;
-            }
-          }
-
+          let matchedChits = matchedChit ? [matchedChit] : chits;
+          
           let responseText = `🎰 <b>Chit Fund Dues (${monthName} ${currentYear})</b>\n───────────────────\n`;
           for (const chit of matchedChits) {
             const currentPay = await get(
@@ -403,22 +423,18 @@ router.post('/webhook', async (req: Request, res: Response) => {
         }
 
         // Proceed to log chit payment
-        let chit = chits[0];
-        if (chits.length > 1) {
-          for (const c of chits) {
-            if (lowercaseText.includes(c.chit_name.toLowerCase())) {
-              chit = c;
-              break;
-            }
-          }
+        if (!matchedChit) {
+          const kwListStr = validKeywords.length > 0 ? validKeywords.join(', ') : 'none';
+          await sendMessage(chatId, `Unknown Chit Fund keyword. Available keywords: ${kwListStr}`);
+          return;
         }
 
-        const parsed = parseRecordInput(text, chit.monthly_installment);
+        const parsed = parseRecordInput(text, matchedChit.monthly_installment);
 
         // Find the payment schedule item for that month/year
         const sched = await get(
           `SELECT id FROM chit_payments WHERE chit_id = ? AND month = ? AND year = ?`,
-          [chit.id, parsed.month, parsed.year]
+          [matchedChit.id, parsed.month, parsed.year]
         );
 
         if (sched) {
@@ -432,14 +448,14 @@ router.post('/webhook', async (req: Request, res: Response) => {
           await execute(
             `INSERT INTO chit_payments (chit_id, month, year, installment_amount, status, payment_date) 
              VALUES (?, ?, ?, ?, 'Paid', ?)`,
-            [chit.id, parsed.month, parsed.year, parsed.amount, parsed.date]
+            [matchedChit.id, parsed.month, parsed.year, parsed.amount, parsed.date]
           );
         }
 
         const monthName = new Date(2000, parsed.month - 1).toLocaleString('default', { month: 'long' });
         await sendMessage(
           chatId,
-          `🎰 <b>Chit Payment Logged!</b>\n───────────────────\n• <b>Chit:</b> ${chit.chit_name}\n• <b>Period:</b> ${monthName} ${parsed.year}\n• <b>Amount Paid:</b> ₹${parsed.amount.toLocaleString('en-IN')}\n• <b>Date:</b> ${parsed.date}`
+          `🎰 <b>Chit Payment Logged!</b>\n───────────────────\n• <b>Chit:</b> ${matchedChit.chit_name}\n• <b>Period:</b> ${monthName} ${parsed.year}\n• <b>Amount Paid:</b> ₹${parsed.amount.toLocaleString('en-IN')}\n• <b>Date:</b> ${parsed.date}`
         );
         return;
       }

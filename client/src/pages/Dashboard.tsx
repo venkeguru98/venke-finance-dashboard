@@ -8,6 +8,12 @@ import Button from '../components/ui/Button';
 const API = window.location.port === '5173' ? 'http://localhost:5000/api' : '/api';
 const COLORS = ['#F59E0B', '#8B5CF6', '#3B82F6', '#EC4899', '#10B981', '#EF4444', '#06B6D4', '#F97316'];
 
+const formatLocalYYYYMM = (date: Date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  return `${y}-${m}`;
+};
+
 // Default widget visibility states
 const DEFAULT_WIDGETS = {
   summaryCards: true,
@@ -120,7 +126,7 @@ export default function Dashboard() {
       // Pre-collapse older months
       const catTx = transactions.filter(t => t.category_id === selectedInsight.id);
       const uniqueMonths = Array.from(new Set(catTx.map(t => t.date.slice(0, 7)))).sort().reverse();
-      const currentMonthPrefix = new Date().toISOString().slice(0, 7);
+      const currentMonthPrefix = formatLocalYYYYMM(new Date());
       const toCollapse = uniqueMonths.filter(m => m !== currentMonthPrefix);
       setCollapsedMonths(toCollapse);
     }
@@ -327,9 +333,9 @@ export default function Dashboard() {
 
   // Previous Month & Current Month Calculations
   const getTotalsByPeriod = () => {
-    const currMonthPrefix = now.toISOString().slice(0, 7);
+    const currMonthPrefix = formatLocalYYYYMM(now);
     const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const prevMonthPrefix = prevMonth.toISOString().slice(0, 7);
+    const prevMonthPrefix = formatLocalYYYYMM(prevMonth);
 
     const currMonthTx = transactions.filter(t => t.date.startsWith(currMonthPrefix));
     const prevMonthTx = transactions.filter(t => t.date.startsWith(prevMonthPrefix));
@@ -374,7 +380,7 @@ export default function Dashboard() {
   const availableBalancePctOfIncome = totalsData.current.income > 0 ? (availableBalance / totalsData.current.income) * 100 : 0;
 
   // Recurring bills due this month that are not yet paid
-  const currentMonthStr = new Date().toISOString().slice(0, 7); // "YYYY-MM"
+  const currentMonthStr = formatLocalYYYYMM(new Date()); // "YYYY-MM"
   const unpaidBillsSum = rules
     .filter(r => {
       const isDueThisMonth = r.next_date.startsWith(currentMonthStr);
@@ -420,7 +426,7 @@ export default function Dashboard() {
 
   // KPI drawer transaction filtering
   const getKpiFilteredTx = (type: string) => {
-    const prefix = now.toISOString().slice(0, 7);
+    const prefix = formatLocalYYYYMM(now);
     let list = transactions.filter(t => t.date.startsWith(prefix) && t.type === type);
     if (type === 'balance') list = transactions.filter(t => t.date.startsWith(prefix));
     if (kpiSearch.trim()) { const q = kpiSearch.toLowerCase(); list = list.filter(t => (t.notes||'').toLowerCase().includes(q) || (t.category_name||'').toLowerCase().includes(q)); }
@@ -450,7 +456,7 @@ export default function Dashboard() {
     const result: {month: string; amount: number}[] = [];
     for (let i = 11; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const p = d.toISOString().slice(0, 7);
+      const p = formatLocalYYYYMM(d);
       const total = transactions.filter(t => t.date.startsWith(p) && t.type === type).reduce((s,t) => s+t.amount, 0);
       result.push({ month: d.toLocaleString('default', {month:'short', year:'2-digit'}), amount: total });
     }
@@ -489,15 +495,15 @@ export default function Dashboard() {
   // Trend insights calculator for all active expense/savings categories
   const getTrendInsights = () => {
     const today = new Date();
-    const currentMonthPrefix = today.toISOString().slice(0, 7); // "YYYY-MM"
+    const currentMonthPrefix = formatLocalYYYYMM(today); // "YYYY-MM"
     const prevMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-    const prevMonthPrefix = prevMonth.toISOString().slice(0, 7);
+    const prevMonthPrefix = formatLocalYYYYMM(prevMonth);
 
     // List of last 6 months prefixes (chronological order)
     const last6MonthsPrefixes: string[] = [];
     for (let i = 5; i >= 0; i--) {
       const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
-      last6MonthsPrefixes.push(d.toISOString().slice(0, 7));
+      last6MonthsPrefixes.push(formatLocalYYYYMM(d));
     }
 
     const insightCategories = categories.filter(c => c.type === 'expense' || c.type === 'savings');
@@ -1956,7 +1962,7 @@ function KpiDrawer({ drawerKey, monthLabel, transactions, totalsData, goals, unp
   };
 
   // Derive data from transactions
-  const prefix = now.toISOString().slice(0, 7);
+  const prefix = formatLocalYYYYMM(now);
   const currMonthTx = transactions.filter((t: any) => t.date.startsWith(prefix));
 
   // Per-type tx lists for summaries
@@ -1984,7 +1990,7 @@ function KpiDrawer({ drawerKey, monthLabel, transactions, totalsData, goals, unp
   const trend12: {month: string; amount: number}[] = [];
   for (let i = 11; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const p = d.toISOString().slice(0, 7);
+    const p = formatLocalYYYYMM(d);
     const type = drawerKey === 'expenses' ? 'expense' : drawerKey === 'netbalance' ? 'income' : drawerKey;
     const amt = drawerKey === 'netbalance'
       ? transactions.filter((t: any) => t.date.startsWith(p) && t.type === 'income').reduce((s: number, t: any) => s + t.amount, 0)

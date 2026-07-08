@@ -43,6 +43,14 @@ export default function Transactions() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState<'all' | 'income' | 'expense' | 'savings'>('all');
+  const [filterYear, setFilterYear] = useState<string>('All');
+  const [filterMonth, setFilterMonth] = useState<string>('All');
+  const [filterCategory, setFilterCategory] = useState<string>('All');
+  const [filterAccount, setFilterAccount] = useState<string>('All');
+  const [filterStartDate, setFilterStartDate] = useState<string>('');
+  const [filterEndDate, setFilterEndDate] = useState<string>('');
+  const [filterSearch, setFilterSearch] = useState<string>('');
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -52,6 +60,22 @@ export default function Transactions() {
   const [newCatColor, setNewCatColor] = useState('#3B82F6');
 
   const API = window.location.port === '5173' ? 'http://localhost:5000/api' : '/api';
+
+  const MONTHS = [
+    { value: 'All', label: 'All Months' },
+    { value: '01', label: 'January' },
+    { value: '02', label: 'February' },
+    { value: '03', label: 'March' },
+    { value: '04', label: 'April' },
+    { value: '05', label: 'May' },
+    { value: '06', label: 'June' },
+    { value: '07', label: 'July' },
+    { value: '08', label: 'August' },
+    { value: '09', label: 'September' },
+    { value: '10', label: 'October' },
+    { value: '11', label: 'November' },
+    { value: '12', label: 'December' },
+  ];
 
   // Fetch categories
   useEffect(() => {
@@ -83,10 +107,104 @@ export default function Transactions() {
     fetchTransactions();
   }, []);
 
+  // Filter transactions
   const filteredTransactions = transactions.filter(t => {
-    if (filterType === 'all') return true;
-    return t.type === filterType;
+    // 1. Transaction Type
+    if (filterType !== 'all' && t.type !== filterType) return false;
+    
+    // 2. Year
+    if (filterYear !== 'All' && t.date.slice(0, 4) !== filterYear) return false;
+    
+    // 3. Month
+    if (filterMonth !== 'All') {
+      const monthNum = t.date.slice(5, 7);
+      if (monthNum !== filterMonth) return false;
+    }
+    
+    // 4. Category
+    if (filterCategory !== 'All' && String(t.category_id) !== filterCategory) return false;
+    
+    // 5. Account (Payment Method)
+    if (filterAccount !== 'All' && t.payment_method !== filterAccount) return false;
+    
+    // 6. Date Range
+    if (filterStartDate && t.date < filterStartDate) return false;
+    if (filterEndDate && t.date > filterEndDate) return false;
+    
+    // 7. Search
+    if (filterSearch.trim()) {
+      const q = filterSearch.toLowerCase();
+      const matchesSearch = 
+        (t.notes || '').toLowerCase().includes(q) ||
+        (t.category_name || '').toLowerCase().includes(q) ||
+        String(t.amount).includes(q);
+      if (!matchesSearch) return false;
+    }
+    
+    return true;
   });
+
+  // KPI card statistics
+  const getCardStats = () => {
+    // For Income/Expense/Savings totals under 'All' tab, we apply all filters EXCEPT type filter
+    const allFilteredExceptType = transactions.filter(t => {
+      if (filterYear !== 'All' && t.date.slice(0, 4) !== filterYear) return false;
+      if (filterMonth !== 'All') {
+        const monthNum = t.date.slice(5, 7);
+        if (monthNum !== filterMonth) return false;
+      }
+      if (filterCategory !== 'All' && String(t.category_id) !== filterCategory) return false;
+      if (filterAccount !== 'All' && t.payment_method !== filterAccount) return false;
+      if (filterStartDate && t.date < filterStartDate) return false;
+      if (filterEndDate && t.date > filterEndDate) return false;
+      if (filterSearch.trim()) {
+        const q = filterSearch.toLowerCase();
+        const matchesSearch = 
+          (t.notes || '').toLowerCase().includes(q) ||
+          (t.category_name || '').toLowerCase().includes(q) ||
+          String(t.amount).includes(q);
+        if (!matchesSearch) return false;
+      }
+      return true;
+    });
+
+    const income = allFilteredExceptType.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+    const expense = allFilteredExceptType.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+    const savings = allFilteredExceptType.filter(t => t.type === 'savings').reduce((s, t) => s + t.amount, 0);
+
+    const count = filteredTransactions.length;
+    const total = filteredTransactions.reduce((s, t) => s + t.amount, 0);
+    const avg = count > 0 ? total / count : 0;
+    const largest = count > 0 ? Math.max(...filteredTransactions.map(t => t.amount)) : 0;
+
+    return { income, expense, savings, count, total, avg, largest };
+  };
+
+  const cardStats = getCardStats();
+
+  const handleResetFilters = () => {
+    setFilterYear('All');
+    setFilterMonth('All');
+    setFilterCategory('All');
+    setFilterType('all');
+    setFilterAccount('All');
+    setFilterStartDate('');
+    setFilterEndDate('');
+    setFilterSearch('');
+  };
+
+  const years = Array.from(new Set(transactions.map(t => t.date.slice(0, 4)))).filter(Boolean).sort().reverse();
+  if (years.length === 0) {
+    years.push('2026', '2025', '2024');
+  }
+
+  const accounts = Array.from(new Set(transactions.map(t => t.payment_method))).filter(Boolean);
+  const standardAccounts = ['UPI', 'Cash', 'Credit Card', 'Debit Card', 'Net Banking'];
+  const allAccounts = Array.from(new Set([...standardAccounts, ...accounts]));
+
+  const filteredCategoriesForSelect = filterType === 'all'
+    ? categories
+    : categories.filter(c => c.type === filterType);
 
   const openAddModal = () => {
     setEditingId(null);
@@ -160,13 +278,6 @@ export default function Transactions() {
     }
   };
 
-  // Totals for selected filter
-  const totals = {
-    income: transactions.filter(t => t.type === 'income').reduce((a, t) => a + t.amount, 0),
-    expense: transactions.filter(t => t.type === 'expense').reduce((a, t) => a + t.amount, 0),
-    savings: transactions.filter(t => t.type === 'savings').reduce((a, t) => a + t.amount, 0),
-  };
-
   return (
     <div className="space-y-6 max-w-7xl mx-auto px-1 sm:px-4">
       {/* Header Section */}
@@ -181,18 +292,160 @@ export default function Transactions() {
       </div>
 
       {/* Summary Cards Row (Responsive Grid) */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-green-50 dark:bg-green-950/20 border border-green-200/50 dark:border-green-800 p-4.5 rounded-2xl flex flex-col justify-between h-20 shadow-sm hover:scale-[1.01] transition-transform">
-          <span className="text-[10px] font-bold text-green-600 dark:text-green-400 uppercase tracking-wider">Total Income</span>
-          <p className="text-xl font-extrabold text-green-700 dark:text-green-300">₹{totals.income.toLocaleString('en-IN')}</p>
+      <div className={`grid grid-cols-1 ${filterType === 'all' ? 'md:grid-cols-3' : 'sm:grid-cols-2 md:grid-cols-4'} gap-4`}>
+        {filterType === 'all' ? (
+          <>
+            <div className="bg-green-50 dark:bg-green-950/20 border border-green-200/50 dark:border-green-800 p-4.5 rounded-2xl flex flex-col justify-between h-20 shadow-sm hover:scale-[1.01] transition-transform">
+              <span className="text-[10px] font-bold text-green-600 dark:text-green-400 uppercase tracking-wider">Total Income</span>
+              <p className="text-xl font-extrabold text-green-700 dark:text-green-300">₹{cardStats.income.toLocaleString('en-IN')}</p>
+            </div>
+            <div className="bg-red-50 dark:bg-red-950/20 border border-red-200/50 dark:border-red-800 p-4.5 rounded-2xl flex flex-col justify-between h-20 shadow-sm hover:scale-[1.01] transition-transform">
+              <span className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wider">Total Expenses</span>
+              <p className="text-xl font-extrabold text-red-700 dark:text-red-300">₹{cardStats.expense.toLocaleString('en-IN')}</p>
+            </div>
+            <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200/50 dark:border-blue-800 p-4.5 rounded-2xl flex flex-col justify-between h-20 shadow-sm hover:scale-[1.01] transition-transform">
+              <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">Total Savings</span>
+              <p className="text-xl font-extrabold text-blue-700 dark:text-blue-300">₹{cardStats.savings.toLocaleString('en-IN')}</p>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className={`${filterType === 'income' ? 'bg-green-50 dark:bg-green-950/20 border-green-200/50 dark:border-green-800' : filterType === 'expense' ? 'bg-red-50 dark:bg-red-950/20 border-red-200/50 dark:border-red-800' : 'bg-blue-50 dark:bg-blue-950/20 border-blue-200/50 dark:border-blue-800'} p-4.5 rounded-2xl flex flex-col justify-between h-20 shadow-sm hover:scale-[1.01] transition-transform`}>
+              <span className={`text-[10px] font-bold uppercase tracking-wider ${filterType === 'income' ? 'text-green-600 dark:text-green-400' : filterType === 'expense' ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
+                Total {filterType === 'income' ? 'Income' : filterType === 'expense' ? 'Expenses' : 'Savings'}
+              </span>
+              <p className={`text-xl font-extrabold ${filterType === 'income' ? 'text-green-700 dark:text-green-300' : filterType === 'expense' ? 'text-red-700 dark:text-red-300' : 'text-blue-700 dark:text-blue-300'}`}>
+                ₹{cardStats.total.toLocaleString('en-IN')}
+              </p>
+            </div>
+            <div className="bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 p-4.5 rounded-2xl flex flex-col justify-between h-20 shadow-sm hover:scale-[1.01] transition-transform">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Transactions</span>
+              <p className="text-xl font-extrabold text-slate-800 dark:text-white">{cardStats.count}</p>
+            </div>
+            <div className="bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 p-4.5 rounded-2xl flex flex-col justify-between h-20 shadow-sm hover:scale-[1.01] transition-transform">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Average Amount</span>
+              <p className="text-xl font-extrabold text-slate-800 dark:text-white">₹{Math.round(cardStats.avg).toLocaleString('en-IN')}</p>
+            </div>
+            <div className="bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 p-4.5 rounded-2xl flex flex-col justify-between h-20 shadow-sm hover:scale-[1.01] transition-transform">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Largest Amount</span>
+              <p className="text-xl font-extrabold text-slate-800 dark:text-white">₹{cardStats.largest.toLocaleString('en-IN')}</p>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Advanced Filters Toolbar */}
+      <div className="bg-white dark:bg-slate-950 p-5 rounded-3xl border border-slate-200 dark:border-slate-800/80 shadow-sm space-y-4">
+        <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-2">
+          <h3 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">Advanced Filters</h3>
+          <button
+            onClick={handleResetFilters}
+            className="text-[10px] font-black text-primary hover:underline uppercase"
+          >
+            Reset Filters
+          </button>
         </div>
-        <div className="bg-red-50 dark:bg-red-950/20 border border-red-200/50 dark:border-red-800 p-4.5 rounded-2xl flex flex-col justify-between h-20 shadow-sm hover:scale-[1.01] transition-transform">
-          <span className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wider">Total Expenses</span>
-          <p className="text-xl font-extrabold text-red-700 dark:text-red-300">₹{totals.expense.toLocaleString('en-IN')}</p>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
+          {/* Year */}
+          <div>
+            <label className="block text-slate-500 mb-1 text-[9px] uppercase tracking-wider font-bold">Year</label>
+            <select
+              value={filterYear}
+              onChange={e => setFilterYear(e.target.value)}
+              className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-250 dark:border-slate-800 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-primary text-[11px] font-medium"
+            >
+              <option value="All">All Years</option>
+              {years.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
+
+          {/* Month */}
+          <div>
+            <label className="block text-slate-500 mb-1 text-[9px] uppercase tracking-wider font-bold">Month</label>
+            <select
+              value={filterMonth}
+              onChange={e => setFilterMonth(e.target.value)}
+              className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-250 dark:border-slate-800 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-primary text-[11px] font-medium"
+            >
+              {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+            </select>
+          </div>
+
+          {/* Category */}
+          <div>
+            <label className="block text-slate-500 mb-1 text-[9px] uppercase tracking-wider font-bold">Category</label>
+            <select
+              value={filterCategory}
+              onChange={e => setFilterCategory(e.target.value)}
+              className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-250 dark:border-slate-800 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-primary text-[11px] font-medium"
+            >
+              <option value="All">All Categories</option>
+              {filteredCategoriesForSelect.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+
+          {/* Type */}
+          <div>
+            <label className="block text-slate-500 mb-1 text-[9px] uppercase tracking-wider font-bold">Type</label>
+            <select
+              value={filterType}
+              onChange={e => setFilterType(e.target.value as any)}
+              className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-250 dark:border-slate-800 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-primary text-[11px] font-medium"
+            >
+              <option value="all">All Types</option>
+              <option value="income">Income</option>
+              <option value="expense">Expense</option>
+              <option value="savings">Savings</option>
+            </select>
+          </div>
+
+          {/* Account */}
+          <div>
+            <label className="block text-slate-500 mb-1 text-[9px] uppercase tracking-wider font-bold">Account / Method</label>
+            <select
+              value={filterAccount}
+              onChange={e => setFilterAccount(e.target.value)}
+              className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-250 dark:border-slate-800 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-primary text-[11px] font-medium"
+            >
+              <option value="All">All Accounts</option>
+              {allAccounts.map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </div>
+
+          {/* Date Range Start */}
+          <div>
+            <label className="block text-slate-500 mb-1 text-[9px] uppercase tracking-wider font-bold">Start Date</label>
+            <input
+              type="date"
+              value={filterStartDate}
+              onChange={e => setFilterStartDate(e.target.value)}
+              className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-250 dark:border-slate-800 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-primary text-[11px] font-medium"
+            />
+          </div>
+
+          {/* Date Range End */}
+          <div>
+            <label className="block text-slate-500 mb-1 text-[9px] uppercase tracking-wider font-bold">End Date</label>
+            <input
+              type="date"
+              value={filterEndDate}
+              onChange={e => setFilterEndDate(e.target.value)}
+              className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-250 dark:border-slate-800 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-primary text-[11px] font-medium"
+            />
+          </div>
         </div>
-        <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200/50 dark:border-blue-800 p-4.5 rounded-2xl flex flex-col justify-between h-20 shadow-sm hover:scale-[1.01] transition-transform">
-          <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">Total Savings</span>
-          <p className="text-xl font-extrabold text-blue-700 dark:text-blue-300">₹{totals.savings.toLocaleString('en-IN')}</p>
+
+        {/* Search */}
+        <div>
+          <label className="block text-slate-500 mb-1 text-[9px] uppercase tracking-wider font-bold">Search Description / Category / Notes</label>
+          <input
+            type="text"
+            placeholder="Search keywords..."
+            value={filterSearch}
+            onChange={e => setFilterSearch(e.target.value)}
+            className="w-full px-4.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-250 dark:border-slate-800 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary text-xs font-medium"
+          />
         </div>
       </div>
 
@@ -212,6 +465,7 @@ export default function Transactions() {
           </button>
         ))}
       </div>
+
 
       {/* Responsive Transactions View */}
       {loading ? (
