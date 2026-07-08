@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { query, execute, get } from '../database';
-import { parseSingleLine } from '../utils/nlp';
+import { parseSingleLine, parseNaturalDate } from '../utils/nlp';
 import { authMiddleware } from '../middleware/auth';
 
 const router = Router();
@@ -495,51 +495,20 @@ router.post('/webhook', async (req: Request, res: Response) => {
 function parseRecordInput(text: string, defaultAmount: number = 0) {
   const clean = text.toLowerCase();
   
-  // 3. Extract Year first so we can filter it out of amount matching
-  let year = new Date().getFullYear();
-  const yearMatch = clean.match(/\b(20\d{2})\b/);
-  if (yearMatch) {
-    year = parseInt(yearMatch[1]);
-  }
+  // 1. Extract Date using robust parseNaturalDate helper
+  const date = parseNaturalDate(text);
+  
+  // Extract month and year from that parsed date
+  const year = parseInt(date.slice(0, 4), 10);
+  const month = parseInt(date.slice(5, 7), 10);
 
-  // 1. Extract Amount
+  // 2. Extract Amount (ignoring year/date numbers)
   let amount = defaultAmount;
-  let textWithoutYear = clean;
-  if (yearMatch) {
-    textWithoutYear = clean.replace(yearMatch[0], '');
-  }
-
+  const textWithoutYears = clean.replace(/\b20\d{2}\b/g, ''); // strip 4-digit years
   const amountMatch = clean.match(/(?:rs\.?|inr|₹|amount|paid|spent|invested|buy)\s*(\d+(?:,\d+)*(?:\.\d+)?)/i) || 
-                      textWithoutYear.match(/\b(\d{2,6})\b/);
+                      textWithoutYears.match(/\b(\d{3,6})\b/); // minimum 3 digits to avoid matching day numbers like 2, 5, 15
   if (amountMatch) {
     amount = parseFloat(amountMatch[1].replace(/,/g, ''));
-  }
-
-  // 2. Extract Month
-  const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
-  const monthNames = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
-  let month = new Date().getMonth() + 1;
-  
-  for (let i = 0; i < 12; i++) {
-    if (clean.includes(months[i]) || clean.includes(monthNames[i])) {
-      month = i + 1;
-      break;
-    }
-  }
-
-  // 4. Extract Date
-  let date = new Date().toISOString().split('T')[0];
-  const dateMatch = clean.match(/\b(\d{4}-\d{2}-\d{2})\b/) || clean.match(/\b(\d{2}-\d{2}-\d{4})\b/);
-  if (dateMatch) {
-    const rawDate = dateMatch[1];
-    if (rawDate.includes('-')) {
-      const parts = rawDate.split('-');
-      if (parts[0].length === 4) {
-        date = rawDate;
-      } else {
-        date = `${parts[2]}-${parts[1]}-${parts[0]}`;
-      }
-    }
   }
 
   return { amount, month, year, date };
