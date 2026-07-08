@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
-import { Plus, Search, RefreshCw, Calendar, Flame, LayoutGrid, CheckCircle2, Target, AlertTriangle, TrendingUp, Info, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Search, RefreshCw, Flame, LayoutGrid, CheckCircle2, Target, AlertTriangle, TrendingUp, Info, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import axios from 'axios';
 import Button from '../components/ui/Button';
 
@@ -680,25 +680,48 @@ export default function Dashboard() {
     }).filter(insight => insight.currMonthTotal > 0 || insight.prevMonthTotal > 0);
   };
 
-  // Heatmap Data (spending by day for last 14 days)
-  const getHeatmapData = () => {
-    const days = Array.from({ length: 14 }, (_, i) => {
-      const d = new Date();
-      d.setDate(now.getDate() - i);
-      return d.toISOString().slice(0, 10);
-    }).reverse();
-
-    return days.map(day => {
-      const total = transactions
-        .filter(t => t.type === 'expense' && t.date === day)
-        .reduce((s, t) => s + t.amount, 0);
+  // Net Balance Trend Data (last 12 months)
+  const getNetBalanceTrendData = () => {
+    const monthlyGroups: Record<string, { income: number; expenses: number; savings: number }> = {};
+    const sortedTx = [...transactions].sort((a, b) => a.date.localeCompare(b.date));
+    
+    for (const t of sortedTx) {
+      const monthPrefix = t.date.slice(0, 7);
+      if (!monthlyGroups[monthPrefix]) {
+        monthlyGroups[monthPrefix] = { income: 0, expenses: 0, savings: 0 };
+      }
+      if (t.type === 'income') {
+        monthlyGroups[monthPrefix].income += t.amount;
+      } else if (t.type === 'expense') {
+        monthlyGroups[monthPrefix].expenses += t.amount;
+      } else if (t.type === 'savings') {
+        monthlyGroups[monthPrefix].savings += t.amount;
+      }
+    }
+    
+    const months = Object.keys(monthlyGroups).sort();
+    const data = months.map(mPrefix => {
+      const { income, expenses, savings } = monthlyGroups[mPrefix];
+      const netBalance = income - expenses - savings;
       
-      const level = total > 5000 ? 'high' : total > 1000 ? 'medium' : total > 0 ? 'low' : 'none';
-      return { day: day.slice(8, 10), date: day, amount: total, level };
+      const [yearStr, monthStr] = mPrefix.split('-');
+      const d = new Date(parseInt(yearStr, 10), parseInt(monthStr, 10) - 1, 1);
+      const monthLabel = d.toLocaleString('default', { month: 'long', year: 'numeric' });
+      
+      return {
+        monthPrefix: mPrefix,
+        monthLabel,
+        income,
+        expenses,
+        savings,
+        netBalance
+      };
     });
+    
+    return data.slice(-12);
   };
 
-  const heatmap = getHeatmapData();
+  const trendData = getNetBalanceTrendData();
 
   // Financial Health Score Calculation
   const calculateHealthScore = () => {
@@ -1136,40 +1159,64 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Heatmap Widget */}
+        {/* Net Balance Trend Widget */}
         {widgets.heatmapWidget && (
-          <div className="bg-white dark:bg-slate-950 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
-            <div>
+          <div className="bg-white dark:bg-slate-950 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between h-[285px]">
+            <div className="mb-2">
               <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center">
-                <Calendar className="w-5 h-5 text-primary mr-2" /> Spending Heatmap
+                <TrendingUp className="w-5 h-5 text-primary mr-2" /> Net Balance Trend
               </h3>
-              <p className="text-xs text-slate-500 mt-0.5">Visual indicators representing last 14 days spending levels</p>
+              <p className="text-xs text-slate-500 mt-0.5">Monthly evolution of your overall net financial position</p>
             </div>
 
-            <div className="grid grid-cols-7 gap-2.5 py-4">
-              {heatmap.map(day => {
-                const heatColor = 
-                  day.level === 'high' ? 'bg-red-500 text-white font-bold ring-2 ring-red-300 dark:ring-red-900' :
-                  day.level === 'medium' ? 'bg-orange-400 text-slate-900 font-semibold' :
-                  day.level === 'low' ? 'bg-green-100 dark:bg-green-950/40 text-green-700 dark:text-green-300 font-medium' :
-                  'bg-slate-100 dark:bg-slate-900 text-slate-400';
-                
-                return (
-                  <div
-                    key={day.date}
-                    title={`${day.date}: ₹${day.amount.toLocaleString()}`}
-                    className={`h-9 w-9 rounded-xl flex items-center justify-center text-xs transition-all hover:scale-110 cursor-pointer ${heatColor}`}
-                  >
-                    {day.day}
-                  </div>
-                );
-              })}
-            </div>
+            {trendData.length <= 1 ? (
+              <div className="flex-1 flex flex-col items-center justify-center text-center p-4">
+                <span className="text-3xl mb-2">📈</span>
+                <p className="text-xs font-bold text-slate-500 max-w-[200px]">
+                  Start adding monthly transactions to see your Net Balance Trend.
+                </p>
+              </div>
+            ) : (
+              <div className="flex-1 w-full min-h-[160px] mt-2 relative">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={trendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.15} vertical={false} />
+                    <XAxis 
+                      dataKey="monthLabel" 
+                      stroke="#64748b" 
+                      fontSize={9} 
+                      tickLine={false} 
+                      axisLine={false} 
+                      tickFormatter={val => val.split(' ')[0]} 
+                    />
+                    <YAxis 
+                      stroke="#64748b" 
+                      fontSize={9} 
+                      tickLine={false} 
+                      axisLine={false} 
+                      tickFormatter={val => {
+                        if (Math.abs(val) >= 1000) return `₹${(val / 1000).toFixed(0)}K`;
+                        return `₹${val}`;
+                      }}
+                    />
+                    <Tooltip content={<NetBalanceTooltip />} />
+                    <Line 
+                      type="monotone" 
+                      dataKey="netBalance" 
+                      stroke="#3B82F6" 
+                      strokeWidth={2.5} 
+                      dot={{ r: 4, stroke: '#3B82F6', strokeWidth: 1.5, fill: '#fff' }} 
+                      activeDot={{ r: 6, stroke: '#3B82F6', strokeWidth: 2, fill: '#fff' }}
+                      animationDuration={1500} 
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
 
-            <div className="flex justify-between items-center text-[10px] text-slate-500 border-t border-slate-100 dark:border-slate-800 pt-3">
-              <span className="flex items-center"><span className="w-2.5 h-2.5 rounded-full bg-green-200 mr-1" />Low</span>
-              <span className="flex items-center"><span className="w-2.5 h-2.5 rounded-full bg-orange-400 mr-1" />Medium</span>
-              <span className="flex items-center"><span className="w-2.5 h-2.5 rounded-full bg-red-500 mr-1" />High (&gt;₹5k)</span>
+            <div className="text-[10px] text-slate-400 border-t border-slate-100 dark:border-slate-800 pt-3 flex justify-between items-center">
+              <span>Timeframe: Last 12 Months</span>
+              <span className="font-semibold text-slate-500">Net = Income - Expenses - Savings</span>
             </div>
           </div>
         )}
@@ -1978,6 +2025,26 @@ function MonthOverMonthComparisonWidget({ data, navigate }: { data: any; navigat
     </div>
   );
 }
+
+// Tooltip component for Net Balance Trend chart
+const NetBalanceTooltip = ({ active, payload }: any) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    return (
+      <div className="bg-slate-950/95 border border-slate-800 rounded-xl p-4 shadow-xl space-y-2 text-xs font-semibold text-slate-300">
+        <p className="font-extrabold text-white text-sm border-b border-slate-800 pb-1">{data.monthLabel}</p>
+        <div className="space-y-1">
+          <div className="flex justify-between space-x-6"><span>Income</span><span className="text-green-400 font-mono">₹{data.income.toLocaleString('en-IN')}</span></div>
+          <div className="flex justify-between space-x-6"><span>Expenses</span><span className="text-red-400 font-mono">₹{data.expenses.toLocaleString('en-IN')}</span></div>
+          <div className="flex justify-between space-x-6"><span>Savings</span><span className="text-blue-400 font-mono">₹{data.savings.toLocaleString('en-IN')}</span></div>
+          <div className="border-t border-dashed border-slate-800 my-1"></div>
+          <div className="flex justify-between space-x-6 font-extrabold text-white"><span>Net Balance</span><span className="text-primary font-mono">₹{data.netBalance.toLocaleString('en-IN')}</span></div>
+        </div>
+      </div>
+    );
+  }
+  return null;
+};
 
 // Sparkline Component using Recharts
 function Sparkline({ data, color }: { data: any[]; color: string }) {
