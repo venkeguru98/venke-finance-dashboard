@@ -268,6 +268,146 @@ router.post('/webhook', async (req: Request, res: Response) => {
         return;
       }
 
+      const lowercaseText = text.toLowerCase();
+
+      // Intercept LIC / Insurance logs
+      if (lowercaseText.includes('lic') || lowercaseText.includes('policy') || lowercaseText.includes('insurance')) {
+        const policies = await query(
+          `SELECT * FROM lic_policies WHERE user_id = ? AND status = 'Running'`,
+          [user.id]
+        );
+        if (policies.length === 0) {
+          await sendMessage(chatId, '❌ <b>No active LIC Policies found.</b>\nPlease add a policy on your dashboard first.');
+          return;
+        }
+
+        // Match policy
+        let policy = policies[0];
+        if (policies.length > 1) {
+          for (const p of policies) {
+            if (lowercaseText.includes(p.policy_name.toLowerCase()) || lowercaseText.includes(p.policy_number)) {
+              policy = p;
+              break;
+            }
+          }
+        }
+
+        const parsed = parseRecordInput(text, policy.monthly_premium);
+
+        // Delete existing premium for that month/year if logged to avoid double entries
+        await execute(
+          `DELETE FROM lic_premium_history WHERE policy_id = ? AND month = ? AND year = ?`,
+          [policy.id, parsed.month, parsed.year]
+        );
+
+        // Log premium history
+        await execute(
+          `INSERT INTO lic_premium_history (policy_id, month, year, amount_paid, paid_date, status) 
+           VALUES (?, ?, ?, ?, ?, 'Paid')`,
+          [policy.id, parsed.month, parsed.year, parsed.amount, parsed.date]
+        );
+
+        const monthName = new Date(2000, parsed.month - 1).toLocaleString('default', { month: 'long' });
+        await sendMessage(
+          chatId,
+          `🛡️ <b>LIC Premium Logged!</b>\n───────────────────\n• <b>Policy:</b> ${policy.policy_name}\n• <b>Period:</b> ${monthName} ${parsed.year}\n• <b>Amount Paid:</b> ₹${parsed.amount.toLocaleString('en-IN')}\n• <b>Paid Date:</b> ${parsed.date}`
+        );
+        return;
+      }
+
+      // Intercept DigiGold buy logs
+      if (lowercaseText.includes('gold') || lowercaseText.includes('digigold')) {
+        const goldAccounts = await query(
+          `SELECT * FROM digital_gold WHERE user_id = ?`,
+          [user.id]
+        );
+        if (goldAccounts.length === 0) {
+          await sendMessage(chatId, '❌ <b>No active Digital Gold accounts found.</b>\nPlease add a gold investment account on your dashboard first.');
+          return;
+        }
+
+        let gold = goldAccounts[0];
+        if (goldAccounts.length > 1) {
+          for (const g of goldAccounts) {
+            if (lowercaseText.includes(g.investment_name.toLowerCase()) || lowercaseText.includes(g.platform.toLowerCase())) {
+              gold = g;
+              break;
+            }
+          }
+        }
+
+        const parsed = parseRecordInput(text, 0);
+        if (parsed.amount <= 0) {
+          await sendMessage(chatId, '🪙 <b>Gold purchase failed:</b> Please specify a valid amount (e.g. <i>"bought gold 500"</i>).');
+          return;
+        }
+
+        // Log gold transaction
+        await execute(
+          `INSERT INTO digital_gold_transactions (gold_id, month, year, amount) VALUES (?, ?, ?, ?)`,
+          [gold.id, parsed.month, parsed.year, parsed.amount]
+        );
+
+        const monthName = new Date(2000, parsed.month - 1).toLocaleString('default', { month: 'long' });
+        await sendMessage(
+          chatId,
+          `🪙 <b>Gold Investment Logged!</b>\n───────────────────\n• <b>Account:</b> ${gold.investment_name}\n• <b>Period:</b> ${monthName} ${parsed.year}\n• <b>Amount Invested:</b> ₹${parsed.amount.toLocaleString('en-IN')}`
+        );
+        return;
+      }
+
+      // Intercept Chit / Cheetu payments
+      if (lowercaseText.includes('chit') || lowercaseText.includes('cheetu')) {
+        const chits = await query(
+          `SELECT * FROM chit_funds WHERE user_id = ? AND status = 'Running'`,
+          [user.id]
+        );
+        if (chits.length === 0) {
+          await sendMessage(chatId, '❌ <b>No active running Chit Funds found.</b>\nPlease create a chit group on your dashboard first.');
+          return;
+        }
+
+        let chit = chits[0];
+        if (chits.length > 1) {
+          for (const c of chits) {
+            if (lowercaseText.includes(c.chit_name.toLowerCase())) {
+              chit = c;
+              break;
+            }
+          }
+        }
+
+        const parsed = parseRecordInput(text, chit.monthly_installment);
+
+        // Find the payment schedule item for that month/year
+        const sched = await get(
+          `SELECT id FROM chit_payments WHERE chit_id = ? AND month = ? AND year = ?`,
+          [chit.id, parsed.month, parsed.year]
+        );
+
+        if (sched) {
+          await execute(
+            `UPDATE chit_payments SET installment_amount = ?, status = 'Paid', payment_date = ? 
+             WHERE id = ?`,
+            [parsed.amount, parsed.date, sched.id]
+          );
+        } else {
+          // If schedule does not exist, insert a new record
+          await execute(
+            `INSERT INTO chit_payments (chit_id, month, year, installment_amount, status, payment_date) 
+             VALUES (?, ?, ?, ?, 'Paid', ?)`,
+            [chit.id, parsed.month, parsed.year, parsed.amount, parsed.date]
+          );
+        }
+
+        const monthName = new Date(2000, parsed.month - 1).toLocaleString('default', { month: 'long' });
+        await sendMessage(
+          chatId,
+          `🎰 <b>Chit Payment Logged!</b>\n───────────────────\n• <b>Chit:</b> ${chit.chit_name}\n• <b>Period:</b> ${monthName} ${parsed.year}\n• <b>Amount Paid:</b> ₹${parsed.amount.toLocaleString('en-IN')}\n• <b>Date:</b> ${parsed.date}`
+        );
+        return;
+      }
+
       // Parse Transaction text
       const categories = await query(
         'SELECT id, name, type FROM categories WHERE user_id IS NULL OR user_id = ?',
@@ -314,5 +454,59 @@ router.post('/webhook', async (req: Request, res: Response) => {
     console.error('[Telegram Webhook Handling Error]', error);
   }
 });
+
+// Helper to parse record inputs (LIC, Gold, Chit) from natural language
+function parseRecordInput(text: string, defaultAmount: number = 0) {
+  const clean = text.toLowerCase();
+  
+  // 3. Extract Year first so we can filter it out of amount matching
+  let year = new Date().getFullYear();
+  const yearMatch = clean.match(/\b(20\d{2})\b/);
+  if (yearMatch) {
+    year = parseInt(yearMatch[1]);
+  }
+
+  // 1. Extract Amount
+  let amount = defaultAmount;
+  let textWithoutYear = clean;
+  if (yearMatch) {
+    textWithoutYear = clean.replace(yearMatch[0], '');
+  }
+
+  const amountMatch = clean.match(/(?:rs\.?|inr|₹|amount|paid|spent|invested|buy)\s*(\d+(?:,\d+)*(?:\.\d+)?)/i) || 
+                      textWithoutYear.match(/\b(\d{2,6})\b/);
+  if (amountMatch) {
+    amount = parseFloat(amountMatch[1].replace(/,/g, ''));
+  }
+
+  // 2. Extract Month
+  const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+  const monthNames = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+  let month = new Date().getMonth() + 1;
+  
+  for (let i = 0; i < 12; i++) {
+    if (clean.includes(months[i]) || clean.includes(monthNames[i])) {
+      month = i + 1;
+      break;
+    }
+  }
+
+  // 4. Extract Date
+  let date = new Date().toISOString().split('T')[0];
+  const dateMatch = clean.match(/\b(\d{4}-\d{2}-\d{2})\b/) || clean.match(/\b(\d{2}-\d{2}-\d{4})\b/);
+  if (dateMatch) {
+    const rawDate = dateMatch[1];
+    if (rawDate.includes('-')) {
+      const parts = rawDate.split('-');
+      if (parts[0].length === 4) {
+        date = rawDate;
+      } else {
+        date = `${parts[2]}-${parts[1]}-${parts[0]}`;
+      }
+    }
+  }
+
+  return { amount, month, year, date };
+}
 
 export default router;

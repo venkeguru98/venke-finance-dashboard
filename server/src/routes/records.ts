@@ -419,10 +419,11 @@ router.get('/gold', async (req: Request, res: Response) => {
 
 router.post('/gold', async (req: Request, res: Response) => {
   const { investment_name, platform, start_date, end_date } = req.body;
+  const endDateVal = (end_date && end_date.trim() !== '') ? end_date : null;
   try {
     const result = await execute(
       `INSERT INTO digital_gold (user_id, investment_name, platform, start_date, end_date) VALUES (?, ?, ?, ?, ?)`,
-      [req.user!.id, investment_name, platform, start_date, end_date]
+      [req.user!.id, investment_name, platform, start_date, endDateVal]
     );
     res.json({ id: result.lastID, success: true });
   } catch (err: any) {
@@ -432,10 +433,11 @@ router.post('/gold', async (req: Request, res: Response) => {
 
 router.put('/gold/:id', async (req: Request, res: Response) => {
   const { investment_name, platform, start_date, end_date } = req.body;
+  const endDateVal = (end_date && end_date.trim() !== '') ? end_date : null;
   try {
     await execute(
       `UPDATE digital_gold SET investment_name=?, platform=?, start_date=?, end_date=? WHERE id=? AND user_id=?`,
-      [investment_name, platform, start_date, end_date, req.params.id, req.user!.id]
+      [investment_name, platform, start_date, endDateVal, req.params.id, req.user!.id]
     );
     res.json({ success: true });
   } catch (err: any) {
