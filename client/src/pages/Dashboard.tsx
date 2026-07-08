@@ -558,15 +558,12 @@ export default function Dashboard() {
 
   // Trend insights calculator for all active expense/savings categories
   const getTrendInsights = () => {
-    const today = new Date();
-    const currentMonthPrefix = formatLocalYYYYMM(today); // "YYYY-MM"
-    const prevMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-    const prevMonthPrefix = formatLocalYYYYMM(prevMonth);
+    const currentMonthPrefix = formatLocalYYYYMM(now);
 
-    // List of last 6 months prefixes (chronological order)
+    // List of last 6 months prefixes (chronological order) ending with selected month
     const last6MonthsPrefixes: string[] = [];
     for (let i = 5; i >= 0; i--) {
-      const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       last6MonthsPrefixes.push(formatLocalYYYYMM(d));
     }
 
@@ -579,17 +576,37 @@ export default function Dashboard() {
       const currMonthTx = catTx.filter(t => t.date.startsWith(currentMonthPrefix));
       const currMonthTotal = currMonthTx.reduce((sum, t) => sum + t.amount, 0);
 
+      // Find all transaction months before currentMonthPrefix that have at least one transaction in this category
+      const pastMonths = Array.from(new Set(
+        catTx
+          .map(t => t.date.slice(0, 7))
+          .filter(mPrefix => mPrefix < currentMonthPrefix)
+      )).sort().reverse();
+
+      const prevMonthPrefix = pastMonths.length > 0 ? pastMonths[0] : '';
+
+      const formatMonthLabel = (prefix: string) => {
+        if (!prefix) return '';
+        const [yearStr, monthStr] = prefix.split('-');
+        const d = new Date(parseInt(yearStr, 10), parseInt(monthStr, 10) - 1, 1);
+        return d.toLocaleString('default', { month: 'long', year: 'numeric' });
+      };
+
+      const prevMonthLabel = prevMonthPrefix ? formatMonthLabel(prevMonthPrefix) : '';
+
       // Previous Month transactions
-      const prevMonthTx = catTx.filter(t => t.date.startsWith(prevMonthPrefix));
+      const prevMonthTx = prevMonthPrefix ? catTx.filter(t => t.date.startsWith(prevMonthPrefix)) : [];
       const prevMonthTotal = prevMonthTx.reduce((sum, t) => sum + t.amount, 0);
 
       // Diff & Pct Change
       const difference = currMonthTotal - prevMonthTotal;
       let pctChange = 0;
-      if (prevMonthTotal > 0) {
-        pctChange = ((currMonthTotal - prevMonthTotal) / prevMonthTotal) * 100;
-      } else if (currMonthTotal > 0) {
-        pctChange = 100;
+      if (prevMonthPrefix) {
+        if (prevMonthTotal > 0) {
+          pctChange = ((currMonthTotal - prevMonthTotal) / prevMonthTotal) * 100;
+        } else if (currMonthTotal > 0) {
+          pctChange = 100;
+        }
       }
 
       // Sparkline (last 6 months totals)
@@ -639,8 +656,8 @@ export default function Dashboard() {
           : 'text-green-500 bg-green-500/10 border-green-500/20';
       }
 
-      // Flag for not enough history (less than 2 months of history)
-      const notEnoughHistory = uniqueMonths.length < 2;
+      // Flag for not enough history
+      const notEnoughHistory = !prevMonthPrefix;
 
       return {
         id: cat.id,
@@ -649,6 +666,7 @@ export default function Dashboard() {
         color: cat.color || '#94a3b8',
         currMonthTotal,
         prevMonthTotal,
+        prevMonthLabel,
         difference,
         pctChange,
         sparklineData,
@@ -1539,7 +1557,7 @@ export default function Dashboard() {
                   </p>
                 </div>
                 <div className="bg-slate-900/40 border border-slate-850 p-4 rounded-xl space-y-1">
-                  <span className="text-[10px] text-slate-500 font-bold uppercase">Last Month</span>
+                  <span className="text-[10px] text-slate-500 font-bold uppercase">{selectedInsight.prevMonthLabel || 'Last Month'}</span>
                   <p className="text-lg font-black text-slate-350 font-mono">
                     ₹<AnimatedNumber value={selectedInsight.prevMonthTotal} />
                   </p>
@@ -2442,23 +2460,23 @@ function InsightCard({ item, index, getCategoryIcon }: InsightCardProps) {
   let badgeText = 'NEW';
 
   if (notEnoughHistory) {
-    badgeText = 'No Data';
+    badgeText = 'First recorded month';
     badgeColorClass = 'bg-blue-500/10 text-blue-500 border border-blue-500/20';
   } else if (prevMonthTotal === 0) {
-    badgeText = 'First Month';
+    badgeText = 'First recorded month';
     badgeColorClass = 'bg-blue-500/10 text-blue-500 border border-blue-500/20';
   } else if (item.difference > 0) {
-    badgeText = `+₹${Math.round(item.difference)} ↑${Math.round(item.pctChange)}%`;
+    badgeText = `▲ +₹${Math.round(item.difference)} vs ${item.prevMonthLabel}`;
     badgeColorClass = item.type === 'savings'
       ? 'bg-green-500/10 text-green-500 border border-green-500/20'
       : 'bg-red-500/10 text-red-500 border border-red-500/20';
   } else if (item.difference < 0) {
-    badgeText = `-₹${Math.round(Math.abs(item.difference))} ↓${Math.round(Math.abs(item.pctChange))}%`;
+    badgeText = `▼ -₹${Math.round(Math.abs(item.difference))} vs ${item.prevMonthLabel}`;
     badgeColorClass = item.type === 'savings'
       ? 'bg-red-500/10 text-red-500 border border-red-500/20'
       : 'bg-green-500/10 text-green-500 border border-green-500/20';
   } else {
-    badgeText = 'No Change';
+    badgeText = `No Change vs ${item.prevMonthLabel}`;
     badgeColorClass = 'bg-slate-500/10 text-slate-400 border border-slate-500/20';
   }
 
@@ -2505,7 +2523,7 @@ function InsightCard({ item, index, getCategoryIcon }: InsightCardProps) {
       {/* Stats details section */}
       <div className="mt-2 space-y-1 text-[10px] font-bold text-slate-500">
         <div className="flex justify-between">
-          <span>Last Month: <span className="text-slate-750 dark:text-slate-300 font-mono">₹{Math.round(prevMonthTotal).toLocaleString('en-IN')}</span></span>
+          <span>{item.prevMonthLabel || 'Last Month'}: <span className="text-slate-750 dark:text-slate-300 font-mono">₹{Math.round(prevMonthTotal).toLocaleString('en-IN')}</span></span>
           <span className="text-purple-400 font-extrabold">{item.txCount || 0} Tx</span>
         </div>
         <div className="flex justify-between items-center">
