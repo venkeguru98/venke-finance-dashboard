@@ -96,6 +96,11 @@ export default function Dashboard() {
   const [drawerSortBy, setDrawerSortBy] = useState<'newest' | 'oldest' | 'high' | 'low'>('newest');
   const [collapsedMonths, setCollapsedMonths] = useState<string[]>([]);
 
+  // KPI Hover Preview Panel State
+  const [hoveredCard, setHoveredCard] = useState<string | null>(null);
+  const [mobileSheetCard, setMobileSheetCard] = useState<string | null>(null);
+  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Drawer resets & defaults
   useEffect(() => {
     if (selectedInsight) {
@@ -392,6 +397,91 @@ export default function Dashboard() {
     statusBadgeText = 'text-yellow-700 dark:text-yellow-400';
   }
 
+  // KPI Hover helpers
+  const currentMonthLabel = now.toLocaleString('default', { month: 'long', year: 'numeric' });
+
+  const handleCardMouseEnter = (key: string) => {
+    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+    setHoveredCard(key);
+  };
+
+  const handleCardMouseLeave = () => {
+    hoverTimeoutRef.current = setTimeout(() => setHoveredCard(null), 180);
+  };
+
+  const handlePanelMouseEnter = () => {
+    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+  };
+
+  const handlePanelMouseLeave = () => {
+    hoverTimeoutRef.current = setTimeout(() => setHoveredCard(null), 180);
+  };
+
+  // Compute per-card preview data from already-loaded transactions
+  const getKpiPreviewData = (cardKey: string) => {
+    const prefix = now.toISOString().slice(0, 7);
+    const currTx = transactions.filter(t => t.date.startsWith(prefix));
+
+    if (cardKey === 'income') {
+      const list = currTx.filter(t => t.type === 'income').sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      const total = list.reduce((s, t) => s + t.amount, 0);
+      const largest = list.reduce((m, t) => t.amount > m ? t.amount : m, 0);
+      const latestDate = list[0]?.date ? new Date(list[0].date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—';
+      return { total, count: list.length, largest, latestDate, recentTx: list.slice(0, 5) };
+    }
+    if (cardKey === 'expenses') {
+      const list = currTx.filter(t => t.type === 'expense').sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      const total = list.reduce((s, t) => s + t.amount, 0);
+      const largest = list.reduce((m, t) => t.amount > m ? t.amount : m, 0);
+      const avg = list.length > 0 ? total / list.length : 0;
+      const methods: Record<string, number> = {};
+      list.forEach(t => { methods[t.payment_method || 'Other'] = (methods[t.payment_method || 'Other'] || 0) + 1; });
+      const topMethod = Object.entries(methods).sort((a, b) => b[1] - a[1])[0]?.[0] || '—';
+      const highestDay = list.length > 0 ? new Date([...list].sort((a, b) => b.amount - a.amount)[0].date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—';
+      return { total, count: list.length, largest, avg, topMethod, highestDay, recentTx: list.slice(0, 5) };
+    }
+    if (cardKey === 'savings') {
+      const list = currTx.filter(t => t.type === 'savings').sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      const total = list.reduce((s, t) => s + t.amount, 0);
+      // Group by category
+      const catMap: Record<string, number> = {};
+      list.forEach(t => { catMap[t.category_name || 'Other'] = (catMap[t.category_name || 'Other'] || 0) + t.amount; });
+      const cats = Object.entries(catMap).sort((a, b) => b[1] - a[1]);
+      return { total, count: list.length, cats, recentTx: list.slice(0, 5) };
+    }
+    if (cardKey === 'balance') {
+      const recent = [...currTx].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
+      return {
+        income: totalsData.current.income,
+        expenses: totalsData.current.expenses,
+        savings: totalsData.current.savings,
+        balance: totalsData.current.balance,
+        recentTx: recent
+      };
+    }
+    if (cardKey === 'netbalance') {
+      // 6-month net balance trend
+      const trend: { month: string; net: number }[] = [];
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const p = d.toISOString().slice(0, 7);
+        const mx = transactions.filter(t => t.date.startsWith(p));
+        const inc = mx.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+        const exp = mx.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+        const sav = mx.filter(t => t.type === 'savings').reduce((s, t) => s + t.amount, 0);
+        trend.push({ month: d.toLocaleString('default', { month: 'short' }), net: inc - exp - sav });
+      }
+      return {
+        income: totalsData.current.income,
+        expenses: totalsData.current.expenses,
+        savings: totalsData.current.savings,
+        balance: totalsData.current.balance,
+        trend
+      };
+    }
+    return null;
+  };
+
   // Sparklines Data helper
   const getSparklineData = (type: 'income' | 'expense' | 'balance' | 'savings') => {
     const data = transactions.slice(0, 10).reverse().map(t => {
@@ -678,151 +768,213 @@ export default function Dashboard() {
 
 
 
+      {/* KPI Hover Preview CSS */}
+      <style>{`
+        @keyframes kpiPanelIn {
+          from { opacity: 0; transform: translateY(10px) scale(0.97); }
+          to   { opacity: 1; transform: translateY(0)   scale(1); }
+        }
+        @keyframes kpiPanelOut {
+          from { opacity: 1; transform: translateY(0)   scale(1); }
+          to   { opacity: 0; transform: translateY(10px) scale(0.97); }
+        }
+        .kpi-panel-enter { animation: kpiPanelIn 0.22s cubic-bezier(0.16,1,0.3,1) forwards; }
+        @keyframes sheetUp {
+          from { transform: translateY(100%); opacity: 0; }
+          to   { transform: translateY(0);    opacity: 1; }
+        }
+        .sheet-up { animation: sheetUp 0.3s cubic-bezier(0.16,1,0.3,1) forwards; }
+      `}</style>
+
       {/* SUMMARY CARDS WIDGET */}
       {widgets.summaryCards && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-5">
+
+          {/* ── Monthly Income ── */}
           <SummaryCard
             title="Monthly Income"
+            monthLabel={currentMonthLabel}
+            cardKey="income"
             amount={totalsData.current.income}
             pctChange={totalsData.pctChange.income}
             sparklineData={getSparklineData('income')}
             color="text-green-500"
             bg="bg-green-500"
-            tooltipContent={[
-              `Current Month Income: ₹${totalsData.current.income.toLocaleString()}`,
-              `Last Month Income: ₹${totalsData.previous.income.toLocaleString()}`,
-              `MoM Change: ${totalsData.pctChange.income.toFixed(1)}%`
-            ]}
+            isHovered={hoveredCard === 'income'}
+            onCardMouseEnter={() => handleCardMouseEnter('income')}
+            onCardMouseLeave={handleCardMouseLeave}
+            onMobileTap={() => setMobileSheetCard('income')}
+            previewData={hoveredCard === 'income' ? getKpiPreviewData('income') : null}
+            previewContent={hoveredCard === 'income' ? (
+              <KpiIncomePanel
+                data={getKpiPreviewData('income')}
+                monthLabel={currentMonthLabel}
+                navigate={navigate}
+                onPanelMouseEnter={handlePanelMouseEnter}
+                onPanelMouseLeave={handlePanelMouseLeave}
+              />
+            ) : null}
           />
+
+          {/* ── Monthly Expenses ── */}
           <SummaryCard
             title="Monthly Expenses"
+            monthLabel={currentMonthLabel}
+            cardKey="expenses"
             amount={totalsData.current.expenses}
             pctChange={totalsData.pctChange.expenses}
             sparklineData={getSparklineData('expense')}
             color="text-red-500"
             bg="bg-red-500"
             inverseTrend
-            tooltipContent={[
-              `Current Month Spend: ₹${totalsData.current.expenses.toLocaleString()}`,
-              `Last Month Spend: ₹${totalsData.previous.expenses.toLocaleString()}`,
-              `MoM Change: ${totalsData.pctChange.expenses.toFixed(1)}%`
-            ]}
+            isHovered={hoveredCard === 'expenses'}
+            onCardMouseEnter={() => handleCardMouseEnter('expenses')}
+            onCardMouseLeave={handleCardMouseLeave}
+            onMobileTap={() => setMobileSheetCard('expenses')}
+            previewContent={hoveredCard === 'expenses' ? (
+              <KpiExpensesPanel
+                data={getKpiPreviewData('expenses')}
+                monthLabel={currentMonthLabel}
+                navigate={navigate}
+                onPanelMouseEnter={handlePanelMouseEnter}
+                onPanelMouseLeave={handlePanelMouseLeave}
+              />
+            ) : null}
           />
+
+          {/* ── Monthly Savings ── */}
           <SummaryCard
             title="Monthly Savings"
+            monthLabel={currentMonthLabel}
+            cardKey="savings"
             amount={totalsData.current.savings}
             pctChange={totalsData.pctChange.savings}
             sparklineData={getSparklineData('savings')}
             color={totalsData.pctChange.savings >= 0 ? "text-green-500" : "text-red-500"}
             bg={totalsData.pctChange.savings >= 0 ? "bg-green-500" : "bg-red-500"}
-            tooltipContent={[
-              `Current Month Savings: ₹${totalsData.current.savings.toLocaleString()}`,
-              `Last Month Savings: ₹${totalsData.previous.savings.toLocaleString()}`,
-              `MoM Change: ${totalsData.pctChange.savings.toFixed(1)}%`
-            ]}
+            isHovered={hoveredCard === 'savings'}
+            onCardMouseEnter={() => handleCardMouseEnter('savings')}
+            onCardMouseLeave={handleCardMouseLeave}
+            onMobileTap={() => setMobileSheetCard('savings')}
+            previewContent={hoveredCard === 'savings' ? (
+              <KpiSavingsPanel
+                data={getKpiPreviewData('savings')}
+                monthLabel={currentMonthLabel}
+                navigate={navigate}
+                onPanelMouseEnter={handlePanelMouseEnter}
+                onPanelMouseLeave={handlePanelMouseLeave}
+              />
+            ) : null}
           />
+
+          {/* ── Available Balance ── */}
           <SummaryCard
             title="Available Balance"
+            monthLabel={currentMonthLabel}
+            cardKey="balance"
             amount={availableBalance}
             pctChange={totalsData.pctChange.balance}
             sparklineData={getSparklineData('balance')}
             color={availableColor}
             bg={availableBg}
-            tooltipContent={[
-              `Monthly Income:      ₹${totalsData.current.income.toLocaleString('en-IN')}`,
-              `− Expenses:          ₹${totalsData.current.expenses.toLocaleString('en-IN')}`,
-              `− Monthly Savings:   ₹${totalsData.current.savings.toLocaleString('en-IN')}`,
-              ...(unpaidBillsSum > 0 ? [`− Unpaid Bills:      ₹${unpaidBillsSum.toLocaleString('en-IN')}`] : []),
-              `────────────────────────────`,
-              `Forecast Balance:    ₹${forecastedBalance.toLocaleString('en-IN')}`
-            ]}
+            isHovered={hoveredCard === 'balance'}
+            onCardMouseEnter={() => handleCardMouseEnter('balance')}
+            onCardMouseLeave={handleCardMouseLeave}
+            onMobileTap={() => setMobileSheetCard('balance')}
+            previewContent={hoveredCard === 'balance' ? (
+              <KpiBalancePanel
+                data={getKpiPreviewData('balance')}
+                unpaidBillsSum={unpaidBillsSum}
+                forecastedBalance={forecastedBalance}
+                statusBadgeBg={statusBadgeBg}
+                statusBadgeText={statusBadgeText}
+                monthLabel={currentMonthLabel}
+                onPanelMouseEnter={handlePanelMouseEnter}
+                onPanelMouseLeave={handlePanelMouseLeave}
+              />
+            ) : null}
           >
             <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 text-[10px] font-semibold text-slate-500 space-y-1">
-              <div className="flex justify-between">
-                <span>Income</span>
-                <span className="text-slate-900 dark:text-white font-bold">₹{totalsData.current.income.toLocaleString('en-IN')}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Expenses</span>
-                <span className="text-red-400 font-bold">-₹{totalsData.current.expenses.toLocaleString('en-IN')}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Savings</span>
-                <span className="text-blue-400 font-bold">-₹{totalsData.current.savings.toLocaleString('en-IN')}</span>
-              </div>
+              <div className="flex justify-between"><span>Income</span><span className="text-slate-900 dark:text-white font-bold">₹{totalsData.current.income.toLocaleString('en-IN')}</span></div>
+              <div className="flex justify-between"><span>Expenses</span><span className="text-red-400 font-bold">-₹{totalsData.current.expenses.toLocaleString('en-IN')}</span></div>
+              <div className="flex justify-between"><span>Savings</span><span className="text-blue-400 font-bold">-₹{totalsData.current.savings.toLocaleString('en-IN')}</span></div>
               {unpaidBillsSum > 0 && (
-                <div className="flex justify-between text-amber-500 font-bold">
-                  <span>Unpaid Bills</span>
-                  <span>-₹{unpaidBillsSum.toLocaleString('en-IN')}</span>
-                </div>
+                <div className="flex justify-between text-amber-500 font-bold"><span>Unpaid Bills</span><span>-₹{unpaidBillsSum.toLocaleString('en-IN')}</span></div>
               )}
               <div className="border-t border-dashed border-slate-200 dark:border-slate-800 my-1"></div>
               <div className={`text-center font-extrabold mt-1 text-[10px] py-0.5 rounded ${statusBadgeBg} ${statusBadgeText}`}>
-                {totalsData.current.income === 0 ? (
-                  "Add income to start tracking"
-                ) : unpaidBillsSum > 0 ? (
-                  `Forecast: ₹${forecastedBalance.toLocaleString('en-IN')}`
-                ) : availableBalance >= 0 ? (
-                  `Available: ₹${availableBalance.toLocaleString('en-IN')}`
-                ) : (
-                  `Overspent: -₹${Math.abs(availableBalance).toLocaleString('en-IN')}`
-                )}
+                {totalsData.current.income === 0 ? 'Add income to start tracking' : unpaidBillsSum > 0 ? `Forecast: ₹${forecastedBalance.toLocaleString('en-IN')}` : availableBalance >= 0 ? `Available: ₹${availableBalance.toLocaleString('en-IN')}` : `Overspent: -₹${Math.abs(availableBalance).toLocaleString('en-IN')}`}
               </div>
             </div>
           </SummaryCard>
+
+          {/* ── Net Balance ── */}
           <SummaryCard
             title="Net Balance"
+            monthLabel={currentMonthLabel}
+            cardKey="netbalance"
             amount={totalsData.current.balance}
             pctChange={totalsData.pctChange.balance}
             sparklineData={getSparklineData('balance')}
             color={availableColor}
             bg={availableBg}
-            tooltipContent={[
-              `Monthly Income:      ₹${totalsData.current.income.toLocaleString('en-IN')}`,
-              `− Expenses:          ₹${totalsData.current.expenses.toLocaleString('en-IN')}`,
-              `− Monthly Savings:   ₹${totalsData.current.savings.toLocaleString('en-IN')}`,
-              `────────────────────────────`,
-              `Net Balance:         ₹${totalsData.current.balance.toLocaleString('en-IN')}`
-            ]}
+            isHovered={hoveredCard === 'netbalance'}
+            onCardMouseEnter={() => handleCardMouseEnter('netbalance')}
+            onCardMouseLeave={handleCardMouseLeave}
+            onMobileTap={() => setMobileSheetCard('netbalance')}
+            previewContent={hoveredCard === 'netbalance' ? (
+              <KpiNetBalancePanel
+                data={getKpiPreviewData('netbalance')}
+                monthLabel={currentMonthLabel}
+                onPanelMouseEnter={handlePanelMouseEnter}
+                onPanelMouseLeave={handlePanelMouseLeave}
+              />
+            ) : null}
           >
             <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 text-[10px] font-semibold text-slate-500 space-y-1">
-              <div className="flex justify-between">
-                <span>Income</span>
-                <span className="text-slate-900 dark:text-white font-bold">₹{totalsData.current.income.toLocaleString('en-IN')}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Expenses</span>
-                <span className="text-red-400 font-bold">-₹{totalsData.current.expenses.toLocaleString('en-IN')}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Savings</span>
-                <span className="text-blue-400 font-bold">-₹{totalsData.current.savings.toLocaleString('en-IN')}</span>
-              </div>
+              <div className="flex justify-between"><span>Income</span><span className="text-slate-900 dark:text-white font-bold">₹{totalsData.current.income.toLocaleString('en-IN')}</span></div>
+              <div className="flex justify-between"><span>Expenses</span><span className="text-red-400 font-bold">-₹{totalsData.current.expenses.toLocaleString('en-IN')}</span></div>
+              <div className="flex justify-between"><span>Savings</span><span className="text-blue-400 font-bold">-₹{totalsData.current.savings.toLocaleString('en-IN')}</span></div>
               <div className="border-t border-dashed border-slate-200 dark:border-slate-800 my-1"></div>
               <div className={`text-center font-extrabold mt-1 text-[10px] py-0.5 rounded ${statusBadgeBg} ${statusBadgeText}`}>
-                {totalsData.current.income === 0 ? (
-                  "Add income to start tracking"
-                ) : totalsData.current.balance >= 0 ? (
-                  `Net Balance: ₹${totalsData.current.balance.toLocaleString('en-IN')}`
-                ) : (
-                  `Net Deficit: -₹${Math.abs(totalsData.current.balance).toLocaleString('en-IN')}`
-                )}
+                {totalsData.current.income === 0 ? 'Add income to start tracking' : totalsData.current.balance >= 0 ? `Net Balance: ₹${totalsData.current.balance.toLocaleString('en-IN')}` : `Net Deficit: -₹${Math.abs(totalsData.current.balance).toLocaleString('en-IN')}`}
               </div>
             </div>
           </SummaryCard>
+
+          {/* ── Savings Rate ── */}
           <SummaryCard
             title="Savings Rate"
+            monthLabel={currentMonthLabel}
             amount={savingsRate}
             isPercentage
             pctChange={totalsData.pctChange.savingsRate}
             color="text-orange-500"
             bg="bg-orange-500"
-            tooltipContent={[
-              `Formula: (Income - Expenses) / Income`,
-              `Current Savings Rate: ${savingsRate.toFixed(1)}%`,
-              `Last Month Savings Rate: ${(totalsData.previous.income > 0 ? (totalsData.previous.balance / totalsData.previous.income) * 100 : 0).toFixed(1)}%`
-            ]}
           />
+        </div>
+      )}
+
+      {/* Mobile Bottom Sheet for KPI previews */}
+      {mobileSheetCard && (
+        <div
+          className="fixed inset-0 z-50 flex items-end md:hidden"
+          onClick={() => setMobileSheetCard(null)}
+        >
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div
+            className="relative w-full bg-slate-900 rounded-t-3xl border-t border-slate-700 max-h-[80vh] overflow-y-auto sheet-up"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="w-12 h-1.5 bg-slate-600 rounded-full mx-auto mt-3 mb-2" />
+            <div className="p-4 pb-8">
+              {mobileSheetCard === 'income' && <KpiIncomePanel data={getKpiPreviewData('income')} monthLabel={currentMonthLabel} navigate={navigate} onPanelMouseEnter={() => {}} onPanelMouseLeave={() => {}} />}
+              {mobileSheetCard === 'expenses' && <KpiExpensesPanel data={getKpiPreviewData('expenses')} monthLabel={currentMonthLabel} navigate={navigate} onPanelMouseEnter={() => {}} onPanelMouseLeave={() => {}} />}
+              {mobileSheetCard === 'savings' && <KpiSavingsPanel data={getKpiPreviewData('savings')} monthLabel={currentMonthLabel} navigate={navigate} onPanelMouseEnter={() => {}} onPanelMouseLeave={() => {}} />}
+              {mobileSheetCard === 'balance' && <KpiBalancePanel data={getKpiPreviewData('balance')} unpaidBillsSum={unpaidBillsSum} forecastedBalance={forecastedBalance} statusBadgeBg={statusBadgeBg} statusBadgeText={statusBadgeText} monthLabel={currentMonthLabel} onPanelMouseEnter={() => {}} onPanelMouseLeave={() => {}} />}
+              {mobileSheetCard === 'netbalance' && <KpiNetBalancePanel data={getKpiPreviewData('netbalance')} monthLabel={currentMonthLabel} onPanelMouseEnter={() => {}} onPanelMouseLeave={() => {}} />}
+            </div>
+          </div>
         </div>
       )}
 
@@ -1892,15 +2044,59 @@ function Sparkline({ data, color }: { data: any[]; color: string }) {
   );
 }
 
-function SummaryCard({ title, amount, pctChange, sparklineData, color, bg, isPercentage = false, inverseTrend = false, tooltipContent, children }: any) {
+function SummaryCard({ title, monthLabel, cardKey, amount, pctChange, sparklineData, color, bg, isPercentage = false, inverseTrend = false, children, isHovered, onCardMouseEnter, onCardMouseLeave, onMobileTap, previewContent }: any) {
   const isPositive = pctChange >= 0;
   const isGood = inverseTrend ? !isPositive : isPositive;
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [panelStyle, setPanelStyle] = useState<React.CSSProperties>({});
+
+  useEffect(() => {
+    if (isHovered && cardRef.current) {
+      const rect = cardRef.current.getBoundingClientRect();
+      const panelWidth = 320;
+      const spaceRight = window.innerWidth - rect.right;
+      const spaceLeft = rect.left;
+      let left = rect.left;
+      if (spaceRight < panelWidth + 12 && spaceLeft > panelWidth + 12) {
+        left = rect.right - panelWidth;
+      }
+      if (left + panelWidth > window.innerWidth - 8) left = window.innerWidth - panelWidth - 8;
+      if (left < 8) left = 8;
+      setPanelStyle({
+        position: 'fixed',
+        top: rect.bottom + 10,
+        left,
+        width: panelWidth,
+        zIndex: 9999,
+      });
+    }
+  }, [isHovered]);
 
   return (
-    <div className="bg-white dark:bg-slate-950 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-all relative overflow-hidden group">
-      <div className={`absolute -top-4 -right-4 w-20 h-20 rounded-full ${bg} opacity-5 group-hover:opacity-10 transition-opacity`}></div>
-      <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">{title}</p>
-      
+    <div
+      ref={cardRef}
+      className={`bg-white dark:bg-slate-950 p-5 rounded-2xl border shadow-sm hover:shadow-xl transition-all relative overflow-visible group cursor-pointer select-none ${
+        isHovered
+          ? 'border-primary/50 ring-2 ring-primary/20 shadow-primary/10'
+          : 'border-slate-200 dark:border-slate-800'
+      }`}
+      onMouseEnter={onCardMouseEnter}
+      onMouseLeave={onCardMouseLeave}
+      onClick={onMobileTap}
+    >
+      {/* Background glow orb */}
+      <div className={`absolute -top-4 -right-4 w-20 h-20 rounded-full ${bg} opacity-5 group-hover:opacity-15 transition-opacity duration-300`}></div>
+
+      {/* Header: Title + Month Badge */}
+      <div className="mb-2">
+        <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{title}</p>
+        {monthLabel && cardKey && (
+          <span className="inline-flex items-center mt-0.5 px-1.5 py-0.5 rounded-md text-[9px] font-black bg-primary/10 text-primary tracking-wide">
+            📅 {monthLabel}
+          </span>
+        )}
+      </div>
+
       <div className="flex justify-between items-end">
         <div>
           <h2 className="text-2xl font-black text-slate-900 dark:text-white font-mono">
@@ -1910,24 +2106,357 @@ function SummaryCard({ title, amount, pctChange, sparklineData, color, bg, isPer
             {isPositive ? '▲' : '▼'} {Math.abs(pctChange).toFixed(1)}% vs prev. month
           </span>
         </div>
-
         {sparklineData && <Sparkline data={sparklineData} color={color} />}
       </div>
 
       {children}
 
-      {/* HOVER TOOLTIP OVERLAY */}
-      {tooltipContent && (
-        <div className="absolute inset-0 bg-slate-900/95 dark:bg-slate-950/98 text-white p-3.5 flex flex-col justify-between opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none rounded-2xl z-10">
-          <p className="text-[10px] font-black text-primary uppercase tracking-wider">Calculations Details</p>
-          <div className="text-[10px] space-y-0.5 font-semibold text-slate-350 leading-normal">
-            {tooltipContent.map((line: string, idx: number) => (
-              <p key={idx}>{line}</p>
-            ))}
-          </div>
+      {/* Hover indicator dot */}
+      {cardKey && (
+        <div className={`absolute bottom-2.5 right-2.5 w-1.5 h-1.5 rounded-full transition-all duration-300 ${isHovered ? 'bg-primary scale-125' : 'bg-slate-300 dark:bg-slate-700'}`} />
+      )}
+
+      {/* Floating Preview Panel — rendered via portal-like fixed positioning */}
+      {isHovered && previewContent && typeof document !== 'undefined' && (
+        <div
+          style={panelStyle}
+          className="kpi-panel-enter hidden md:block"
+        >
+          {previewContent}
         </div>
       )}
     </div>
+  );
+}
+
+// ─── Shared KPI Transaction Row ───────────────────────────────────────────────
+function KpiTxRow({ t, amountColor = 'text-green-400' }: { t: any; amountColor?: string }) {
+  const d = new Date(t.date);
+  return (
+    <div className="flex items-center justify-between gap-2 py-2 border-b border-slate-800/60 last:border-0">
+      <div className="flex items-center gap-2 min-w-0">
+        <div className="shrink-0 text-center bg-slate-800 rounded-lg px-2 py-1 min-w-[40px]">
+          <p className="text-[8px] text-slate-400 font-bold uppercase">{d.toLocaleString('default', { month: 'short' })}</p>
+          <p className="text-xs font-black text-white leading-none">{d.getDate()}</p>
+        </div>
+        <div className="min-w-0">
+          <p className="text-xs font-bold text-slate-200 truncate max-w-[130px]">{t.notes || t.category_name || '—'}</p>
+          <div className="flex items-center gap-1 mt-0.5">
+            <span className="text-[9px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded font-semibold">{t.payment_method || 'UPI'}</span>
+            {t.category_name && <span className="text-[9px] text-slate-500 font-medium truncate max-w-[80px]">{t.category_name}</span>}
+          </div>
+        </div>
+      </div>
+      <span className={`text-xs font-black font-mono shrink-0 ${amountColor}`}>
+        ₹{Number(t.amount).toLocaleString('en-IN')}
+      </span>
+    </div>
+  );
+}
+
+// ─── KPI Panel Wrapper ────────────────────────────────────────────────────────
+function KpiPanelWrapper({ children, onPanelMouseEnter, onPanelMouseLeave }: { children: React.ReactNode; onPanelMouseEnter: () => void; onPanelMouseLeave: () => void }) {
+  return (
+    <div
+      onMouseEnter={onPanelMouseEnter}
+      onMouseLeave={onPanelMouseLeave}
+      className="bg-slate-900 border border-slate-700/60 rounded-2xl shadow-2xl shadow-black/40 overflow-hidden"
+    >
+      {children}
+    </div>
+  );
+}
+
+// ─── Income Preview Panel ─────────────────────────────────────────────────────
+function KpiIncomePanel({ data, monthLabel, navigate, onPanelMouseEnter, onPanelMouseLeave }: any) {
+  if (!data) return null;
+  return (
+    <KpiPanelWrapper onPanelMouseEnter={onPanelMouseEnter} onPanelMouseLeave={onPanelMouseLeave}>
+      {/* Header */}
+      <div className="bg-gradient-to-r from-green-900/60 to-emerald-900/40 px-4 py-3 border-b border-slate-700/60">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">💚</span>
+          <div>
+            <p className="text-[10px] font-black text-green-400 uppercase tracking-wider">Income</p>
+            <p className="text-xs font-bold text-slate-300">{monthLabel}</p>
+          </div>
+        </div>
+      </div>
+      {/* Quick Summary */}
+      <div className="px-4 pt-3 pb-2">
+        <p className="text-[9px] font-black text-primary uppercase tracking-wider mb-2">💡 Quick Summary</p>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="bg-slate-800/60 rounded-xl p-2.5">
+            <p className="text-[9px] text-slate-400 font-semibold">Total Income</p>
+            <p className="text-sm font-black text-green-400 font-mono">₹{Number(data.total).toLocaleString('en-IN')}</p>
+          </div>
+          <div className="bg-slate-800/60 rounded-xl p-2.5">
+            <p className="text-[9px] text-slate-400 font-semibold">Transactions</p>
+            <p className="text-sm font-black text-white">{data.count}</p>
+          </div>
+          <div className="bg-slate-800/60 rounded-xl p-2.5">
+            <p className="text-[9px] text-slate-400 font-semibold">Largest</p>
+            <p className="text-sm font-black text-green-300 font-mono">₹{Number(data.largest).toLocaleString('en-IN')}</p>
+          </div>
+          <div className="bg-slate-800/60 rounded-xl p-2.5">
+            <p className="text-[9px] text-slate-400 font-semibold">Latest</p>
+            <p className="text-sm font-black text-slate-200">{data.latestDate}</p>
+          </div>
+        </div>
+      </div>
+      {/* Transactions */}
+      {data.recentTx.length > 0 && (
+        <div className="px-4 pb-2">
+          <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1 mt-1">Recent Income</p>
+          <div>{data.recentTx.map((t: any) => <KpiTxRow key={t.id} t={t} amountColor="text-green-400" />)}</div>
+        </div>
+      )}
+      {/* Footer */}
+      <button
+        onClick={() => navigate('/transactions')}
+        className="w-full py-2.5 text-[10px] font-black text-primary hover:text-white hover:bg-primary/20 transition-colors border-t border-slate-700/60 tracking-wider uppercase"
+      >
+        View All Income →
+      </button>
+    </KpiPanelWrapper>
+  );
+}
+
+// ─── Expenses Preview Panel ───────────────────────────────────────────────────
+function KpiExpensesPanel({ data, monthLabel, navigate, onPanelMouseEnter, onPanelMouseLeave }: any) {
+  if (!data) return null;
+  return (
+    <KpiPanelWrapper onPanelMouseEnter={onPanelMouseEnter} onPanelMouseLeave={onPanelMouseLeave}>
+      <div className="bg-gradient-to-r from-red-900/60 to-rose-900/40 px-4 py-3 border-b border-slate-700/60">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">💸</span>
+          <div>
+            <p className="text-[10px] font-black text-red-400 uppercase tracking-wider">Expenses</p>
+            <p className="text-xs font-bold text-slate-300">{monthLabel}</p>
+          </div>
+        </div>
+      </div>
+      <div className="px-4 pt-3 pb-2">
+        <p className="text-[9px] font-black text-primary uppercase tracking-wider mb-2">💡 Quick Summary</p>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="bg-slate-800/60 rounded-xl p-2.5">
+            <p className="text-[9px] text-slate-400 font-semibold">Total</p>
+            <p className="text-sm font-black text-red-400 font-mono">₹{Number(data.total).toLocaleString('en-IN')}</p>
+          </div>
+          <div className="bg-slate-800/60 rounded-xl p-2.5">
+            <p className="text-[9px] text-slate-400 font-semibold">Transactions</p>
+            <p className="text-sm font-black text-white">{data.count}</p>
+          </div>
+          <div className="bg-slate-800/60 rounded-xl p-2.5">
+            <p className="text-[9px] text-slate-400 font-semibold">Largest</p>
+            <p className="text-sm font-black text-red-300 font-mono">₹{Number(data.largest).toLocaleString('en-IN')}</p>
+          </div>
+          <div className="bg-slate-800/60 rounded-xl p-2.5">
+            <p className="text-[9px] text-slate-400 font-semibold">Avg / Tx</p>
+            <p className="text-sm font-black text-slate-200 font-mono">₹{Math.round(data.avg || 0).toLocaleString('en-IN')}</p>
+          </div>
+        </div>
+        <div className="mt-2 flex gap-2">
+          <div className="flex-1 bg-slate-800/60 rounded-xl p-2.5">
+            <p className="text-[9px] text-slate-400 font-semibold">Top Method</p>
+            <p className="text-xs font-black text-amber-300">{data.topMethod}</p>
+          </div>
+          <div className="flex-1 bg-slate-800/60 rounded-xl p-2.5">
+            <p className="text-[9px] text-slate-400 font-semibold">Highest Day</p>
+            <p className="text-xs font-black text-orange-300">{data.highestDay}</p>
+          </div>
+        </div>
+      </div>
+      {data.recentTx.length > 0 && (
+        <div className="px-4 pb-2">
+          <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1 mt-1">Recent Expenses</p>
+          <div>{data.recentTx.map((t: any) => <KpiTxRow key={t.id} t={t} amountColor="text-red-400" />)}</div>
+        </div>
+      )}
+      <button
+        onClick={() => navigate('/transactions')}
+        className="w-full py-2.5 text-[10px] font-black text-primary hover:text-white hover:bg-primary/20 transition-colors border-t border-slate-700/60 tracking-wider uppercase"
+      >
+        View All Expenses →
+      </button>
+    </KpiPanelWrapper>
+  );
+}
+
+// ─── Savings Preview Panel ────────────────────────────────────────────────────
+function KpiSavingsPanel({ data, monthLabel, navigate, onPanelMouseEnter, onPanelMouseLeave }: any) {
+  if (!data) return null;
+  return (
+    <KpiPanelWrapper onPanelMouseEnter={onPanelMouseEnter} onPanelMouseLeave={onPanelMouseLeave}>
+      <div className="bg-gradient-to-r from-blue-900/60 to-indigo-900/40 px-4 py-3 border-b border-slate-700/60">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">🏦</span>
+          <div>
+            <p className="text-[10px] font-black text-blue-400 uppercase tracking-wider">Savings</p>
+            <p className="text-xs font-bold text-slate-300">{monthLabel}</p>
+          </div>
+        </div>
+      </div>
+      <div className="px-4 pt-3 pb-2">
+        <p className="text-[9px] font-black text-primary uppercase tracking-wider mb-2">💡 Quick Summary</p>
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          <div className="bg-slate-800/60 rounded-xl p-2.5">
+            <p className="text-[9px] text-slate-400 font-semibold">Total Saved</p>
+            <p className="text-sm font-black text-blue-400 font-mono">₹{Number(data.total).toLocaleString('en-IN')}</p>
+          </div>
+          <div className="bg-slate-800/60 rounded-xl p-2.5">
+            <p className="text-[9px] text-slate-400 font-semibold">Transactions</p>
+            <p className="text-sm font-black text-white">{data.count}</p>
+          </div>
+        </div>
+        {data.cats.length > 0 && (
+          <>
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1.5">By Category</p>
+            <div className="space-y-1.5">
+              {data.cats.map(([cat, amt]: [string, number]) => (
+                <div key={cat} className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
+                    <span className="text-xs text-slate-300 font-semibold truncate max-w-[150px]">{cat}</span>
+                  </div>
+                  <span className="text-xs font-black text-blue-300 font-mono shrink-0">₹{Number(amt).toLocaleString('en-IN')}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+      <button
+        onClick={() => navigate('/records')}
+        className="w-full py-2.5 text-[10px] font-black text-primary hover:text-white hover:bg-primary/20 transition-colors border-t border-slate-700/60 tracking-wider uppercase"
+      >
+        View All Savings →
+      </button>
+    </KpiPanelWrapper>
+  );
+}
+
+// ─── Available Balance Preview Panel ─────────────────────────────────────────
+function KpiBalancePanel({ data, unpaidBillsSum, forecastedBalance, monthLabel, onPanelMouseEnter, onPanelMouseLeave }: any) {
+  if (!data) return null;
+  return (
+    <KpiPanelWrapper onPanelMouseEnter={onPanelMouseEnter} onPanelMouseLeave={onPanelMouseLeave}>
+      <div className="bg-gradient-to-r from-purple-900/60 to-violet-900/40 px-4 py-3 border-b border-slate-700/60">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">💰</span>
+          <div>
+            <p className="text-[10px] font-black text-purple-400 uppercase tracking-wider">Available Balance</p>
+            <p className="text-xs font-bold text-slate-300">{monthLabel}</p>
+          </div>
+        </div>
+      </div>
+      <div className="px-4 pt-3 pb-3">
+        {/* Balance Breakdown */}
+        <div className="space-y-2 mb-3">
+          <div className="flex justify-between items-center">
+            <span className="text-xs text-slate-400 font-semibold flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-green-400 inline-block" />Income</span>
+            <span className="text-xs font-black text-green-400 font-mono">+₹{Number(data.income).toLocaleString('en-IN')}</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-xs text-slate-400 font-semibold flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-red-400 inline-block" />Expenses</span>
+            <span className="text-xs font-black text-red-400 font-mono">−₹{Number(data.expenses).toLocaleString('en-IN')}</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-xs text-slate-400 font-semibold flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-blue-400 inline-block" />Savings</span>
+            <span className="text-xs font-black text-blue-400 font-mono">−₹{Number(data.savings).toLocaleString('en-IN')}</span>
+          </div>
+          {unpaidBillsSum > 0 && (
+            <div className="flex justify-between items-center">
+              <span className="text-xs text-slate-400 font-semibold flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />Unpaid Bills</span>
+              <span className="text-xs font-black text-amber-400 font-mono">−₹{Number(unpaidBillsSum).toLocaleString('en-IN')}</span>
+            </div>
+          )}
+          <div className="border-t border-dashed border-slate-700 pt-2 flex justify-between items-center">
+            <span className="text-xs font-black text-slate-200">Balance</span>
+            <span className={`text-sm font-black font-mono ${data.balance >= 0 ? 'text-green-400' : 'text-red-400'}`}>₹{Number(data.balance).toLocaleString('en-IN')}</span>
+          </div>
+          {unpaidBillsSum > 0 && (
+            <div className="flex justify-between items-center">
+              <span className="text-xs text-amber-400 font-bold">Forecasted Balance</span>
+              <span className="text-xs font-black text-amber-300 font-mono">₹{Number(forecastedBalance).toLocaleString('en-IN')}</span>
+            </div>
+          )}
+        </div>
+        {/* Recent Transactions */}
+        {data.recentTx?.length > 0 && (
+          <>
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1">Recent Activity</p>
+            <div>{data.recentTx.map((t: any) => <KpiTxRow key={t.id} t={t} amountColor={t.type === 'income' ? 'text-green-400' : 'text-red-400'} />)}</div>
+          </>
+        )}
+      </div>
+    </KpiPanelWrapper>
+  );
+}
+
+// ─── Net Balance Preview Panel ────────────────────────────────────────────────
+function KpiNetBalancePanel({ data, monthLabel, onPanelMouseEnter, onPanelMouseLeave }: any) {
+  if (!data) return null;
+  const maxNet = data.trend ? Math.max(...data.trend.map((d: any) => Math.abs(d.net)), 1) : 1;
+  return (
+    <KpiPanelWrapper onPanelMouseEnter={onPanelMouseEnter} onPanelMouseLeave={onPanelMouseLeave}>
+      <div className="bg-gradient-to-r from-cyan-900/60 to-teal-900/40 px-4 py-3 border-b border-slate-700/60">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">📈</span>
+          <div>
+            <p className="text-[10px] font-black text-cyan-400 uppercase tracking-wider">Net Balance</p>
+            <p className="text-xs font-bold text-slate-300">{monthLabel}</p>
+          </div>
+        </div>
+      </div>
+      <div className="px-4 pt-3 pb-3">
+        {/* Calculation */}
+        <div className="space-y-1.5 mb-3">
+          <div className="flex justify-between items-center">
+            <span className="text-xs text-slate-400 font-semibold">Income</span>
+            <span className="text-xs font-black text-green-400 font-mono">₹{Number(data.income).toLocaleString('en-IN')}</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-xs text-slate-400 font-semibold">− Expenses</span>
+            <span className="text-xs font-black text-red-400 font-mono">₹{Number(data.expenses).toLocaleString('en-IN')}</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-xs text-slate-400 font-semibold">− Savings</span>
+            <span className="text-xs font-black text-blue-400 font-mono">₹{Number(data.savings).toLocaleString('en-IN')}</span>
+          </div>
+          <div className="border-t border-dashed border-slate-700 pt-1.5 flex justify-between items-center">
+            <span className="text-xs font-black text-white">Net Balance</span>
+            <span className={`text-sm font-black font-mono ${data.balance >= 0 ? 'text-green-400' : 'text-red-400'}`}>₹{Number(data.balance).toLocaleString('en-IN')}</span>
+          </div>
+        </div>
+
+        {/* 6-Month Trend Bar Chart */}
+        {data.trend && (
+          <>
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-2">6-Month Net Trend</p>
+            <div className="flex items-end gap-1.5 h-16">
+              {data.trend.map((d: any, i: number) => {
+                const heightPct = Math.abs(d.net) / maxNet * 100;
+                const isPos = d.net >= 0;
+                const isCurrent = i === data.trend.length - 1;
+                return (
+                  <div key={d.month} className="flex flex-col items-center flex-1 gap-0.5">
+                    <div
+                      className={`w-full rounded-t-md transition-all ${
+                        isCurrent ? (isPos ? 'bg-cyan-400' : 'bg-red-400') : (isPos ? 'bg-cyan-700/60' : 'bg-red-700/60')
+                      }`}
+                      style={{ height: `${Math.max(heightPct, 4)}%` }}
+                      title={`${d.month}: ₹${d.net.toLocaleString('en-IN')}`}
+                    />
+                    <span className={`text-[8px] font-bold ${isCurrent ? 'text-cyan-400' : 'text-slate-500'}`}>{d.month}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </div>
+    </KpiPanelWrapper>
   );
 }
 
