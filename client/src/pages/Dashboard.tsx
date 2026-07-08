@@ -871,32 +871,32 @@ export default function Dashboard() {
   );
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-300">
+    <div className="space-y-4.5 animate-in fade-in duration-300">
       {/* Personalized Greeting Header */}
-      <div className="flex justify-between items-start flex-wrap gap-4 bg-gradient-to-r from-primary/10 to-purple-500/10 p-6 rounded-3xl border border-primary/15 relative overflow-hidden">
-        <div className="space-y-1">
-          <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">{getGreeting()}</h1>
-          <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">
+      <div className="flex justify-between items-center flex-wrap gap-3 bg-gradient-to-r from-primary/10 to-purple-500/10 py-3.5 px-5 rounded-2xl border border-primary/15 relative overflow-hidden">
+        <div className="space-y-0.5 max-w-[72%]">
+          <h1 className="text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">{getGreeting()}</h1>
+          <p className="text-[11px] font-bold text-slate-600 dark:text-slate-300">
             {totalsData.current.balance >= 0 
               ? `You saved ₹${totalsData.current.balance.toLocaleString('en-IN')} this month. Keep it up! 🚀`
               : `You spent ₹${Math.abs(totalsData.current.balance).toLocaleString('en-IN')} over your income this month. Keep an eye on budgets! ⚠️`}
           </p>
-          <div className="text-[10px] text-slate-400 mt-2 font-medium flex items-center">
-            <span className="w-2 h-2 rounded-full bg-green-500 mr-1.5 animate-pulse" />
+          <div className="text-[9px] text-slate-400 mt-1 font-medium flex items-center">
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500 mr-1.5 animate-pulse" />
             Last Updated: {lastUpdated}
           </div>
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-2 self-center">
           <button 
             onClick={() => setIsCustomizing(!isCustomizing)}
-            className="flex items-center space-x-1.5 text-xs font-semibold px-3.5 py-2 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 transition"
+            className="flex items-center space-x-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 transition"
           >
-            <LayoutGrid className="w-4 h-4 text-slate-500" />
-            <span>{isCustomizing ? 'Done Customizing' : 'Customize Widgets'}</span>
+            <LayoutGrid className="w-3.5 h-3.5 text-slate-500" />
+            <span>{isCustomizing ? 'Done' : 'Customize Widgets'}</span>
           </button>
-          <button onClick={fetchAll} className="p-2.5 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 transition">
-            <RefreshCw className="w-4.5 h-4.5 text-slate-500" />
+          <button onClick={fetchAll} className="p-2 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 transition">
+            <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
           </button>
         </div>
       </div>

@@ -26,20 +26,23 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
     <div className="flex h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 transition-colors overflow-hidden">
       
       {/* Desktop Sidebar (hidden on mobile) */}
-      <aside className="w-64 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 flex flex-col hidden md:flex flex-shrink-0">
-        <div className="h-16 flex items-center px-6 border-b border-slate-200 dark:border-slate-800">
-          <Wallet className="w-6 h-6 text-primary mr-2" />
-          <span className="font-bold text-md tracking-tight">VENKE finance</span>
+      <aside className="w-52 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 flex flex-col hidden md:flex flex-shrink-0">
+        <div className="h-16 flex flex-col justify-center px-4 border-b border-slate-200 dark:border-slate-800">
+          <div className="flex items-center">
+            <Wallet className="w-4.5 h-4.5 text-primary mr-1.5" />
+            <span className="font-extrabold text-sm tracking-tight uppercase">VENKE finance</span>
+          </div>
+          <span className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-0.5 ml-6">Track • Save • Grow</span>
         </div>
-        <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
+        <nav className="flex-1 px-3 py-4 space-y-1.5 overflow-y-auto">
           {navItems.map(item => (
             <NavItem key={item.to} to={item.to} icon={item.icon} label={item.label} />
           ))}
-          <div className="pt-4 mt-4 border-t border-slate-200 dark:border-slate-800/60">
+          <div className="pt-3 mt-3 border-t border-slate-200 dark:border-slate-800/60">
             <NavItem to="/import" icon={<Upload size={20} />} label="Import Data" />
           </div>
         </nav>
-        <div className="p-4 border-t border-slate-200 dark:border-slate-800">
+        <div className="p-3 border-t border-slate-200 dark:border-slate-800">
           <NavItem to="/settings" icon={<Settings size={20} />} label="Settings" />
         </div>
       </aside>
@@ -52,10 +55,13 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
           
           {/* Drawer body */}
           <aside className="relative flex w-64 max-w-xs flex-col bg-white dark:bg-slate-950 border-r border-slate-200 dark:border-slate-800 h-full p-5 shadow-2xl animate-in slide-in-from-left duration-200 z-10">
-            <div className="flex items-center justify-between pb-6 border-b border-slate-150 dark:border-slate-800">
-              <div className="flex items-center">
-                <Wallet className="w-6 h-6 text-primary mr-2" />
-                <span className="font-bold text-sm">VENKE finance</span>
+            <div className="flex items-center justify-between pb-4 border-b border-slate-150 dark:border-slate-800">
+              <div className="flex flex-col justify-center">
+                <div className="flex items-center">
+                  <Wallet className="w-4.5 h-4.5 text-primary mr-1.5" />
+                  <span className="font-extrabold text-sm tracking-tight uppercase">VENKE finance</span>
+                </div>
+                <span className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-0.5 ml-6">Track • Save • Grow</span>
               </div>
               <button onClick={closeDrawer} className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
                 <X size={20} />
@@ -138,7 +144,7 @@ function NavItem({ to, icon, label, onClick }: { to: string; icon: ReactNode; la
       to={to}
       onClick={onClick}
       className={({ isActive }) =>
-        `flex items-center space-x-3 px-4 py-2.5 rounded-xl transition-all duration-200 text-xs font-bold ${
+        `flex items-center space-x-3 px-4 py-1.5 rounded-xl transition-all duration-200 text-xs font-bold ${
           isActive 
             ? 'bg-primary text-white shadow-md shadow-primary/20' 
             : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'
