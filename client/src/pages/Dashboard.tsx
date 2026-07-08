@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
-import { Plus, Search, RefreshCw, Calendar, Flame, LayoutGrid, CheckCircle2, Target, AlertTriangle, TrendingUp, Info, X } from 'lucide-react';
+import { Plus, Search, RefreshCw, Calendar, Flame, LayoutGrid, CheckCircle2, Target, AlertTriangle, TrendingUp, Info, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import axios from 'axios';
 import Button from '../components/ui/Button';
 
@@ -50,6 +50,40 @@ export default function Dashboard() {
     return saved ? JSON.parse(saved) : DEFAULT_WIDGETS;
   });
   const [isCustomizing, setIsCustomizing] = useState(false);
+
+  // Carousel Refs & Drag Interaction Handlers
+  const insightsScrollRef = useRef<HTMLDivElement>(null);
+  const [isDraggingInsights, setIsDraggingInsights] = useState(false);
+  const insightsStartX = useRef(0);
+  const insightsScrollLeft = useRef(0);
+
+  const handleInsightsMouseDown = (e: React.MouseEvent) => {
+    if (!insightsScrollRef.current) return;
+    setIsDraggingInsights(true);
+    insightsStartX.current = e.pageX - insightsScrollRef.current.offsetLeft;
+    insightsScrollLeft.current = insightsScrollRef.current.scrollLeft;
+  };
+
+  const handleInsightsMouseMove = (e: React.MouseEvent) => {
+    if (!isDraggingInsights || !insightsScrollRef.current) return;
+    e.preventDefault();
+    const x = e.pageX - insightsScrollRef.current.offsetLeft;
+    const walk = (x - insightsStartX.current) * 1.5;
+    insightsScrollRef.current.scrollLeft = insightsScrollLeft.current - walk;
+  };
+
+  const handleInsightsMouseUpOrLeave = () => {
+    setIsDraggingInsights(false);
+  };
+
+  const scrollInsights = (direction: 'left' | 'right') => {
+    if (!insightsScrollRef.current) return;
+    const scrollAmount = 305;
+    insightsScrollRef.current.scrollTo({
+      left: insightsScrollRef.current.scrollLeft + (direction === 'left' ? -scrollAmount : scrollAmount),
+      behavior: 'smooth'
+    });
+  };
 
 
 
@@ -318,6 +352,9 @@ export default function Dashboard() {
           : 'text-green-500 bg-green-500/10 border-green-500/20';
       }
 
+      // Flag for not enough history (less than 2 months of history)
+      const notEnoughHistory = uniqueMonths.length < 2;
+
       return {
         id: cat.id,
         name: cat.name,
@@ -331,7 +368,8 @@ export default function Dashboard() {
         highestSpendDay,
         lastTransactionDay,
         avgMonthlySpend,
-        colorClass
+        colorClass,
+        notEnoughHistory
       };
     }).filter(insight => insight.currMonthTotal > 0 || insight.prevMonthTotal > 0);
   };
@@ -641,7 +679,31 @@ export default function Dashboard() {
 
       {/* FINANCIAL INSIGHTS SECTION */}
       {widgets.financialInsights && (
-        <div className="space-y-4">
+        <div className="space-y-4 animate-in fade-in duration-500">
+          <style>{`
+            @keyframes slideUpFade {
+              from {
+                opacity: 0;
+                transform: translateY(20px);
+              }
+              to {
+                opacity: 1;
+                transform: translateY(0);
+              }
+            }
+            .animate-slide-up {
+              animation: slideUpFade 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+              opacity: 0;
+            }
+            .no-scrollbar::-webkit-scrollbar {
+              display: none;
+            }
+            .no-scrollbar {
+              -ms-overflow-style: none;
+              scrollbar-width: none;
+            }
+          `}</style>
+
           <div className="flex items-center justify-between pb-1">
             <div>
               <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
@@ -649,6 +711,26 @@ export default function Dashboard() {
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-medium">Smart category spending trends and sparkline comparisons compared to last month</p>
             </div>
+
+            {/* Navigation Arrows */}
+            {getTrendInsights().length > 0 && (
+              <div className="flex items-center space-x-2 shrink-0">
+                <button
+                  onClick={() => scrollInsights('left')}
+                  className="p-2.5 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900 text-slate-600 dark:text-slate-350 transition-colors shadow-sm"
+                  title="Scroll Left"
+                >
+                  <ChevronLeft className="w-4.5 h-4.5" />
+                </button>
+                <button
+                  onClick={() => scrollInsights('right')}
+                  className="p-2.5 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900 text-slate-600 dark:text-slate-350 transition-colors shadow-sm"
+                  title="Scroll Right"
+                >
+                  <ChevronRight className="w-4.5 h-4.5" />
+                </button>
+              </div>
+            )}
           </div>
 
           {getTrendInsights().length === 0 ? (
@@ -656,72 +738,22 @@ export default function Dashboard() {
               No category spending trends available for this period. Add expenses or savings to view insights.
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-5">
-              {getTrendInsights().map(item => {
-                const isIncrease = item.difference > 0;
-                const hasChange = item.difference !== 0;
-                
-                // Format dynamic contextual label based on category
-                let contextLabel = `Last transaction: ${item.lastTransactionDay || '—'}`;
-                if (item.name.toLowerCase().includes('food') && item.highestSpendDay) {
-                  contextLabel = `Highest spend: ${item.highestSpendDay}`;
-                } else if ((item.name.toLowerCase().includes('fuel') || item.name.toLowerCase().includes('travel')) && item.lastTransactionDay) {
-                  contextLabel = `Last refill: ${item.lastTransactionDay}`;
-                } else if (item.type === 'savings') {
-                  contextLabel = `Avg saved: ₹${item.avgMonthlySpend.toFixed(0)}`;
-                } else {
-                  contextLabel = `Avg spend: ₹${item.avgMonthlySpend.toFixed(0)}`;
-                }
-
-                return (
-                  <div 
-                    key={item.id}
-                    className="bg-white dark:bg-slate-950 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between space-y-4 relative overflow-hidden group hover:shadow-md hover:scale-[1.01] transition-all"
-                  >
-                    <div className="flex justify-between items-start">
-                      <div className="flex items-center space-x-2.5">
-                        <span className="text-2xl p-2 bg-slate-50 dark:bg-slate-900 rounded-xl" role="img" aria-label={item.name}>
-                          {getCategoryIcon(item.name)}
-                        </span>
-                        <div>
-                          <h4 className="text-xs font-black text-slate-400 uppercase tracking-wider">{item.name}</h4>
-                          <p className="text-lg font-black text-slate-900 dark:text-white mt-0.5">
-                            ₹{item.currMonthTotal.toLocaleString('en-IN')}
-                          </p>
-                        </div>
-                      </div>
-
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase border shrink-0 ${item.colorClass}`}>
-                        {hasChange ? (isIncrease ? '▲' : '▼') : '•'} {Math.abs(item.pctChange).toFixed(0)}%
-                      </span>
-                    </div>
-
-                    <div className="flex items-end justify-between pt-1">
-                      <div className="text-[10px] text-slate-500 font-semibold space-y-0.5">
-                        <p className={hasChange ? (isIncrease ? 'text-red-400' : 'text-green-400') : 'text-slate-450'}>
-                          {hasChange ? (isIncrease ? '+' : '-') : ''}₹{Math.abs(item.difference).toLocaleString('en-IN')} vs last month
-                        </p>
-                        <p className="text-slate-400 font-medium">{contextLabel}</p>
-                      </div>
-
-                      {/* MINI SPARKLINE */}
-                      <div className="w-16 h-8 opacity-80 hover:opacity-100 transition-opacity">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <LineChart data={item.sparklineData}>
-                            <Line 
-                              type="monotone" 
-                              dataKey="amount" 
-                              stroke={item.difference > 0 ? (item.type === 'savings' ? '#10b981' : '#ef4444') : item.difference < 0 ? (item.type === 'savings' ? '#ef4444' : '#10b981') : '#3b82f6'} 
-                              strokeWidth={1.8} 
-                              dot={false} 
-                            />
-                          </LineChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+            <div 
+              ref={insightsScrollRef}
+              onMouseDown={handleInsightsMouseDown}
+              onMouseMove={handleInsightsMouseMove}
+              onMouseUp={handleInsightsMouseUpOrLeave}
+              onMouseLeave={handleInsightsMouseUpOrLeave}
+              className="flex overflow-x-auto gap-5 pb-3 pt-1 no-scrollbar cursor-grab active:cursor-grabbing scroll-smooth select-none w-full"
+            >
+              {getTrendInsights().map((item, idx) => (
+                <InsightCard 
+                  key={item.id} 
+                  item={item} 
+                  index={idx} 
+                  getCategoryIcon={getCategoryIcon} 
+                />
+              ))}
             </div>
           )}
         </div>
@@ -1416,5 +1448,175 @@ function XIcon(props: any) {
       <line x1="18" y1="6" x2="6" y2="18" />
       <line x1="6" y1="6" x2="18" y2="18" />
     </svg>
+  );
+}
+
+// Counting animation component
+function AnimatedNumber({ value, prefix = "" }: { value: number; prefix?: string }) {
+  const [displayValue, setDisplayValue] = useState(value);
+  const prevValueRef = useRef(value);
+
+  useEffect(() => {
+    const start = prevValueRef.current;
+    const end = value;
+    if (start === end) return;
+
+    const duration = 750; // ms
+    const startTime = performance.now();
+    let animFrameId: number;
+
+    const animate = (now: number) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      
+      // easeOutCubic
+      const ease = 1 - Math.pow(1 - progress, 3);
+      const current = start + (end - start) * ease;
+      
+      setDisplayValue(current);
+
+      if (progress < 1) {
+        animFrameId = requestAnimationFrame(animate);
+      } else {
+        prevValueRef.current = value;
+      }
+    };
+
+    animFrameId = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(animFrameId);
+  }, [value]);
+
+  return <>{prefix}{Math.round(displayValue).toLocaleString('en-IN')}</>;
+}
+
+interface InsightCardProps {
+  item: any;
+  index: number;
+  getCategoryIcon: (name: string) => string;
+}
+
+function InsightCard({ item, index, getCategoryIcon }: InsightCardProps) {
+  const isIncrease = item.difference > 0;
+  const hasChange = item.difference !== 0;
+  const notEnoughHistory = item.notEnoughHistory;
+
+  // Color selection: green for decrease in expenses, red for increase in expenses, blue for neutral
+  let badgeColorClass = 'bg-blue-500/10 text-blue-500 border border-blue-500/25';
+  let badgeText = '— 0%';
+  let lineColor = '#3b82f6';
+
+  if (hasChange) {
+    if (isIncrease) {
+      badgeColorClass = item.type === 'savings'
+        ? 'bg-green-500/10 text-green-500 border border-green-500/25'
+        : 'bg-red-500/10 text-red-500 border border-red-500/25';
+      badgeText = `▲ +${Math.round(item.pctChange)}%`;
+      lineColor = item.type === 'savings' ? '#10b981' : '#ef4444';
+    } else {
+      badgeColorClass = item.type === 'savings'
+        ? 'bg-red-500/10 text-red-500 border border-red-500/25'
+        : 'bg-green-500/10 text-green-500 border border-green-500/25';
+      badgeText = `▼ -${Math.round(Math.abs(item.pctChange))}%`;
+      lineColor = item.type === 'savings' ? '#ef4444' : '#10b981';
+    }
+  }
+
+  // Find the last month label in sparkline
+  const lastMonthLabel = item.sparklineData[item.sparklineData.length - 1]?.month;
+
+  // Format contextual label based on category
+  let contextLabel = `Last transaction: ${item.lastTransactionDay || '—'}`;
+  if (item.name.toLowerCase().includes('food') && item.highestSpendDay) {
+    contextLabel = `Highest spend: ${item.highestSpendDay}`;
+  } else if ((item.name.toLowerCase().includes('fuel') || item.name.toLowerCase().includes('travel')) && item.lastTransactionDay) {
+    contextLabel = `Last refill: ${item.lastTransactionDay}`;
+  } else if (item.type === 'savings') {
+    contextLabel = `Avg saved: ₹${Math.round(item.avgMonthlySpend).toLocaleString('en-IN')}`;
+  } else {
+    contextLabel = `Avg spend: ₹${Math.round(item.avgMonthlySpend).toLocaleString('en-IN')}`;
+  }
+
+  return (
+    <div 
+      className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl w-[285px] h-[265px] flex-shrink-0 flex flex-col justify-between hover:-translate-y-1.5 hover:scale-[1.02] hover:shadow-lg dark:hover:bg-slate-900/60 dark:hover:border-slate-750 transition-all duration-250 ease-out cursor-grab active:cursor-grabbing animate-slide-up relative overflow-hidden group select-none"
+      style={{ animationDelay: `${index * 100}ms` }}
+    >
+      {/* Top section: Icon & Trend Badge */}
+      <div className="flex justify-between items-center w-full">
+        <span className="text-2xl p-2 bg-slate-50 dark:bg-slate-900 rounded-xl flex-shrink-0" role="img" aria-label={item.name}>
+          {getCategoryIcon(item.name)}
+        </span>
+
+        {!notEnoughHistory && (
+          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[9px] font-black tracking-wider uppercase shrink-0 transition-transform group-hover:scale-105 duration-200 ${badgeColorClass}`}>
+            {badgeText}
+          </span>
+        )}
+      </div>
+
+      {/* Middle Section: Category Name & Amount */}
+      <div className="mt-3.5 space-y-1 flex-1">
+        <h4 
+          className="text-xs font-black text-slate-400 uppercase tracking-wider line-clamp-2 min-h-[32px] flex items-center cursor-help"
+          title={item.name}
+        >
+          {item.name}
+        </h4>
+        <p className="text-2xl font-black text-slate-900 dark:text-white font-mono tracking-tight">
+          ₹<AnimatedNumber value={item.currMonthTotal} />
+        </p>
+      </div>
+
+      {/* Bottom-Middle Section: Difference vs Last Month & Avg Spend */}
+      <div className="mt-3 space-y-0.5 text-[10px] font-semibold flex-shrink-0">
+        {notEnoughHistory ? (
+          <div className="space-y-0.5 py-1">
+            <p className="text-amber-500 font-extrabold uppercase tracking-wide">Not enough history yet</p>
+            <p className="text-slate-500 font-medium leading-normal">Start adding transactions to view trends.</p>
+          </div>
+        ) : (
+          <>
+            <p className="text-slate-500 font-semibold leading-normal">
+              <span className={isIncrease ? (item.type === 'savings' ? 'text-green-500' : 'text-red-400') : (item.type === 'savings' ? 'text-red-400' : 'text-green-400')}>
+                {isIncrease ? '+' : '-'}₹<AnimatedNumber value={Math.abs(item.difference)} />
+              </span>{' '}
+              vs last month
+            </p>
+            <p className="text-slate-400 font-medium">{contextLabel}</p>
+          </>
+        )}
+      </div>
+
+      {/* Mini Sparkline anchored to the bottom */}
+      <div className="w-full h-12 mt-2 -mx-5 -mb-5 relative overflow-hidden rounded-b-2xl self-end">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={item.sparklineData} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
+            <defs>
+              <linearGradient id={`gradient-${item.id}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor={lineColor} stopOpacity={0.25}/>
+                <stop offset="95%" stopColor={lineColor} stopOpacity={0.01}/>
+              </linearGradient>
+            </defs>
+            <Area 
+              type="monotone" 
+              dataKey="amount" 
+              stroke={lineColor} 
+              strokeWidth={1.8} 
+              fill={`url(#gradient-${item.id})`}
+              dot={({ payload, cx, cy }) => {
+                if (payload.month === lastMonthLabel) {
+                  return <circle cx={cx} cy={cy} r={3.5} fill={lineColor} stroke={lineColor} strokeWidth={1} />;
+                }
+                return null;
+              }}
+            />
+            <Tooltip 
+              contentStyle={{ backgroundColor: '#0f172a', borderColor: '#1e293b', borderRadius: '8px', fontSize: '10px', color: '#fff', padding: '4px 8px' }} 
+              formatter={(v: any) => [`₹${Number(v).toFixed(0)}`, '']}
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
   );
 }
