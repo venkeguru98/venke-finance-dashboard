@@ -887,7 +887,10 @@ export default function Dashboard() {
       {/* Personalized Greeting Header */}
       <div className="flex justify-between items-center flex-wrap gap-3 bg-gradient-to-r from-primary/10 to-purple-500/10 py-3.5 px-5 rounded-2xl border border-primary/15 relative overflow-hidden">
         <div className="space-y-0.5 max-w-[72%]">
-          <h1 className="text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">{getGreeting()}</h1>
+          <h1 className="text-xl font-extrabold text-slate-900 dark:text-white tracking-tight flex items-center gap-2 flex-wrap">
+            {getGreeting()}
+            <span className="text-[10px] font-black text-primary bg-primary/15 px-2 py-0.5 rounded-lg border border-primary/20 uppercase tracking-wider">{currentMonthLabel}</span>
+          </h1>
           <p className="text-[11px] font-bold text-slate-600 dark:text-slate-300">
             {totalsData.current.balance >= 0 
               ? `You saved ₹${totalsData.current.balance.toLocaleString('en-IN')} this month. Keep it up! 🚀`
@@ -1030,7 +1033,7 @@ export default function Dashboard() {
             @keyframes slideUpFade {
               from {
                 opacity: 0;
-                transform: translateY(20px);
+                transform: translateY(12px);
               }
               to {
                 opacity: 1;
@@ -1038,7 +1041,7 @@ export default function Dashboard() {
               }
             }
             .animate-slide-up {
-              animation: slideUpFade 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+              animation: slideUpFade 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
               opacity: 0;
             }
             .no-scrollbar::-webkit-scrollbar {
@@ -1047,6 +1050,21 @@ export default function Dashboard() {
             .no-scrollbar {
               -ms-overflow-style: none;
               scrollbar-width: none;
+            }
+            /* Custom thin scrollbars for dashboard content viewports */
+            ::-webkit-scrollbar {
+              width: 5px;
+              height: 5px;
+            }
+            ::-webkit-scrollbar-track {
+              background: transparent;
+            }
+            ::-webkit-scrollbar-thumb {
+              background: #334155;
+              border-radius: 9999px;
+            }
+            ::-webkit-scrollbar-thumb:hover {
+              background: #475569;
             }
           `}</style>
 
@@ -1080,8 +1098,11 @@ export default function Dashboard() {
           </div>
 
           {getTrendInsights().length === 0 ? (
-            <div className="py-8 text-center text-xs font-semibold text-slate-500 bg-white dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 border-dashed">
-              No category spending trends available for this period. Add expenses or savings to view insights.
+            <div className="py-12 text-center flex flex-col items-center justify-center bg-white dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 border-dashed">
+              <span className="text-3xl mb-2">💡</span>
+              <p className="text-xs font-bold text-slate-500 max-w-[280px]">
+                No category spending trends available for this period. Add expenses or savings to view insights.
+              </p>
             </div>
           ) : (
             <div 
@@ -1211,7 +1232,12 @@ export default function Dashboard() {
           <div className="lg:col-span-2 bg-white dark:bg-slate-950 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
             <h3 className="text-base font-bold text-slate-900 dark:text-white mb-6">Cash Flow Trends</h3>
             {!hasData ? (
-              <div className="h-60 flex items-center justify-center text-slate-400">Add transactions to render trend</div>
+              <div className="h-60 flex flex-col items-center justify-center text-center p-4">
+                <span className="text-3xl mb-2">📉</span>
+                <p className="text-xs font-bold text-slate-500 max-w-[240px]">
+                  No transactions available for this month. Start by adding your first transaction.
+                </p>
+              </div>
             ) : (
               <div className="h-60">
                 <ResponsiveContainer width="100%" height="100%">
@@ -1222,16 +1248,16 @@ export default function Dashboard() {
                         <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
                       </linearGradient>
                       <linearGradient id="colorExp" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#EF4444" stopOpacity={0.2}/>
-                        <stop offset="95%" stopColor="#EF4444" stopOpacity={0}/>
+                        <stop offset="5%" stopColor="#F43F5E" stopOpacity={0.2}/>
+                        <stop offset="95%" stopColor="#F43F5E" stopOpacity={0}/>
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.15}/>
                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b'}}/>
                     <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b'}} tickFormatter={v => `₹${(v/1000).toFixed(0)}k`}/>
-                    <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '12px', color: '#fff' }}/>
+                    <Tooltip content={<StandardChartTooltip />} />
                     <Area type="monotone" dataKey="income" name="Income" stroke="#10B981" strokeWidth={2.5} fillOpacity={1} fill="url(#colorInc)"/>
-                    <Area type="monotone" dataKey="expense" name="Expense" stroke="#EF4444" strokeWidth={2.5} fillOpacity={1} fill="url(#colorExp)"/>
+                    <Area type="monotone" dataKey="expense" name="Expense" stroke="#F43F5E" strokeWidth={2.5} fillOpacity={1} fill="url(#colorExp)"/>
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
@@ -1253,13 +1279,19 @@ export default function Dashboard() {
               <div className="flex-1 flex flex-col items-center justify-center text-center p-4">
                 <span className="text-3xl mb-2">📈</span>
                 <p className="text-xs font-bold text-slate-500 max-w-[200px]">
-                  Start adding monthly transactions to see your Net Balance Trend.
+                  No transactions available for this month. Start by adding your first transaction.
                 </p>
               </div>
             ) : (
               <div className="flex-1 w-full min-h-[160px] mt-2 relative">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={trendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <AreaChart data={trendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="colorNet" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#8B5CF6" stopOpacity={0.2}/>
+                        <stop offset="95%" stopColor="#8B5CF6" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.15} vertical={false} />
                     <XAxis 
                       dataKey="monthLabel" 
@@ -1280,16 +1312,30 @@ export default function Dashboard() {
                       }}
                     />
                     <Tooltip content={<NetBalanceTooltip />} />
-                    <Line 
+                    <Area 
                       type="monotone" 
                       dataKey="netBalance" 
-                      stroke="#3B82F6" 
+                      name="Net Balance"
+                      stroke="#8B5CF6" 
                       strokeWidth={2.5} 
-                      dot={{ r: 4, stroke: '#3B82F6', strokeWidth: 1.5, fill: '#fff' }} 
-                      activeDot={{ r: 6, stroke: '#3B82F6', strokeWidth: 2, fill: '#fff' }}
+                      fillOpacity={1}
+                      fill="url(#colorNet)"
+                      dot={({ payload, cx, cy }) => {
+                        const isSelected = payload.monthLabel === currentMonthLabel;
+                        if (isSelected) {
+                          return (
+                            <g key={payload.monthLabel}>
+                              <circle cx={cx} cy={cy} r={7} fill="#8B5CF6" opacity={0.3} />
+                              <circle cx={cx} cy={cy} r={4} fill="#8B5CF6" stroke="#fff" strokeWidth={1.5} />
+                            </g>
+                          );
+                        }
+                        return <circle key={payload.monthLabel} cx={cx} cy={cy} r={3} fill="#8B5CF6" stroke="#fff" strokeWidth={1} />;
+                      }}
+                      activeDot={{ r: 6, stroke: '#8B5CF6', strokeWidth: 2, fill: '#fff' }}
                       animationDuration={1500} 
                     />
-                  </LineChart>
+                  </AreaChart>
                 </ResponsiveContainer>
               </div>
             )}
@@ -1713,7 +1759,7 @@ export default function Dashboard() {
                       <AreaChart data={selectedInsight.sparklineData} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
                         <XAxis dataKey="month" stroke="#64748b" fontSize={9} tickLine={false} axisLine={false} />
                         <YAxis stroke="#64748b" fontSize={9} tickLine={false} axisLine={false} tickFormatter={v => `₹${v}`} />
-                        <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#1e293b', borderRadius: '8px', fontSize: '10px' }} />
+                        <Tooltip content={<StandardChartTooltip />} />
                         <Area type="monotone" dataKey="amount" stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.1} />
                       </AreaChart>
                     </ResponsiveContainer>
@@ -2035,8 +2081,11 @@ function MonthOverMonthComparisonWidget({ data, navigate }: { data: any; navigat
       </div>
 
       {!prevMonthHasData ? (
-        <div className="py-6 text-center text-sm text-slate-400 bg-slate-50 dark:bg-slate-900 rounded-xl border border-dashed border-slate-200 dark:border-slate-800">
-          No previous month data available. Add historical transactions to view comparisons.
+        <div className="py-12 text-center flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900 rounded-xl border border-dashed border-slate-200 dark:border-slate-800">
+          <span className="text-3xl mb-2">📊</span>
+          <p className="text-xs font-bold text-slate-500 max-w-[280px]">
+            No previous month data available. Add historical transactions to view comparisons.
+          </p>
         </div>
       ) : (
         <>
@@ -2105,6 +2154,29 @@ function MonthOverMonthComparisonWidget({ data, navigate }: { data: any; navigat
     </div>
   );
 }
+
+// Reusable standard tooltip component for Dashboard charts
+const StandardChartTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-slate-950/95 border border-slate-800 rounded-xl p-3.5 shadow-xl space-y-1.5 text-xs font-semibold text-slate-300">
+        <p className="font-extrabold text-white text-sm border-b border-slate-800 pb-1">{label}</p>
+        <div className="space-y-1">
+          {payload.map((item: any, i: number) => (
+            <div key={i} className="flex justify-between space-x-6">
+              <span className="flex items-center">
+                <span className="w-1.5 h-1.5 rounded-full mr-1.5" style={{ backgroundColor: item.stroke || item.fill }} />
+                {item.name}
+              </span>
+              <span className="font-mono text-white">{formatIndianRupee(Number(item.value))}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  return null;
+};
 
 // Tooltip component for Net Balance Trend chart
 const NetBalanceTooltip = ({ active, payload }: any) => {
@@ -2734,7 +2806,7 @@ function InsightCard({ item, index, getCategoryIcon }: InsightCardProps) {
 
   return (
     <div 
-      className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl w-[285px] h-[265px] flex-shrink-0 flex flex-col justify-between hover:-translate-y-1.5 hover:scale-[1.02] hover:shadow-lg dark:hover:bg-slate-900/60 dark:hover:border-slate-750 transition-all duration-250 ease-out cursor-grab active:cursor-grabbing animate-slide-up relative overflow-hidden group select-none"
+      className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl w-[285px] h-[265px] flex-shrink-0 flex flex-col justify-between hover:-translate-y-1 hover:shadow-xl dark:hover:shadow-black/40 hover:border-primary/30 transition-all duration-200 ease-out cursor-grab active:cursor-grabbing animate-slide-up relative overflow-hidden group select-none"
       style={{ animationDelay: `${index * 100}ms` }}
     >
       {/* Top row: Icon and Badge */}
@@ -2797,10 +2869,7 @@ function InsightCard({ item, index, getCategoryIcon }: InsightCardProps) {
                 return null;
               }}
             />
-            <Tooltip 
-              contentStyle={{ backgroundColor: '#0f172a', borderColor: '#1e293b', borderRadius: '8px', fontSize: '10px', color: '#fff', padding: '4px 8px' }} 
-              formatter={(v: any) => [`₹${Number(v).toFixed(0)}`, '']}
-            />
+            <Tooltip content={<StandardChartTooltip />} />
           </AreaChart>
         </ResponsiveContainer>
       </div>
