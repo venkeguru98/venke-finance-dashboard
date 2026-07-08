@@ -11,6 +11,7 @@ const COLORS = ['#F59E0B', '#8B5CF6', '#3B82F6', '#EC4899', '#10B981', '#EF4444'
 // Default widget visibility states
 const DEFAULT_WIDGETS = {
   summaryCards: true,
+  financialInsights: true,
   quickActions: true,
   healthScore: true,
   cashFlow: true,
@@ -218,6 +219,121 @@ export default function Dashboard() {
       return t.type === type ? t.amount : 0;
     });
     return data.map((v, i) => ({ value: v, idx: i }));
+  };
+
+  // Category Icon helper returning expressive emoji
+  const getCategoryIcon = (name: string) => {
+    const n = name.toLowerCase();
+    if (n.includes('food') || n.includes('eat') || n.includes('grocer') || n.includes('restaur')) return '🍔';
+    if (n.includes('fuel') || n.includes('travel') || n.includes('car') || n.includes('petrol')) return '🚗';
+    if (n.includes('home') || n.includes('rent') || n.includes('house') || n.includes('bill')) return '🏠';
+    if (n.includes('invest') || n.includes('save') || n.includes('stock') || n.includes('mutual') || n.includes('gold')) return '💰';
+    if (n.includes('medical') || n.includes('doctor') || n.includes('health') || n.includes('hospital')) return '🏥';
+    if (n.includes('shop') || n.includes('cloth') || n.includes('store')) return '🛍️';
+    if (n.includes('bill') || n.includes('util') || n.includes('elect') || n.includes('water')) return '🔌';
+    if (n.includes('fun') || n.includes('movie') || n.includes('entertain') || n.includes('play')) return '🎬';
+    return '🏷️';
+  };
+
+  // Trend insights calculator for all active expense/savings categories
+  const getTrendInsights = () => {
+    const today = new Date();
+    const currentMonthPrefix = today.toISOString().slice(0, 7); // "YYYY-MM"
+    const prevMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const prevMonthPrefix = prevMonth.toISOString().slice(0, 7);
+
+    // List of last 6 months prefixes (chronological order)
+    const last6MonthsPrefixes: string[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+      last6MonthsPrefixes.push(d.toISOString().slice(0, 7));
+    }
+
+    const insightCategories = categories.filter(c => c.type === 'expense' || c.type === 'savings');
+
+    return insightCategories.map(cat => {
+      const catTx = transactions.filter(t => t.category_id === cat.id);
+      
+      // Current Month transactions in this category
+      const currMonthTx = catTx.filter(t => t.date.startsWith(currentMonthPrefix));
+      const currMonthTotal = currMonthTx.reduce((sum, t) => sum + t.amount, 0);
+
+      // Previous Month transactions
+      const prevMonthTx = catTx.filter(t => t.date.startsWith(prevMonthPrefix));
+      const prevMonthTotal = prevMonthTx.reduce((sum, t) => sum + t.amount, 0);
+
+      // Diff & Pct Change
+      const difference = currMonthTotal - prevMonthTotal;
+      let pctChange = 0;
+      if (prevMonthTotal > 0) {
+        pctChange = ((currMonthTotal - prevMonthTotal) / prevMonthTotal) * 100;
+      } else if (currMonthTotal > 0) {
+        pctChange = 100;
+      }
+
+      // Sparkline (last 6 months totals)
+      const sparklineData = last6MonthsPrefixes.map(prefix => {
+        const total = catTx
+          .filter(t => t.date.startsWith(prefix))
+          .reduce((sum, t) => sum + t.amount, 0);
+        
+        const dObj = new Date(prefix + '-02'); // avoid timezone rollover
+        return {
+          month: dObj.toLocaleString('default', { month: 'short' }),
+          amount: total
+        };
+      });
+
+      // Highest single transaction date this month
+      let highestSpendDay = '';
+      if (currMonthTx.length > 0) {
+        const sorted = [...currMonthTx].sort((a, b) => b.amount - a.amount);
+        const d = new Date(sorted[0].date);
+        highestSpendDay = d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+      }
+
+      // Last transaction date this month
+      let lastTransactionDay = '';
+      if (currMonthTx.length > 0) {
+        const sorted = [...currMonthTx].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        const d = new Date(sorted[0].date);
+        lastTransactionDay = d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+      }
+
+      // All-time monthly average
+      const uniqueMonths = Array.from(new Set(catTx.map(t => t.date.slice(0, 7))));
+      const avgMonthlySpend = uniqueMonths.length > 0 
+        ? catTx.reduce((sum, t) => sum + t.amount, 0) / uniqueMonths.length 
+        : 0;
+
+      // Color mapping: Green for decrease in spending/increase in savings, Red for increase in spending/decrease in savings, Blue for no change
+      let colorClass = 'text-blue-500 bg-blue-500/10 border-blue-500/20';
+      if (difference > 0) {
+        colorClass = cat.type === 'savings'
+          ? 'text-green-500 bg-green-500/10 border-green-500/20'
+          : 'text-red-500 bg-red-500/10 border-red-500/20';
+      } else if (difference < 0) {
+        colorClass = cat.type === 'savings'
+          ? 'text-red-500 bg-red-500/10 border-red-500/20'
+          : 'text-green-500 bg-green-500/10 border-green-500/20';
+      }
+
+      return {
+        id: cat.id,
+        name: cat.name,
+        type: cat.type,
+        color: cat.color || '#94a3b8',
+        currMonthTotal,
+        prevMonthTotal,
+        difference,
+        pctChange,
+        sparklineData,
+        highestSpendDay,
+        lastTransactionDay,
+        avgMonthlySpend,
+        colorClass
+      };
+    }).filter(insight => insight.currMonthTotal > 0 || insight.prevMonthTotal > 0);
   };
 
   // Heatmap Data (spending by day for last 14 days)
@@ -520,6 +636,94 @@ export default function Dashboard() {
               `Last Month Savings Rate: ${(totalsData.previous.income > 0 ? (totalsData.previous.balance / totalsData.previous.income) * 100 : 0).toFixed(1)}%`
             ]}
           />
+        </div>
+      )}
+
+      {/* FINANCIAL INSIGHTS SECTION */}
+      {widgets.financialInsights && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between pb-1">
+            <div>
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <TrendingUp className="w-5.5 h-5.5 text-primary" /> Financial Insights
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-medium">Smart category spending trends and sparkline comparisons compared to last month</p>
+            </div>
+          </div>
+
+          {getTrendInsights().length === 0 ? (
+            <div className="py-8 text-center text-xs font-semibold text-slate-500 bg-white dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 border-dashed">
+              No category spending trends available for this period. Add expenses or savings to view insights.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-5">
+              {getTrendInsights().map(item => {
+                const isIncrease = item.difference > 0;
+                const hasChange = item.difference !== 0;
+                
+                // Format dynamic contextual label based on category
+                let contextLabel = `Last transaction: ${item.lastTransactionDay || '—'}`;
+                if (item.name.toLowerCase().includes('food') && item.highestSpendDay) {
+                  contextLabel = `Highest spend: ${item.highestSpendDay}`;
+                } else if ((item.name.toLowerCase().includes('fuel') || item.name.toLowerCase().includes('travel')) && item.lastTransactionDay) {
+                  contextLabel = `Last refill: ${item.lastTransactionDay}`;
+                } else if (item.type === 'savings') {
+                  contextLabel = `Avg saved: ₹${item.avgMonthlySpend.toFixed(0)}`;
+                } else {
+                  contextLabel = `Avg spend: ₹${item.avgMonthlySpend.toFixed(0)}`;
+                }
+
+                return (
+                  <div 
+                    key={item.id}
+                    className="bg-white dark:bg-slate-950 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between space-y-4 relative overflow-hidden group hover:shadow-md hover:scale-[1.01] transition-all"
+                  >
+                    <div className="flex justify-between items-start">
+                      <div className="flex items-center space-x-2.5">
+                        <span className="text-2xl p-2 bg-slate-50 dark:bg-slate-900 rounded-xl" role="img" aria-label={item.name}>
+                          {getCategoryIcon(item.name)}
+                        </span>
+                        <div>
+                          <h4 className="text-xs font-black text-slate-400 uppercase tracking-wider">{item.name}</h4>
+                          <p className="text-lg font-black text-slate-900 dark:text-white mt-0.5">
+                            ₹{item.currMonthTotal.toLocaleString('en-IN')}
+                          </p>
+                        </div>
+                      </div>
+
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase border shrink-0 ${item.colorClass}`}>
+                        {hasChange ? (isIncrease ? '▲' : '▼') : '•'} {Math.abs(item.pctChange).toFixed(0)}%
+                      </span>
+                    </div>
+
+                    <div className="flex items-end justify-between pt-1">
+                      <div className="text-[10px] text-slate-500 font-semibold space-y-0.5">
+                        <p className={hasChange ? (isIncrease ? 'text-red-400' : 'text-green-400') : 'text-slate-450'}>
+                          {hasChange ? (isIncrease ? '+' : '-') : ''}₹{Math.abs(item.difference).toLocaleString('en-IN')} vs last month
+                        </p>
+                        <p className="text-slate-400 font-medium">{contextLabel}</p>
+                      </div>
+
+                      {/* MINI SPARKLINE */}
+                      <div className="w-16 h-8 opacity-80 hover:opacity-100 transition-opacity">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={item.sparklineData}>
+                            <Line 
+                              type="monotone" 
+                              dataKey="amount" 
+                              stroke={item.difference > 0 ? (item.type === 'savings' ? '#10b981' : '#ef4444') : item.difference < 0 ? (item.type === 'savings' ? '#ef4444' : '#10b981') : '#3b82f6'} 
+                              strokeWidth={1.8} 
+                              dot={false} 
+                            />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
