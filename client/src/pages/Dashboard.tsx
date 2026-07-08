@@ -334,11 +334,28 @@ export default function Dashboard() {
   // Previous Month & Current Month Calculations
   const getTotalsByPeriod = () => {
     const currMonthPrefix = formatLocalYYYYMM(now);
-    const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const prevMonthPrefix = formatLocalYYYYMM(prevMonth);
+    
+    // Find all transaction months before current month that have at least one transaction
+    const monthsWithData = Array.from(new Set(
+      transactions
+        .map(t => t.date.slice(0, 7))
+        .filter(mPrefix => mPrefix < currMonthPrefix)
+    )).sort();
+
+    const prevMonthPrefix = monthsWithData.length > 0 ? monthsWithData[monthsWithData.length - 1] : '';
+
+    const formatMonthLabel = (prefix: string) => {
+      if (!prefix) return '';
+      const [yearStr, monthStr] = prefix.split('-');
+      const d = new Date(parseInt(yearStr, 10), parseInt(monthStr, 10) - 1, 1);
+      return d.toLocaleString('default', { month: 'long', year: 'numeric' });
+    };
+
+    const currentMonthLabel = now.toLocaleString('default', { month: 'long', year: 'numeric' });
+    const prevMonthLabel = formatMonthLabel(prevMonthPrefix);
 
     const currMonthTx = transactions.filter(t => t.date.startsWith(currMonthPrefix));
-    const prevMonthTx = transactions.filter(t => t.date.startsWith(prevMonthPrefix));
+    const prevMonthTx = prevMonthPrefix ? transactions.filter(t => t.date.startsWith(prevMonthPrefix)) : [];
 
     const calculateTotals = (list: any[]) => {
       const inc = list.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
@@ -351,6 +368,7 @@ export default function Dashboard() {
     const previous = calculateTotals(prevMonthTx);
 
     const calcPctChange = (curr: number, prev: number) => {
+      if (!prevMonthPrefix) return 0;
       if (prev === 0) return curr > 0 ? 100 : 0;
       return ((curr - prev) / prev) * 100;
     };
@@ -358,6 +376,8 @@ export default function Dashboard() {
     return {
       current,
       previous,
+      prevMonthLabel,
+      currentMonthLabel,
       pctChange: {
         income: calcPctChange(current.income, previous.income),
         expenses: calcPctChange(current.expenses, previous.expenses),
@@ -758,20 +778,24 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-5">
           <SummaryCard title="Monthly Income" monthLabel={currentMonthLabel} cardKey="income"
             amount={totalsData.current.income} pctChange={totalsData.pctChange.income}
+            prevMonthLabel={totalsData.prevMonthLabel}
             sparklineData={getSparklineData('income')} color="text-green-500" bg="bg-green-500"
             onClick={() => openKpiDrawer('income')} />
           <SummaryCard title="Monthly Expenses" monthLabel={currentMonthLabel} cardKey="expenses"
             amount={totalsData.current.expenses} pctChange={totalsData.pctChange.expenses}
+            prevMonthLabel={totalsData.prevMonthLabel}
             sparklineData={getSparklineData('expense')} color="text-red-500" bg="bg-red-500" inverseTrend
             onClick={() => openKpiDrawer('expenses')} />
           <SummaryCard title="Monthly Savings" monthLabel={currentMonthLabel} cardKey="savings"
             amount={totalsData.current.savings} pctChange={totalsData.pctChange.savings}
+            prevMonthLabel={totalsData.prevMonthLabel}
             sparklineData={getSparklineData('savings')}
             color={totalsData.pctChange.savings >= 0 ? 'text-green-500' : 'text-red-500'}
             bg={totalsData.pctChange.savings >= 0 ? 'bg-green-500' : 'bg-red-500'}
             onClick={() => openKpiDrawer('savings')} />
           <SummaryCard title="Available Balance" monthLabel={currentMonthLabel} cardKey="balance"
             amount={availableBalance} pctChange={totalsData.pctChange.balance}
+            prevMonthLabel={totalsData.prevMonthLabel}
             sparklineData={getSparklineData('balance')} color={availableColor} bg={availableBg}
             onClick={() => openKpiDrawer('balance')}>
             <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 text-[10px] font-semibold text-slate-500 space-y-1">
@@ -787,6 +811,7 @@ export default function Dashboard() {
           </SummaryCard>
           <SummaryCard title="Net Balance" monthLabel={currentMonthLabel} cardKey="netbalance"
             amount={totalsData.current.balance} pctChange={totalsData.pctChange.balance}
+            prevMonthLabel={totalsData.prevMonthLabel}
             sparklineData={getSparklineData('balance')} color={availableColor} bg={availableBg}
             onClick={() => openKpiDrawer('netbalance')}>
             <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 text-[10px] font-semibold text-slate-500 space-y-1">
@@ -801,6 +826,7 @@ export default function Dashboard() {
           </SummaryCard>
           <SummaryCard title="Savings Rate" monthLabel={currentMonthLabel}
             amount={savingsRate} isPercentage pctChange={totalsData.pctChange.savingsRate}
+            prevMonthLabel={totalsData.prevMonthLabel}
             color="text-orange-500" bg="bg-orange-500" />
         </div>
       )}
@@ -1758,10 +1784,10 @@ export default function Dashboard() {
 
 // MoM comparison Widget component
 function MonthOverMonthComparisonWidget({ data, navigate }: { data: any; navigate: any }) {
-  const { current, previous, pctChange } = data;
+  const { current, previous, pctChange, prevMonthLabel, currentMonthLabel } = data;
   
   // Empty state check (if no previous data exists)
-  const prevMonthHasData = previous.income > 0 || previous.expenses > 0 || previous.savings > 0;
+  const prevMonthHasData = !!prevMonthLabel;
 
   const cards = [
     {
@@ -1810,7 +1836,9 @@ function MonthOverMonthComparisonWidget({ data, navigate }: { data: any; navigat
     <div className="space-y-4 bg-white dark:bg-slate-950 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
       <div className="flex items-center space-x-2">
         <Info className="w-5 h-5 text-primary" />
-        <h3 className="text-sm font-bold text-slate-800 dark:text-white uppercase tracking-wider">Month-over-Month Financial Comparison</h3>
+        <h3 className="text-sm font-bold text-slate-800 dark:text-white uppercase tracking-wider">
+          Month-over-Month Financial Comparison ({currentMonthLabel} vs {prevMonthLabel || 'N/A'})
+        </h3>
       </div>
 
       {!prevMonthHasData ? (
@@ -1843,10 +1871,10 @@ function MonthOverMonthComparisonWidget({ data, navigate }: { data: any; navigat
                   
                   <div className="space-y-0.5">
                     <p className="text-xs text-slate-600 dark:text-slate-400 font-semibold">
-                      This Month: <span className="font-bold text-slate-900 dark:text-white">₹{c.currentVal.toLocaleString('en-IN')}</span>
+                      This Month: <span className="font-bold text-slate-900 dark:text-white font-mono">₹{c.currentVal.toLocaleString('en-IN')}</span>
                     </p>
                     <p className="text-xs text-slate-500">
-                      Last Month: <span className="font-medium text-slate-700 dark:text-slate-300">₹{c.prevVal.toLocaleString('en-IN')}</span>
+                      {prevMonthLabel || 'Last Month'}: <span className="font-medium text-slate-700 dark:text-slate-300 font-mono">₹{c.prevVal.toLocaleString('en-IN')}</span>
                     </p>
                   </div>
 
@@ -1863,7 +1891,7 @@ function MonthOverMonthComparisonWidget({ data, navigate }: { data: any; navigat
                     <div className="text-[10px] space-y-0.5 font-semibold text-slate-300">
                       <p>Diff: ₹{c.diff.toLocaleString('en-IN')}</p>
                       <p>Ratio change: {c.pct.toFixed(2)}%</p>
-                      <p>Prev: ₹{c.prevVal.toLocaleString('en-IN')}</p>
+                      <p>Prev ({prevMonthLabel}): ₹{c.prevVal.toLocaleString('en-IN')}</p>
                       <p>Curr: ₹{c.currentVal.toLocaleString('en-IN')}</p>
                     </div>
                   </div>
@@ -1874,10 +1902,10 @@ function MonthOverMonthComparisonWidget({ data, navigate }: { data: any; navigat
 
           {/* OVERALL FINANCIAL SUMMARY STATEMENTS */}
           <div className="bg-slate-50 dark:bg-slate-900/50 p-3 rounded-xl border border-slate-100 dark:border-slate-800 text-[11px] font-bold text-slate-600 dark:text-slate-400 space-y-1">
-            <p>• Income {pctChange.income >= 0 ? 'increased' : 'decreased'} by <span className={pctChange.income >= 0 ? 'text-green-500' : 'text-red-500'}>{Math.abs(pctChange.income).toFixed(1)}%</span> compared to last month.</p>
-            <p>• Expenses {pctChange.expenses <= 0 ? 'decreased' : 'increased'} by <span className={pctChange.expenses <= 0 ? 'text-green-500' : 'text-red-500'}>{Math.abs(pctChange.expenses).toFixed(1)}%</span>.</p>
-            <p>• Savings {pctChange.savings >= 0 ? 'increased' : 'decreased'} by <span className={pctChange.savings >= 0 ? 'text-green-500' : 'text-red-500'}>{Math.abs(pctChange.savings).toFixed(1)}%</span>.</p>
-            <p>• Net Balance improved by <span className={current.balance - previous.balance >= 0 ? 'text-green-500' : 'text-red-500'}>₹{Math.abs(current.balance - previous.balance).toLocaleString('en-IN')}</span>.</p>
+            <p>• Income {pctChange.income >= 0 ? 'increased' : 'decreased'} by <span className={pctChange.income >= 0 ? 'text-green-500' : 'text-red-500'}>{Math.abs(pctChange.income).toFixed(1)}%</span> compared to {prevMonthLabel}.</p>
+            <p>• Expenses {pctChange.expenses <= 0 ? 'decreased' : 'increased'} by <span className={pctChange.expenses <= 0 ? 'text-green-500' : 'text-red-500'}>{Math.abs(pctChange.expenses).toFixed(1)}%</span> compared to {prevMonthLabel}.</p>
+            <p>• Savings {pctChange.savings >= 0 ? 'increased' : 'decreased'} by <span className={pctChange.savings >= 0 ? 'text-green-500' : 'text-red-500'}>{Math.abs(pctChange.savings).toFixed(1)}%</span> compared to {prevMonthLabel}.</p>
+            <p>• Net Balance improved by <span className={current.balance - previous.balance >= 0 ? 'text-green-500' : 'text-red-500'}>₹{Math.abs(current.balance - previous.balance).toLocaleString('en-IN')}</span> compared to {prevMonthLabel}.</p>
           </div>
         </>
       )}
@@ -1898,7 +1926,7 @@ function Sparkline({ data, color }: { data: any[]; color: string }) {
   );
 }
 
-function SummaryCard({ title, monthLabel, cardKey, amount, pctChange, sparklineData, color, bg, isPercentage = false, inverseTrend = false, children, onClick }: any) {
+function SummaryCard({ title, monthLabel, cardKey, amount, pctChange, prevMonthLabel, sparklineData, color, bg, isPercentage = false, inverseTrend = false, children, onClick }: any) {
   const isPositive = pctChange >= 0;
   const isGood = inverseTrend ? !isPositive : isPositive;
 
@@ -1923,9 +1951,15 @@ function SummaryCard({ title, monthLabel, cardKey, amount, pctChange, sparklineD
           <h2 className="text-2xl font-black text-slate-900 dark:text-white font-mono">
             {isPercentage ? `${amount.toFixed(1)}%` : `₹${Number(amount).toLocaleString('en-IN')}`}
           </h2>
-          <span className={`text-[10px] font-bold mt-1 inline-block ${isGood ? 'text-green-500' : 'text-red-500'}`}>
-            {isPositive ? '▲' : '▼'} {Math.abs(pctChange).toFixed(1)}% vs prev. month
-          </span>
+          {prevMonthLabel ? (
+            <span className={`text-[10px] font-bold mt-1 inline-block ${isGood ? 'text-green-500' : 'text-red-500'}`}>
+              {isPositive ? '▲' : '▼'} {Math.abs(pctChange).toFixed(1)}% vs {prevMonthLabel}
+            </span>
+          ) : (
+            <span className="text-[10px] font-bold mt-1 inline-block text-slate-400">
+              First recorded month
+            </span>
+          )}
         </div>
         {sparklineData && <Sparkline data={sparklineData} color={color} />}
       </div>

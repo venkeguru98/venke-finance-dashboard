@@ -262,13 +262,14 @@ export default function Import() {
       const inferredCat = getInferredCategory(row) || 'Uncategorized';
       const mapping = mappings[inferredCat.toLowerCase()];
       let finalCategory = inferredCat;
+      let categoryId: number | undefined = undefined;
 
       if (mapping) {
         if (mapping.action === 'skip') {
           rowStatus = 'skipped';
         } else if (mapping.action === 'map') {
           finalCategory = mapping.targetName || inferredCat;
-          // Use type of mapped category
+          categoryId = mapping.targetId;
           const targetCat = categories.find(c => c.id === mapping.targetId);
           if (targetCat) type = targetCat.type;
         } else if (mapping.action === 'create') {
@@ -280,6 +281,7 @@ export default function Import() {
         const existingCat = categories.find(c => c.name.toLowerCase().trim() === inferredCat.toLowerCase().trim());
         if (existingCat) {
           type = existingCat.type;
+          categoryId = existingCat.id;
         } else if (rowStatus === 'ready') {
           rowStatus = 'unresolved';
         }
@@ -290,6 +292,8 @@ export default function Import() {
         rawDate: row.date,
         description: row.description || 'Imported Transaction',
         category: finalCategory,
+        categoryKey: inferredCat.toLowerCase(),
+        categoryId,
         debit: hasDebit ? debitVal : null,
         credit: hasCredit ? creditVal : null,
         amount,
@@ -328,24 +332,28 @@ export default function Import() {
   const handleConfirmImport = async () => {
     if (!confirmEnabled) return;
     setStatus('uploading');
+    setErrorMessage('');
 
     try {
       // 1. Create new categories if chosen
       const newCatMappings = Object.entries(mappings).filter(([_, m]) => m.action === 'create');
+      const createdIdsMap: Record<string, number> = {};
       let createdCount = 0;
 
-      for (const [_, m] of newCatMappings) {
+      for (const [catNameLower, m] of newCatMappings) {
         if (m.action === 'create' && m.targetName) {
-          // Check if category exists before creating (avoid duplicate post)
           const nameLower = m.targetName.toLowerCase().trim();
-          const alreadyExists = categories.some(c => c.name.toLowerCase().trim() === nameLower);
+          const alreadyExists = categories.find(c => c.name.toLowerCase().trim() === nameLower);
           
-          if (!alreadyExists) {
-            await axios.post(`${API}/categories`, {
+          if (alreadyExists) {
+            createdIdsMap[catNameLower] = alreadyExists.id;
+          } else {
+            const res = await axios.post(`${API}/categories`, {
               name: m.targetName,
               color: m.newType === 'income' ? '#10B981' : m.newType === 'savings' ? '#3B82F6' : '#EF4444',
               type: m.newType || 'expense'
             });
+            createdIdsMap[catNameLower] = res.data.id;
             createdCount++;
           }
         }
@@ -354,13 +362,28 @@ export default function Import() {
       // 2. Prepare transactions list (only ready rows)
       const importList = processedRows
         .filter(r => r.status === 'ready')
-        .map(r => ({
-          date: r.date,
-          description: r.description,
-          category: r.category,
-          amount: r.amount,
-          payment_method: r.paymentMethod
-        }));
+        .map(r => {
+          let categoryId = r.categoryId;
+          
+          // Map dynamic created category IDs
+          if (r.categoryKey && mappings[r.categoryKey]) {
+            const map = mappings[r.categoryKey];
+            if (map.action === 'map') {
+              categoryId = map.targetId;
+            } else if (map.action === 'create') {
+              categoryId = createdIdsMap[r.categoryKey];
+            }
+          }
+
+          return {
+            date: r.date,
+            description: r.description,
+            category: r.category,
+            category_id: categoryId,
+            amount: r.amount,
+            payment_method: r.paymentMethod
+          };
+        });
 
       const res = await axios.post(`${API}/import`, { transactions: importList });
       
@@ -372,16 +395,10 @@ export default function Import() {
       });
       setStep('success');
       setStatus('idle');
-    } catch (_) {
-      // Fallback preview summary
-      setResults({
-        imported: readyRows,
-        categoriesCreated: newCategoriesCount,
-        skipped: skippedRows,
-        errors: errorRows
-      });
-      setStep('success');
-      setStatus('idle');
+    } catch (err: any) {
+      setStatus('error');
+      const msg = err.response?.data?.error || 'Import failed. One of the resolved categories might no longer be available. Please refresh the page.';
+      setErrorMessage(msg);
     }
   };
 
