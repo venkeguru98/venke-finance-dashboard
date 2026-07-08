@@ -32,7 +32,15 @@ const DEFAULT_WIDGETS = {
 };
 
 export default function Dashboard() {
-  const now = new Date();
+  // Global Dashboard month context (persisted or defaulting to latest transaction month)
+  const [now, setNow] = useState(() => {
+    const saved = localStorage.getItem('dashboard_selected_month');
+    if (saved) {
+      const parsed = new Date(saved);
+      if (!isNaN(parsed.getTime())) return parsed;
+    }
+    return new Date();
+  });
   const navigate = useNavigate();
   
   // Data States
@@ -263,6 +271,14 @@ export default function Dashboard() {
     date: now.toISOString().slice(0, 10)
   });
 
+  // Sync transaction form date with selected month context
+  useEffect(() => {
+    setTxFormData(prev => ({
+      ...prev,
+      date: now.toISOString().slice(0, 10)
+    }));
+  }, [now]);
+
   const fetchAll = async () => {
     setLoading(true);
     setError('');
@@ -283,6 +299,16 @@ export default function Dashboard() {
       setCategories(categoriesRes.data || []);
       setRules(rulesRes.data || []);
       setLastUpdated(new Date().toLocaleTimeString());
+
+      // Auto-set selected month if not stored in localStorage and transactions exist
+      if (!localStorage.getItem('dashboard_selected_month') && txRes.data && txRes.data.length > 0) {
+        const sorted = [...txRes.data].sort((a, b) => b.date.localeCompare(a.date));
+        const latestDateStr = sorted[0].date;
+        const parsed = new Date(latestDateStr.slice(0, 7) + '-02');
+        if (!isNaN(parsed.getTime())) {
+          setNow(parsed);
+        }
+      }
     } catch (e: any) {
       // 401 errors are handled by the Axios interceptor (auto-redirects to login)
       if (e?.response?.status === 401) return;
@@ -293,8 +319,6 @@ export default function Dashboard() {
       setLoading(false);
     }
   };
-
-
 
   useEffect(() => { fetchAll(); }, []);
 
@@ -752,9 +776,22 @@ export default function Dashboard() {
   };
   const healthStatus = getHealthStatus();
 
+  // Determine the number of active days in the selected month
+  const getActiveDayOfSelectedMonth = () => {
+    const today = new Date();
+    if (now.getFullYear() === today.getFullYear() && now.getMonth() === today.getMonth()) {
+      return today.getDate();
+    }
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    if (now.getTime() < today.getTime()) {
+      return lastDay;
+    }
+    return 1;
+  };
+
   // Forecast month-end expenses
   const getForecast = () => {
-    const currentDay = now.getDate();
+    const currentDay = getActiveDayOfSelectedMonth();
     const totalDays = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
     const averageDaily = currentDay > 0 ? totalsData.current.expenses / currentDay : 0;
     const projectedEnd = averageDaily * totalDays;
@@ -768,9 +805,34 @@ export default function Dashboard() {
 
   // KPI calculations
   const totalTx = transactions.length;
-  const avgDailySpending = now.getDate() > 0 ? totalsData.current.expenses / now.getDate() : 0;
+  const activeDayForAvg = getActiveDayOfSelectedMonth();
+  const avgDailySpending = activeDayForAvg > 0 ? totalsData.current.expenses / activeDayForAvg : 0;
   const largestTx = transactions.reduce((max, t) => t.amount > max ? t.amount : max, 0);
   const highestExpCat = categoryData.length > 0 ? categoryData[0].name : '—';
+
+  // Extract all available months containing transaction data
+  const getAvailableMonths = () => {
+    const months = Array.from(new Set(
+      transactions.map(t => t.date.slice(0, 7))
+    )).sort().reverse();
+    return months.map(mPrefix => {
+      const [yearStr, monthStr] = mPrefix.split('-');
+      const d = new Date(parseInt(yearStr, 10), parseInt(monthStr, 10) - 1, 1);
+      return {
+        prefix: mPrefix,
+        label: d.toLocaleString('default', { month: 'long', year: 'numeric' })
+      };
+    });
+  };
+  const availableMonths = getAvailableMonths();
+
+  const handleSelectMonth = (monthPrefix: string) => {
+    const parsed = new Date(monthPrefix + '-02');
+    if (!isNaN(parsed.getTime())) {
+      setNow(parsed);
+      localStorage.setItem('dashboard_selected_month', parsed.toISOString());
+    }
+  };
 
   // Filter transactions
   const filteredTx = transactions
@@ -865,11 +927,13 @@ export default function Dashboard() {
             amount={totalsData.current.income} pctChange={totalsData.metrics.income.pctChange}
             prevMonthLabel={totalsData.metrics.income.prevMonthLabel}
             sparklineData={getSparklineData('income')} color="text-green-500" bg="bg-green-500"
+            availableMonths={availableMonths} onSelectMonth={handleSelectMonth}
             onClick={() => openKpiDrawer('income')} />
           <SummaryCard title="Monthly Expenses" monthLabel={currentMonthLabel} cardKey="expenses"
             amount={totalsData.current.expenses} pctChange={totalsData.metrics.expenses.pctChange}
             prevMonthLabel={totalsData.metrics.expenses.prevMonthLabel}
             sparklineData={getSparklineData('expense')} color="text-red-500" bg="bg-red-500" inverseTrend
+            availableMonths={availableMonths} onSelectMonth={handleSelectMonth}
             onClick={() => openKpiDrawer('expenses')} />
           <SummaryCard title="Monthly Savings" monthLabel={currentMonthLabel} cardKey="savings"
             amount={totalsData.current.savings} pctChange={totalsData.metrics.savings.pctChange}
@@ -877,11 +941,13 @@ export default function Dashboard() {
             sparklineData={getSparklineData('savings')}
             color={totalsData.metrics.savings.pctChange >= 0 ? 'text-green-500' : 'text-red-500'}
             bg={totalsData.metrics.savings.pctChange >= 0 ? 'bg-green-500' : 'bg-red-500'}
+            availableMonths={availableMonths} onSelectMonth={handleSelectMonth}
             onClick={() => openKpiDrawer('savings')} />
           <SummaryCard title="Available Balance" monthLabel={currentMonthLabel} cardKey="balance"
             amount={availableBalance} pctChange={totalsData.metrics.balance.pctChange}
             prevMonthLabel={totalsData.metrics.balance.prevMonthLabel}
             sparklineData={getSparklineData('balance')} color={availableColor} bg={availableBg}
+            availableMonths={availableMonths} onSelectMonth={handleSelectMonth}
             onClick={() => openKpiDrawer('balance')}>
             <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 text-[10px] font-semibold text-slate-500 space-y-1">
               <div className="flex justify-between"><span>Income</span><span className="text-slate-900 dark:text-white font-bold">₹{totalsData.current.income.toLocaleString('en-IN')}</span></div>
@@ -898,6 +964,7 @@ export default function Dashboard() {
             amount={totalsData.current.balance} pctChange={totalsData.metrics.balance.pctChange}
             prevMonthLabel={totalsData.metrics.balance.prevMonthLabel}
             sparklineData={getSparklineData('balance')} color={availableColor} bg={availableBg}
+            availableMonths={availableMonths} onSelectMonth={handleSelectMonth}
             onClick={() => openKpiDrawer('netbalance')}>
             <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 text-[10px] font-semibold text-slate-500 space-y-1">
               <div className="flex justify-between"><span>Income</span><span className="text-slate-900 dark:text-white font-bold">₹{totalsData.current.income.toLocaleString('en-IN')}</span></div>
@@ -912,6 +979,7 @@ export default function Dashboard() {
           <SummaryCard title="Savings Rate" monthLabel={currentMonthLabel}
             amount={savingsRate} isPercentage pctChange={totalsData.metrics.savingsRate.pctChange}
             prevMonthLabel={totalsData.metrics.savingsRate.prevMonthLabel}
+            availableMonths={availableMonths} onSelectMonth={handleSelectMonth}
             color="text-orange-500" bg="bg-orange-500" />
         </div>
       )}
@@ -2059,23 +2127,102 @@ function Sparkline({ data, color }: { data: any[]; color: string }) {
   );
 }
 
-function SummaryCard({ title, monthLabel, cardKey, amount, pctChange, prevMonthLabel, sparklineData, color, bg, isPercentage = false, inverseTrend = false, children, onClick }: any) {
+function SummaryCard({ 
+  title, 
+  monthLabel, 
+  cardKey, 
+  amount, 
+  pctChange, 
+  prevMonthLabel, 
+  sparklineData, 
+  color, 
+  bg, 
+  isPercentage = false, 
+  inverseTrend = false, 
+  children, 
+  onClick,
+  availableMonths = [],
+  onSelectMonth
+}: any) {
   const isPositive = pctChange >= 0;
   const isGood = inverseTrend ? !isPositive : isPositive;
 
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    if (menuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [menuOpen]);
+
+  const hasMultiple = availableMonths.length > 1;
+
   return (
     <div
-      className={`bg-white dark:bg-slate-950 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-xl hover:-translate-y-1 hover:border-primary/40 hover:ring-2 hover:ring-primary/10 transition-all duration-200 relative overflow-hidden group ${onClick ? 'cursor-pointer' : ''}`}
+      className={`bg-white dark:bg-slate-950 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-xl hover:-translate-y-1 hover:border-primary/40 hover:ring-2 hover:ring-primary/10 transition-all duration-200 relative overflow-visible group ${onClick ? 'cursor-pointer' : ''}`}
       onClick={onClick}
     >
-      <div className={`absolute -top-4 -right-4 w-20 h-20 rounded-full ${bg} opacity-5 group-hover:opacity-15 transition-opacity duration-300`}></div>
+      {/* Decorative background circle inside wrapper to clip bounds correctly */}
+      <div className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none">
+        <div className={`absolute -top-4 -right-4 w-20 h-20 rounded-full ${bg} opacity-5 group-hover:opacity-15 transition-opacity duration-300`}></div>
+      </div>
 
       <div className="mb-2">
         <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{title}</p>
         {monthLabel && cardKey && (
-          <span className="inline-flex items-center mt-0.5 px-1.5 py-0.5 rounded-md text-[9px] font-black bg-primary/10 text-primary tracking-wide">
-            📅 {monthLabel}
-          </span>
+          <div className="relative inline-block z-30" ref={menuRef}>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (hasMultiple) setMenuOpen(!menuOpen);
+              }}
+              className={`inline-flex items-center mt-0.5 px-2 py-0.5 rounded-md text-[9px] font-black tracking-wide transition-all ${
+                hasMultiple 
+                  ? 'bg-primary/15 text-primary hover:bg-primary/25 cursor-pointer' 
+                  : 'bg-primary/10 text-primary cursor-default'
+              }`}
+            >
+              📅 {monthLabel} {hasMultiple && <span className="ml-1 text-[7px]">▼</span>}
+            </button>
+            
+            {menuOpen && hasMultiple && (
+              <div className="absolute left-0 mt-1 w-44 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl z-50 py-1.5 animate-in fade-in slide-in-from-top-1 duration-150">
+                <p className="px-3 py-1 text-[8px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-800 mb-1">Select Dashboard Month</p>
+                <div className="max-h-48 overflow-y-auto no-scrollbar">
+                  {availableMonths.map((m: any) => {
+                    const isSelected = m.label === monthLabel;
+                    return (
+                      <button
+                        key={m.prefix}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelectMonth(m.prefix);
+                          setMenuOpen(false);
+                        }}
+                        className={`w-full text-left px-3 py-1.5 text-[10px] font-bold transition flex items-center justify-between ${
+                          isSelected 
+                            ? 'text-primary bg-primary/10' 
+                            : 'text-slate-350 hover:bg-slate-850 hover:text-white'
+                        }`}
+                      >
+                        <span>{m.label}</span>
+                        {isSelected && <span className="text-[10px]">✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
         )}
       </div>
 
