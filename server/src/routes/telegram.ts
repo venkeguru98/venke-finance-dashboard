@@ -373,14 +373,21 @@ router.post('/webhook', async (req: Request, res: Response) => {
         return '';
       };
 
-      const chitsWithKeywords = chits.map((c: any) => ({
-        ...c,
-        keyword: getChitKeyword(c)
-      })).filter((c: any) => c.keyword !== '');
+      const chitsWithKeywords = chits.map((c: any) => {
+        let kw = getChitKeyword(c);
+        if (!kw && c.chit_name) {
+          const firstChitWord = c.chit_name.split(/\s+/)[0];
+          if (firstChitWord) kw = firstChitWord.toLowerCase().trim();
+        }
+        return { ...c, keyword: kw };
+      }).filter((c: any) => c.keyword !== '');
 
       const validKeywords = chitsWithKeywords.map((c: any) => c.keyword);
-      const words = lowercaseText.split(/\s+/);
-      const hasChitKeyword = words.some((w: string) => validKeywords.includes(w));
+      const normalizedInput = text.trim().replace(/\s+/g, ' ');
+      const normWords = normalizedInput.toLowerCase().split(' ');
+      const firstWord = normWords[0];
+
+      const hasChitKeyword = validKeywords.includes(firstWord);
       const isChitAttempt = lowercaseText.includes('chit') || lowercaseText.includes('cheetu') || hasChitKeyword;
 
       if (isChitAttempt) {
@@ -393,7 +400,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
         const hasAmountLog = lowercaseText.includes('paid') || lowercaseText.includes('spent') || lowercaseText.includes('pay') || lowercaseText.includes('log') || /\b\d{3,6}\b/.test(lowercaseText.replace(/\b20\d{2}\b/, ''));
 
         // Find matched chit
-        let matchedChit = chitsWithKeywords.find(c => words.includes(c.keyword));
+        let matchedChit = chitsWithKeywords.find(c => c.keyword === firstWord);
         if (!matchedChit) {
           matchedChit = chits.find(c => lowercaseText.includes(c.chit_name.toLowerCase()));
         }
@@ -404,28 +411,86 @@ router.post('/webhook', async (req: Request, res: Response) => {
           const currentYear = new Date().getFullYear();
           const monthName = new Date().toLocaleString('default', { month: 'long' });
 
+          const formatDisplayDate = (dateStr: string) => {
+            if (!dateStr) return 'N/A';
+            const d = new Date(dateStr);
+            if (isNaN(d.getTime())) return dateStr;
+            const day = String(d.getDate()).padStart(2, '0');
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const monthStr = months[d.getMonth()];
+            const yr = d.getFullYear();
+            return `${day}-${monthStr}-${yr}`;
+          };
+
           let matchedChits = matchedChit ? [matchedChit] : chits;
-          
-          let responseText = `🎰 <b>Chit Fund Dues (${monthName} ${currentYear})</b>\n───────────────────\n`;
+          let responses: string[] = [];
+
           for (const chit of matchedChits) {
             const currentPay = await get(
-              `SELECT installment_amount, status FROM chit_payments 
+              `SELECT * FROM chit_payments 
                WHERE chit_id = ? AND month = ? AND year = ?`,
               [chit.id, currentMonth, currentYear]
             );
-            const dueAmount = currentPay?.installment_amount || chit.monthly_installment;
-            const statusLabel = currentPay?.status === 'Paid' ? '✅ Paid' : '⏳ Pending';
-            responseText += `• <b>${chit.chit_name}:</b> ₹${dueAmount.toLocaleString('en-IN')} (${statusLabel})\n`;
+            
+            const stats = await get(
+              `SELECT 
+                 SUM(CASE WHEN status='Paid' THEN installment_amount ELSE 0 END) as total_paid, 
+                 SUM(CASE WHEN status='Paid' THEN 1 ELSE 0 END) as months_paid
+               FROM chit_payments WHERE chit_id = ?`,
+              [chit.id]
+            );
+
+            const monthsPaid = Number(stats?.months_paid || 0);
+            const monthsRemaining = Math.max(0, chit.total_months - monthsPaid);
+            const totalPaid = Number(stats?.total_paid || 0);
+
+            const monthlyContribution = chit.monthly_installment;
+            const formattedClosing = formatDisplayDate(chit.closing_date);
+
+            if (currentPay?.status === 'Paid') {
+              const formattedPayDate = formatDisplayDate(currentPay.payment_date);
+              
+              // Calculate next due month
+              const nextDate = new Date(currentYear, currentMonth, 1);
+              const nextMonthName = nextDate.toLocaleString('default', { month: 'long' });
+              const nextMonthYear = nextDate.getFullYear();
+              
+              responses.push(
+                `📌 <b>${chit.chit_name}</b>\n\n` +
+                `Monthly Contribution : ₹${monthlyContribution.toLocaleString('en-IN')}\n\n` +
+                `Status :\n` +
+                `✅ Paid for ${monthName} ${currentYear}\n\n` +
+                `Payment Date :\n` +
+                `${formattedPayDate}\n\n` +
+                `Next Due :\n` +
+                `${nextMonthName} ${nextMonthYear}`
+              );
+            } else {
+              const dueAmount = currentPay?.installment_amount || chit.monthly_installment;
+              
+              responses.push(
+                `📌 <b>${chit.chit_name}</b>\n\n` +
+                `Monthly Contribution : ₹${monthlyContribution.toLocaleString('en-IN')}\n\n` +
+                `Current Month : ${monthName} ${currentYear}\n\n` +
+                `Due This Month : ₹${dueAmount.toLocaleString('en-IN')}\n\n` +
+                `Closing Date : ${formattedClosing}\n\n` +
+                `Months Remaining : ${monthsRemaining}\n\n` +
+                `Total Paid : ₹${totalPaid.toLocaleString('en-IN')}\n\n` +
+                `Next Payment Status :\n` +
+                `🟢 Pending`
+              );
+            }
           }
 
-          await sendMessage(chatId, responseText);
+          await sendMessage(chatId, responses.join('\n\n───────────────────\n\n'));
           return;
         }
 
         // Proceed to log chit payment
         if (!matchedChit) {
-          const kwListStr = validKeywords.length > 0 ? validKeywords.join(', ') : 'none';
-          await sendMessage(chatId, `Unknown Chit Fund keyword. Available keywords: ${kwListStr}`);
+          const listItems = validKeywords.map(k => `• ${k}`).join('\n');
+          const response = `Unknown Chit Fund keyword.\n\nAvailable Chit Funds:\n${listItems}\n\nUse:\n&lt;keyword&gt; &lt;amount&gt;\n\nExample:\noffice 2500`;
+          await sendMessage(chatId, response);
           return;
         }
 
