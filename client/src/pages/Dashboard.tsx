@@ -334,15 +334,29 @@ export default function Dashboard() {
   // Previous Month & Current Month Calculations
   const getTotalsByPeriod = () => {
     const currMonthPrefix = formatLocalYYYYMM(now);
-    
-    // Find all transaction months before current month that have at least one transaction
-    const monthsWithData = Array.from(new Set(
-      transactions
-        .map(t => t.date.slice(0, 7))
-        .filter(mPrefix => mPrefix < currMonthPrefix)
-    )).sort();
 
-    const prevMonthPrefix = monthsWithData.length > 0 ? monthsWithData[monthsWithData.length - 1] : '';
+    const getNearestPrevMonthForMetric = (metricKey: 'income' | 'expenses' | 'savings' | 'balance' | 'savingsRate') => {
+      const pastMonths = Array.from(new Set(
+        transactions
+          .map(t => t.date.slice(0, 7))
+          .filter(mPrefix => mPrefix < currMonthPrefix)
+      )).sort().reverse();
+
+      for (const mPrefix of pastMonths) {
+        const txs = transactions.filter(t => t.date.startsWith(mPrefix));
+        const inc = txs.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+        const exp = txs.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+        const sav = txs.filter(t => t.type === 'savings').reduce((s, t) => s + t.amount, 0);
+        const bal = inc - exp - sav;
+
+        if (metricKey === 'income' && inc > 0) return { prefix: mPrefix, totals: { income: inc, expenses: exp, savings: sav, balance: bal } };
+        if (metricKey === 'expenses' && exp > 0) return { prefix: mPrefix, totals: { income: inc, expenses: exp, savings: sav, balance: bal } };
+        if (metricKey === 'savings' && sav > 0) return { prefix: mPrefix, totals: { income: inc, expenses: exp, savings: sav, balance: bal } };
+        if (metricKey === 'balance' && txs.length > 0) return { prefix: mPrefix, totals: { income: inc, expenses: exp, savings: sav, balance: bal } };
+        if (metricKey === 'savingsRate' && inc > 0) return { prefix: mPrefix, totals: { income: inc, expenses: exp, savings: sav, balance: bal } };
+      }
+      return null;
+    };
 
     const formatMonthLabel = (prefix: string) => {
       if (!prefix) return '';
@@ -352,41 +366,71 @@ export default function Dashboard() {
     };
 
     const currentMonthLabel = now.toLocaleString('default', { month: 'long', year: 'numeric' });
-    const prevMonthLabel = formatMonthLabel(prevMonthPrefix);
 
     const currMonthTx = transactions.filter(t => t.date.startsWith(currMonthPrefix));
-    const prevMonthTx = prevMonthPrefix ? transactions.filter(t => t.date.startsWith(prevMonthPrefix)) : [];
-
     const calculateTotals = (list: any[]) => {
       const inc = list.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
       const exp = list.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
       const sav = list.filter(t => t.type === 'savings').reduce((s, t) => s + t.amount, 0);
       return { income: inc, expenses: exp, savings: sav, balance: inc - exp - sav };
     };
-
     const current = calculateTotals(currMonthTx);
-    const previous = calculateTotals(prevMonthTx);
 
-    const calcPctChange = (curr: number, prev: number) => {
-      if (!prevMonthPrefix) return 0;
+    const calcPctChange = (curr: number, prev: number, hasPrev: boolean) => {
+      if (!hasPrev) return 0;
       if (prev === 0) return curr > 0 ? 100 : 0;
       return ((curr - prev) / prev) * 100;
     };
 
+    const prevIncome = getNearestPrevMonthForMetric('income');
+    const prevExpenses = getNearestPrevMonthForMetric('expenses');
+    const prevSavings = getNearestPrevMonthForMetric('savings');
+    const prevBalance = getNearestPrevMonthForMetric('balance');
+    const prevSavingsRate = getNearestPrevMonthForMetric('savingsRate');
+
+    const overallPrev = getNearestPrevMonthForMetric('balance');
+
     return {
       current,
-      previous,
-      prevMonthLabel,
+      previous: overallPrev ? overallPrev.totals : { income: 0, expenses: 0, savings: 0, balance: 0 },
+      prevMonthLabel: overallPrev ? formatMonthLabel(overallPrev.prefix) : '',
       currentMonthLabel,
-      pctChange: {
-        income: calcPctChange(current.income, previous.income),
-        expenses: calcPctChange(current.expenses, previous.expenses),
-        savings: calcPctChange(current.savings, previous.savings),
-        balance: calcPctChange(current.balance, previous.balance),
-        savingsRate: previous.income > 0 ? (current.income > 0 ? calcPctChange(
-          (current.balance / current.income) * 100,
-          (previous.balance / previous.income) * 100
-        ) : 0) : 0
+      
+      metrics: {
+        income: {
+          current: current.income,
+          previous: prevIncome ? prevIncome.totals.income : 0,
+          pctChange: calcPctChange(current.income, prevIncome ? prevIncome.totals.income : 0, !!prevIncome),
+          prevMonthLabel: prevIncome ? formatMonthLabel(prevIncome.prefix) : ''
+        },
+        expenses: {
+          current: current.expenses,
+          previous: prevExpenses ? prevExpenses.totals.expenses : 0,
+          pctChange: calcPctChange(current.expenses, prevExpenses ? prevExpenses.totals.expenses : 0, !!prevExpenses),
+          prevMonthLabel: prevExpenses ? formatMonthLabel(prevExpenses.prefix) : ''
+        },
+        savings: {
+          current: current.savings,
+          previous: prevSavings ? prevSavings.totals.savings : 0,
+          pctChange: calcPctChange(current.savings, prevSavings ? prevSavings.totals.savings : 0, !!prevSavings),
+          prevMonthLabel: prevSavings ? formatMonthLabel(prevSavings.prefix) : ''
+        },
+        balance: {
+          current: current.balance,
+          previous: prevBalance ? prevBalance.totals.balance : 0,
+          pctChange: calcPctChange(current.balance, prevBalance ? prevBalance.totals.balance : 0, !!prevBalance),
+          prevMonthLabel: prevBalance ? formatMonthLabel(prevBalance.prefix) : ''
+        },
+        savingsRate: {
+          current: current.income > 0 ? (current.balance / current.income) * 100 : 0,
+          previous: prevSavingsRate ? (prevSavingsRate.totals.balance / prevSavingsRate.totals.income) * 100 : 0,
+          pctChange: calcPctChange(
+            current.income > 0 ? (current.balance / current.income) * 100 : 0,
+            prevSavingsRate ? (prevSavingsRate.totals.balance / prevSavingsRate.totals.income) * 100 : 0,
+            !!prevSavingsRate
+          ),
+          prevMonthLabel: prevSavingsRate ? formatMonthLabel(prevSavingsRate.prefix) : ''
+        }
       }
     };
   };
@@ -777,25 +821,25 @@ export default function Dashboard() {
       {widgets.summaryCards && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-5">
           <SummaryCard title="Monthly Income" monthLabel={currentMonthLabel} cardKey="income"
-            amount={totalsData.current.income} pctChange={totalsData.pctChange.income}
-            prevMonthLabel={totalsData.prevMonthLabel}
+            amount={totalsData.current.income} pctChange={totalsData.metrics.income.pctChange}
+            prevMonthLabel={totalsData.metrics.income.prevMonthLabel}
             sparklineData={getSparklineData('income')} color="text-green-500" bg="bg-green-500"
             onClick={() => openKpiDrawer('income')} />
           <SummaryCard title="Monthly Expenses" monthLabel={currentMonthLabel} cardKey="expenses"
-            amount={totalsData.current.expenses} pctChange={totalsData.pctChange.expenses}
-            prevMonthLabel={totalsData.prevMonthLabel}
+            amount={totalsData.current.expenses} pctChange={totalsData.metrics.expenses.pctChange}
+            prevMonthLabel={totalsData.metrics.expenses.prevMonthLabel}
             sparklineData={getSparklineData('expense')} color="text-red-500" bg="bg-red-500" inverseTrend
             onClick={() => openKpiDrawer('expenses')} />
           <SummaryCard title="Monthly Savings" monthLabel={currentMonthLabel} cardKey="savings"
-            amount={totalsData.current.savings} pctChange={totalsData.pctChange.savings}
-            prevMonthLabel={totalsData.prevMonthLabel}
+            amount={totalsData.current.savings} pctChange={totalsData.metrics.savings.pctChange}
+            prevMonthLabel={totalsData.metrics.savings.prevMonthLabel}
             sparklineData={getSparklineData('savings')}
-            color={totalsData.pctChange.savings >= 0 ? 'text-green-500' : 'text-red-500'}
-            bg={totalsData.pctChange.savings >= 0 ? 'bg-green-500' : 'bg-red-500'}
+            color={totalsData.metrics.savings.pctChange >= 0 ? 'text-green-500' : 'text-red-500'}
+            bg={totalsData.metrics.savings.pctChange >= 0 ? 'bg-green-500' : 'bg-red-500'}
             onClick={() => openKpiDrawer('savings')} />
           <SummaryCard title="Available Balance" monthLabel={currentMonthLabel} cardKey="balance"
-            amount={availableBalance} pctChange={totalsData.pctChange.balance}
-            prevMonthLabel={totalsData.prevMonthLabel}
+            amount={availableBalance} pctChange={totalsData.metrics.balance.pctChange}
+            prevMonthLabel={totalsData.metrics.balance.prevMonthLabel}
             sparklineData={getSparklineData('balance')} color={availableColor} bg={availableBg}
             onClick={() => openKpiDrawer('balance')}>
             <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 text-[10px] font-semibold text-slate-500 space-y-1">
@@ -810,8 +854,8 @@ export default function Dashboard() {
             </div>
           </SummaryCard>
           <SummaryCard title="Net Balance" monthLabel={currentMonthLabel} cardKey="netbalance"
-            amount={totalsData.current.balance} pctChange={totalsData.pctChange.balance}
-            prevMonthLabel={totalsData.prevMonthLabel}
+            amount={totalsData.current.balance} pctChange={totalsData.metrics.balance.pctChange}
+            prevMonthLabel={totalsData.metrics.balance.prevMonthLabel}
             sparklineData={getSparklineData('balance')} color={availableColor} bg={availableBg}
             onClick={() => openKpiDrawer('netbalance')}>
             <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 text-[10px] font-semibold text-slate-500 space-y-1">
@@ -825,8 +869,8 @@ export default function Dashboard() {
             </div>
           </SummaryCard>
           <SummaryCard title="Savings Rate" monthLabel={currentMonthLabel}
-            amount={savingsRate} isPercentage pctChange={totalsData.pctChange.savingsRate}
-            prevMonthLabel={totalsData.prevMonthLabel}
+            amount={savingsRate} isPercentage pctChange={totalsData.metrics.savingsRate.pctChange}
+            prevMonthLabel={totalsData.metrics.savingsRate.prevMonthLabel}
             color="text-orange-500" bg="bg-orange-500" />
         </div>
       )}
@@ -1784,7 +1828,7 @@ export default function Dashboard() {
 
 // MoM comparison Widget component
 function MonthOverMonthComparisonWidget({ data, navigate }: { data: any; navigate: any }) {
-  const { current, previous, pctChange, prevMonthLabel, currentMonthLabel } = data;
+  const { current, prevMonthLabel, currentMonthLabel, metrics } = data;
   
   // Empty state check (if no previous data exists)
   const prevMonthHasData = !!prevMonthLabel;
@@ -1793,40 +1837,44 @@ function MonthOverMonthComparisonWidget({ data, navigate }: { data: any; navigat
     {
       id: 'income',
       title: 'Income Comparison',
-      currentVal: current.income,
-      prevVal: previous.income,
-      diff: current.income - previous.income,
-      pct: pctChange.income,
+      currentVal: metrics.income.current,
+      prevVal: metrics.income.previous,
+      diff: metrics.income.current - metrics.income.previous,
+      pct: metrics.income.pctChange,
+      prevLabel: metrics.income.prevMonthLabel,
       isPositiveGood: true,
       path: '/analytics'
     },
     {
       id: 'expense',
       title: 'Expense Comparison',
-      currentVal: current.expenses,
-      prevVal: previous.expenses,
-      diff: current.expenses - previous.expenses,
-      pct: pctChange.expenses,
+      currentVal: metrics.expenses.current,
+      prevVal: metrics.expenses.previous,
+      diff: metrics.expenses.current - metrics.expenses.previous,
+      pct: metrics.expenses.pctChange,
+      prevLabel: metrics.expenses.prevMonthLabel,
       isPositiveGood: false,
       path: '/analytics'
     },
     {
       id: 'savings',
       title: 'Savings Comparison',
-      currentVal: current.savings,
-      prevVal: previous.savings,
-      diff: current.savings - previous.savings,
-      pct: pctChange.savings,
+      currentVal: metrics.savings.current,
+      prevVal: metrics.savings.previous,
+      diff: metrics.savings.current - metrics.savings.previous,
+      pct: metrics.savings.pctChange,
+      prevLabel: metrics.savings.prevMonthLabel,
       isPositiveGood: true,
       path: '/goals'
     },
     {
       id: 'balance',
       title: 'Net Balance Comparison',
-      currentVal: current.balance,
-      prevVal: previous.balance,
-      diff: current.balance - previous.balance,
-      pct: pctChange.balance,
+      currentVal: metrics.balance.current,
+      prevVal: metrics.balance.previous,
+      diff: metrics.balance.current - metrics.balance.previous,
+      pct: metrics.balance.pctChange,
+      prevLabel: metrics.balance.prevMonthLabel,
       isPositiveGood: true,
       path: '/analytics'
     }
@@ -1874,7 +1922,7 @@ function MonthOverMonthComparisonWidget({ data, navigate }: { data: any; navigat
                       This Month: <span className="font-bold text-slate-900 dark:text-white font-mono">₹{c.currentVal.toLocaleString('en-IN')}</span>
                     </p>
                     <p className="text-xs text-slate-500">
-                      {prevMonthLabel || 'Last Month'}: <span className="font-medium text-slate-700 dark:text-slate-300 font-mono">₹{c.prevVal.toLocaleString('en-IN')}</span>
+                      {c.prevLabel || 'Last Month'}: <span className="font-medium text-slate-700 dark:text-slate-300 font-mono">₹{c.prevVal.toLocaleString('en-IN')}</span>
                     </p>
                   </div>
 
@@ -1891,7 +1939,7 @@ function MonthOverMonthComparisonWidget({ data, navigate }: { data: any; navigat
                     <div className="text-[10px] space-y-0.5 font-semibold text-slate-300">
                       <p>Diff: ₹{c.diff.toLocaleString('en-IN')}</p>
                       <p>Ratio change: {c.pct.toFixed(2)}%</p>
-                      <p>Prev ({prevMonthLabel}): ₹{c.prevVal.toLocaleString('en-IN')}</p>
+                      <p>Prev ({c.prevLabel}): ₹{c.prevVal.toLocaleString('en-IN')}</p>
                       <p>Curr: ₹{c.currentVal.toLocaleString('en-IN')}</p>
                     </div>
                   </div>
@@ -1902,10 +1950,10 @@ function MonthOverMonthComparisonWidget({ data, navigate }: { data: any; navigat
 
           {/* OVERALL FINANCIAL SUMMARY STATEMENTS */}
           <div className="bg-slate-50 dark:bg-slate-900/50 p-3 rounded-xl border border-slate-100 dark:border-slate-800 text-[11px] font-bold text-slate-600 dark:text-slate-400 space-y-1">
-            <p>• Income {pctChange.income >= 0 ? 'increased' : 'decreased'} by <span className={pctChange.income >= 0 ? 'text-green-500' : 'text-red-500'}>{Math.abs(pctChange.income).toFixed(1)}%</span> compared to {prevMonthLabel}.</p>
-            <p>• Expenses {pctChange.expenses <= 0 ? 'decreased' : 'increased'} by <span className={pctChange.expenses <= 0 ? 'text-green-500' : 'text-red-500'}>{Math.abs(pctChange.expenses).toFixed(1)}%</span> compared to {prevMonthLabel}.</p>
-            <p>• Savings {pctChange.savings >= 0 ? 'increased' : 'decreased'} by <span className={pctChange.savings >= 0 ? 'text-green-500' : 'text-red-500'}>{Math.abs(pctChange.savings).toFixed(1)}%</span> compared to {prevMonthLabel}.</p>
-            <p>• Net Balance improved by <span className={current.balance - previous.balance >= 0 ? 'text-green-500' : 'text-red-500'}>₹{Math.abs(current.balance - previous.balance).toLocaleString('en-IN')}</span> compared to {prevMonthLabel}.</p>
+            <p>• Income {metrics.income.pctChange >= 0 ? 'increased' : 'decreased'} by <span className={metrics.income.pctChange >= 0 ? 'text-green-500' : 'text-red-500'}>{Math.abs(metrics.income.pctChange).toFixed(1)}%</span> compared to {metrics.income.prevMonthLabel || 'previous month'}.</p>
+            <p>• Expenses {metrics.expenses.pctChange <= 0 ? 'decreased' : 'increased'} by <span className={metrics.expenses.pctChange <= 0 ? 'text-green-500' : 'text-red-500'}>{Math.abs(metrics.expenses.pctChange).toFixed(1)}%</span> compared to {metrics.expenses.prevMonthLabel || 'previous month'}.</p>
+            <p>• Savings {metrics.savings.pctChange >= 0 ? 'increased' : 'decreased'} by <span className={metrics.savings.pctChange >= 0 ? 'text-green-500' : 'text-red-500'}>{Math.abs(metrics.savings.pctChange).toFixed(1)}%</span> compared to {metrics.savings.prevMonthLabel || 'previous month'}.</p>
+            <p>• Net Balance improved by <span className={current.balance - metrics.balance.previous >= 0 ? 'text-green-500' : 'text-red-500'}>₹{Math.abs(current.balance - metrics.balance.previous).toLocaleString('en-IN')}</span> compared to {metrics.balance.prevMonthLabel || 'previous month'}.</p>
           </div>
         </>
       )}
