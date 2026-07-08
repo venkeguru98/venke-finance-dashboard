@@ -356,7 +356,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
         return;
       }
 
-      // Intercept Chit / Cheetu payments
+      // Intercept Chit / Cheetu query or payment logs
       if (lowercaseText.includes('chit') || lowercaseText.includes('cheetu')) {
         const chits = await query(
           `SELECT * FROM chit_funds WHERE user_id = ? AND status = 'Running'`,
@@ -367,6 +367,42 @@ router.post('/webhook', async (req: Request, res: Response) => {
           return;
         }
 
+        // Determine if it is a logging request (has amounts/payment action verbs)
+        const hasAmountLog = lowercaseText.includes('paid') || lowercaseText.includes('spent') || lowercaseText.includes('pay') || lowercaseText.includes('log') || /\b\d{3,6}\b/.test(lowercaseText.replace(/\b20\d{2}\b/, ''));
+
+        if (!hasAmountLog) {
+          // Display dues for matching chit fund(s) for current month
+          const currentMonth = new Date().getMonth() + 1;
+          const currentYear = new Date().getFullYear();
+          const monthName = new Date().toLocaleString('default', { month: 'long' });
+
+          let matchedChits = chits;
+          // Filter by defined chit name if provided in the message
+          const cleanQuery = text.replace(/cheetu/gi, '').replace(/chit/gi, '').replace(/fund/gi, '').replace(/dues/gi, '').replace(/due/gi, '').trim().toLowerCase();
+          if (cleanQuery.length > 0) {
+            const filtered = chits.filter(c => c.chit_name.toLowerCase().includes(cleanQuery));
+            if (filtered.length > 0) {
+              matchedChits = filtered;
+            }
+          }
+
+          let responseText = `🎰 <b>Chit Fund Dues (${monthName} ${currentYear})</b>\n───────────────────\n`;
+          for (const chit of matchedChits) {
+            const currentPay = await get(
+              `SELECT installment_amount, status FROM chit_payments 
+               WHERE chit_id = ? AND month = ? AND year = ?`,
+              [chit.id, currentMonth, currentYear]
+            );
+            const dueAmount = currentPay?.installment_amount || chit.monthly_installment;
+            const statusLabel = currentPay?.status === 'Paid' ? '✅ Paid' : '⏳ Pending';
+            responseText += `• <b>${chit.chit_name}:</b> ₹${dueAmount.toLocaleString('en-IN')} (${statusLabel})\n`;
+          }
+
+          await sendMessage(chatId, responseText);
+          return;
+        }
+
+        // Proceed to log chit payment
         let chit = chits[0];
         if (chits.length > 1) {
           for (const c of chits) {

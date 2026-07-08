@@ -156,7 +156,8 @@ router.get('/dashboard', async (req: Request, res: Response) => {
       `SELECT c.chit_name as name, COALESCE(SUM(p.installment_amount), 0) as paid, (c.monthly_installment * c.total_months) as total 
        FROM chit_funds c 
        LEFT JOIN chit_payments p ON c.id = p.chit_id AND p.status = 'Paid' 
-       WHERE c.user_id = ? GROUP BY c.id`,
+       WHERE c.user_id = ? 
+       GROUP BY c.id, c.chit_name, c.monthly_installment, c.total_months`,
       [userId]
     );
 
@@ -202,12 +203,24 @@ router.get('/dashboard', async (req: Request, res: Response) => {
       [userId]
     );
 
+    // Helper to format date safely (handles both SQLite text dates and PG native Date objects)
+    const formatDateStr = (d: any) => {
+      if (!d) return '';
+      if (d instanceof Date) {
+        return d.toISOString().split('T')[0];
+      }
+      if (typeof d === 'string') {
+        return d.split(' ')[0].split('T')[0];
+      }
+      return String(d);
+    };
+
     // Combine and sort
     const allActivities = [
-      ...licTimeline.map(x => ({ ...x, dateStr: x.date })),
-      ...goldTimeline.map(x => ({ ...x, dateStr: x.date.split(' ')[0] })),
-      ...chitTimeline.map(x => ({ ...x, dateStr: x.date })),
-      ...savingsTimeline.map(x => ({ ...x, dateStr: x.date }))
+      ...licTimeline.map(x => ({ ...x, dateStr: formatDateStr(x.date) })),
+      ...goldTimeline.map(x => ({ ...x, dateStr: formatDateStr(x.date) })),
+      ...chitTimeline.map(x => ({ ...x, dateStr: formatDateStr(x.date) })),
+      ...savingsTimeline.map(x => ({ ...x, dateStr: formatDateStr(x.date) }))
     ];
 
     allActivities.sort((a, b) => new Date(b.dateStr).getTime() - new Date(a.dateStr).getTime());
@@ -215,12 +228,12 @@ router.get('/dashboard', async (req: Request, res: Response) => {
 
     res.json({
       stats: {
-        activeLicPolicies: activeLicCount.count,
-        licPremiumDue,
-        digitalGoldInvested: goldInvested.total || 0,
-        runningChitFunds: activeChitsCount.count,
-        upcomingChitPayments,
-        offlineSavingsBalance: savingsBalance.total || 0
+        activeLicPolicies: Number(activeLicCount?.count || 0),
+        licPremiumDue: Number(licPremiumDue || 0),
+        digitalGoldInvested: Number(goldInvested?.total || 0),
+        runningChitFunds: Number(activeChitsCount?.count || 0),
+        upcomingChitPayments: Number(upcomingChitPayments || 0),
+        offlineSavingsBalance: Number(savingsBalance?.total || 0)
       },
       reminders,
       charts: {
@@ -533,16 +546,18 @@ router.get('/chits', async (req: Request, res: Response) => {
 
     for (const c of chits) {
       const stats = await get(
-        `SELECT SUM(installment_amount) as totalPaid, 
-                COUNT(*) FILTER(WHERE status='Paid') as monthsPaid 
+        `SELECT 
+           SUM(CASE WHEN status='Paid' THEN installment_amount ELSE 0 END) as total_paid, 
+           SUM(CASE WHEN status='Paid' THEN 1 ELSE 0 END) as months_paid,
+           SUM(CASE WHEN status!='Paid' THEN installment_amount ELSE 0 END) as remaining_amount
          FROM chit_payments WHERE chit_id = ?`,
         [c.id]
       );
       
-      const totalPaid = stats.totalPaid || 0;
-      const monthsPaid = stats.monthsPaid || 0;
+      const totalPaid = Number(stats?.total_paid || 0);
+      const monthsPaid = Number(stats?.months_paid || 0);
       const monthsLeft = Math.max(0, c.total_months - monthsPaid);
-      const remainingAmount = Math.max(0, (c.monthly_installment * c.total_months) - totalPaid);
+      const remainingAmount = Number(stats?.remaining_amount || 0);
 
       const closing = new Date(c.closing_date);
       const diffTime = closing.getTime() - today.getTime();
