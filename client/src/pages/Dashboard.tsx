@@ -96,10 +96,15 @@ export default function Dashboard() {
   const [drawerSortBy, setDrawerSortBy] = useState<'newest' | 'oldest' | 'high' | 'low'>('newest');
   const [collapsedMonths, setCollapsedMonths] = useState<string[]>([]);
 
-  // KPI Hover Preview Panel State
-  const [hoveredCard, setHoveredCard] = useState<string | null>(null);
-  const [mobileSheetCard, setMobileSheetCard] = useState<string | null>(null);
-  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // KPI Drawer State
+  const [kpiDrawer, setKpiDrawer] = useState<'income'|'expenses'|'savings'|'balance'|'netbalance'|null>(null);
+  const [kpiSearch, setKpiSearch] = useState('');
+  const [kpiPaymentMethod, setKpiPaymentMethod] = useState('All');
+  const [kpiSortBy, setKpiSortBy] = useState<'newest'|'oldest'|'high'|'low'>('newest');
+  const [kpiMinAmount, setKpiMinAmount] = useState('');
+  const [kpiMaxAmount, setKpiMaxAmount] = useState('');
+  const [kpiDateStart, setKpiDateStart] = useState('');
+  const [kpiDateEnd, setKpiDateEnd] = useState('');
 
   // Drawer resets & defaults
   useEffect(() => {
@@ -397,90 +402,64 @@ export default function Dashboard() {
     statusBadgeText = 'text-yellow-700 dark:text-yellow-400';
   }
 
-  // KPI Hover helpers
+  // KPI Drawer helpers
   const currentMonthLabel = now.toLocaleString('default', { month: 'long', year: 'numeric' });
 
-  const handleCardMouseEnter = (key: string) => {
-    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
-    setHoveredCard(key);
+  const openKpiDrawer = (key: 'income'|'expenses'|'savings'|'balance'|'netbalance') => {
+    setKpiSearch(''); setKpiPaymentMethod('All'); setKpiSortBy('newest');
+    setKpiMinAmount(''); setKpiMaxAmount(''); setKpiDateStart(''); setKpiDateEnd('');
+    setKpiDrawer(key);
   };
 
-  const handleCardMouseLeave = () => {
-    hoverTimeoutRef.current = setTimeout(() => setHoveredCard(null), 180);
-  };
+  // ESC key closes KPI drawer
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setKpiDrawer(null); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, []);
 
-  const handlePanelMouseEnter = () => {
-    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
-  };
-
-  const handlePanelMouseLeave = () => {
-    hoverTimeoutRef.current = setTimeout(() => setHoveredCard(null), 180);
-  };
-
-  // Compute per-card preview data from already-loaded transactions
-  const getKpiPreviewData = (cardKey: string) => {
+  // KPI drawer transaction filtering
+  const getKpiFilteredTx = (type: string) => {
     const prefix = now.toISOString().slice(0, 7);
-    const currTx = transactions.filter(t => t.date.startsWith(prefix));
-
-    if (cardKey === 'income') {
-      const list = currTx.filter(t => t.type === 'income').sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      const total = list.reduce((s, t) => s + t.amount, 0);
-      const largest = list.reduce((m, t) => t.amount > m ? t.amount : m, 0);
-      const latestDate = list[0]?.date ? new Date(list[0].date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—';
-      return { total, count: list.length, largest, latestDate, recentTx: list.slice(0, 5) };
-    }
-    if (cardKey === 'expenses') {
-      const list = currTx.filter(t => t.type === 'expense').sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      const total = list.reduce((s, t) => s + t.amount, 0);
-      const largest = list.reduce((m, t) => t.amount > m ? t.amount : m, 0);
-      const avg = list.length > 0 ? total / list.length : 0;
-      const methods: Record<string, number> = {};
-      list.forEach(t => { methods[t.payment_method || 'Other'] = (methods[t.payment_method || 'Other'] || 0) + 1; });
-      const topMethod = Object.entries(methods).sort((a, b) => b[1] - a[1])[0]?.[0] || '—';
-      const highestDay = list.length > 0 ? new Date([...list].sort((a, b) => b.amount - a.amount)[0].date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—';
-      return { total, count: list.length, largest, avg, topMethod, highestDay, recentTx: list.slice(0, 5) };
-    }
-    if (cardKey === 'savings') {
-      const list = currTx.filter(t => t.type === 'savings').sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      const total = list.reduce((s, t) => s + t.amount, 0);
-      // Group by category
-      const catMap: Record<string, number> = {};
-      list.forEach(t => { catMap[t.category_name || 'Other'] = (catMap[t.category_name || 'Other'] || 0) + t.amount; });
-      const cats = Object.entries(catMap).sort((a, b) => b[1] - a[1]);
-      return { total, count: list.length, cats, recentTx: list.slice(0, 5) };
-    }
-    if (cardKey === 'balance') {
-      const recent = [...currTx].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
-      return {
-        income: totalsData.current.income,
-        expenses: totalsData.current.expenses,
-        savings: totalsData.current.savings,
-        balance: totalsData.current.balance,
-        recentTx: recent
-      };
-    }
-    if (cardKey === 'netbalance') {
-      // 6-month net balance trend
-      const trend: { month: string; net: number }[] = [];
-      for (let i = 5; i >= 0; i--) {
-        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        const p = d.toISOString().slice(0, 7);
-        const mx = transactions.filter(t => t.date.startsWith(p));
-        const inc = mx.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-        const exp = mx.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
-        const sav = mx.filter(t => t.type === 'savings').reduce((s, t) => s + t.amount, 0);
-        trend.push({ month: d.toLocaleString('default', { month: 'short' }), net: inc - exp - sav });
-      }
-      return {
-        income: totalsData.current.income,
-        expenses: totalsData.current.expenses,
-        savings: totalsData.current.savings,
-        balance: totalsData.current.balance,
-        trend
-      };
-    }
-    return null;
+    let list = transactions.filter(t => t.date.startsWith(prefix) && t.type === type);
+    if (type === 'balance') list = transactions.filter(t => t.date.startsWith(prefix));
+    if (kpiSearch.trim()) { const q = kpiSearch.toLowerCase(); list = list.filter(t => (t.notes||'').toLowerCase().includes(q) || (t.category_name||'').toLowerCase().includes(q)); }
+    if (kpiPaymentMethod !== 'All') list = list.filter(t => t.payment_method === kpiPaymentMethod);
+    if (kpiDateStart) list = list.filter(t => t.date >= kpiDateStart);
+    if (kpiDateEnd) list = list.filter(t => t.date <= kpiDateEnd);
+    if (kpiMinAmount) list = list.filter(t => t.amount >= Number(kpiMinAmount));
+    if (kpiMaxAmount) list = list.filter(t => t.amount <= Number(kpiMaxAmount));
+    if (kpiSortBy === 'newest') list.sort((a,b) => new Date(b.date).getTime()-new Date(a.date).getTime());
+    else if (kpiSortBy === 'oldest') list.sort((a,b) => new Date(a.date).getTime()-new Date(b.date).getTime());
+    else if (kpiSortBy === 'high') list.sort((a,b) => b.amount-a.amount);
+    else list.sort((a,b) => a.amount-b.amount);
+    return list;
   };
+
+  const exportKpiCSV = (list: any[], title: string) => {
+    const headers = ['Date','Description','Category','Amount','Payment Method'];
+    const rows = list.map(t => [t.date, t.notes||'', t.category_name||'', t.amount, t.payment_method||'']);
+    const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+    const blob = new Blob([csv], {type:'text/csv'});
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = `${title.replace(/\s+/g,'_')}.csv`; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  };
+
+  // 12-month trend data for KPI drawer
+  const getKpi12MonthTrend = (type: 'income'|'expense'|'savings') => {
+    const result: {month: string; amount: number}[] = [];
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const p = d.toISOString().slice(0, 7);
+      const total = transactions.filter(t => t.date.startsWith(p) && t.type === type).reduce((s,t) => s+t.amount, 0);
+      result.push({ month: d.toLocaleString('default', {month:'short', year:'2-digit'}), amount: total });
+    }
+    return result;
+  };
+
+  const KPI_ORDER: Array<'income'|'expenses'|'savings'|'balance'|'netbalance'> = ['income','expenses','savings','balance','netbalance'];
+  const kpiPrev = () => { const idx = KPI_ORDER.indexOf(kpiDrawer!); openKpiDrawer(KPI_ORDER[(idx-1+KPI_ORDER.length)%KPI_ORDER.length]); };
+  const kpiNext = () => { const idx = KPI_ORDER.indexOf(kpiDrawer!); openKpiDrawer(KPI_ORDER[(idx+1)%KPI_ORDER.length]); };
 
   // Sparklines Data helper
   const getSparklineData = (type: 'income' | 'expense' | 'balance' | 'savings') => {
@@ -768,214 +747,83 @@ export default function Dashboard() {
 
 
 
-      {/* KPI Hover Preview CSS */}
-      <style>{`
-        @keyframes kpiPanelIn {
-          from { opacity: 0; transform: translateY(10px) scale(0.97); }
-          to   { opacity: 1; transform: translateY(0)   scale(1); }
-        }
-        @keyframes kpiPanelOut {
-          from { opacity: 1; transform: translateY(0)   scale(1); }
-          to   { opacity: 0; transform: translateY(10px) scale(0.97); }
-        }
-        .kpi-panel-enter { animation: kpiPanelIn 0.22s cubic-bezier(0.16,1,0.3,1) forwards; }
-        @keyframes sheetUp {
-          from { transform: translateY(100%); opacity: 0; }
-          to   { transform: translateY(0);    opacity: 1; }
-        }
-        .sheet-up { animation: sheetUp 0.3s cubic-bezier(0.16,1,0.3,1) forwards; }
-      `}</style>
-
       {/* SUMMARY CARDS WIDGET */}
       {widgets.summaryCards && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-5">
-
-          {/* ── Monthly Income ── */}
-          <SummaryCard
-            title="Monthly Income"
-            monthLabel={currentMonthLabel}
-            cardKey="income"
-            amount={totalsData.current.income}
-            pctChange={totalsData.pctChange.income}
-            sparklineData={getSparklineData('income')}
-            color="text-green-500"
-            bg="bg-green-500"
-            isHovered={hoveredCard === 'income'}
-            onCardMouseEnter={() => handleCardMouseEnter('income')}
-            onCardMouseLeave={handleCardMouseLeave}
-            onMobileTap={() => setMobileSheetCard('income')}
-            previewData={hoveredCard === 'income' ? getKpiPreviewData('income') : null}
-            previewContent={hoveredCard === 'income' ? (
-              <KpiIncomePanel
-                data={getKpiPreviewData('income')}
-                monthLabel={currentMonthLabel}
-                navigate={navigate}
-                onPanelMouseEnter={handlePanelMouseEnter}
-                onPanelMouseLeave={handlePanelMouseLeave}
-              />
-            ) : null}
-          />
-
-          {/* ── Monthly Expenses ── */}
-          <SummaryCard
-            title="Monthly Expenses"
-            monthLabel={currentMonthLabel}
-            cardKey="expenses"
-            amount={totalsData.current.expenses}
-            pctChange={totalsData.pctChange.expenses}
-            sparklineData={getSparklineData('expense')}
-            color="text-red-500"
-            bg="bg-red-500"
-            inverseTrend
-            isHovered={hoveredCard === 'expenses'}
-            onCardMouseEnter={() => handleCardMouseEnter('expenses')}
-            onCardMouseLeave={handleCardMouseLeave}
-            onMobileTap={() => setMobileSheetCard('expenses')}
-            previewContent={hoveredCard === 'expenses' ? (
-              <KpiExpensesPanel
-                data={getKpiPreviewData('expenses')}
-                monthLabel={currentMonthLabel}
-                navigate={navigate}
-                onPanelMouseEnter={handlePanelMouseEnter}
-                onPanelMouseLeave={handlePanelMouseLeave}
-              />
-            ) : null}
-          />
-
-          {/* ── Monthly Savings ── */}
-          <SummaryCard
-            title="Monthly Savings"
-            monthLabel={currentMonthLabel}
-            cardKey="savings"
-            amount={totalsData.current.savings}
-            pctChange={totalsData.pctChange.savings}
+          <SummaryCard title="Monthly Income" monthLabel={currentMonthLabel} cardKey="income"
+            amount={totalsData.current.income} pctChange={totalsData.pctChange.income}
+            sparklineData={getSparklineData('income')} color="text-green-500" bg="bg-green-500"
+            onClick={() => openKpiDrawer('income')} />
+          <SummaryCard title="Monthly Expenses" monthLabel={currentMonthLabel} cardKey="expenses"
+            amount={totalsData.current.expenses} pctChange={totalsData.pctChange.expenses}
+            sparklineData={getSparklineData('expense')} color="text-red-500" bg="bg-red-500" inverseTrend
+            onClick={() => openKpiDrawer('expenses')} />
+          <SummaryCard title="Monthly Savings" monthLabel={currentMonthLabel} cardKey="savings"
+            amount={totalsData.current.savings} pctChange={totalsData.pctChange.savings}
             sparklineData={getSparklineData('savings')}
-            color={totalsData.pctChange.savings >= 0 ? "text-green-500" : "text-red-500"}
-            bg={totalsData.pctChange.savings >= 0 ? "bg-green-500" : "bg-red-500"}
-            isHovered={hoveredCard === 'savings'}
-            onCardMouseEnter={() => handleCardMouseEnter('savings')}
-            onCardMouseLeave={handleCardMouseLeave}
-            onMobileTap={() => setMobileSheetCard('savings')}
-            previewContent={hoveredCard === 'savings' ? (
-              <KpiSavingsPanel
-                data={getKpiPreviewData('savings')}
-                monthLabel={currentMonthLabel}
-                navigate={navigate}
-                onPanelMouseEnter={handlePanelMouseEnter}
-                onPanelMouseLeave={handlePanelMouseLeave}
-              />
-            ) : null}
-          />
-
-          {/* ── Available Balance ── */}
-          <SummaryCard
-            title="Available Balance"
-            monthLabel={currentMonthLabel}
-            cardKey="balance"
-            amount={availableBalance}
-            pctChange={totalsData.pctChange.balance}
-            sparklineData={getSparklineData('balance')}
-            color={availableColor}
-            bg={availableBg}
-            isHovered={hoveredCard === 'balance'}
-            onCardMouseEnter={() => handleCardMouseEnter('balance')}
-            onCardMouseLeave={handleCardMouseLeave}
-            onMobileTap={() => setMobileSheetCard('balance')}
-            previewContent={hoveredCard === 'balance' ? (
-              <KpiBalancePanel
-                data={getKpiPreviewData('balance')}
-                unpaidBillsSum={unpaidBillsSum}
-                forecastedBalance={forecastedBalance}
-                statusBadgeBg={statusBadgeBg}
-                statusBadgeText={statusBadgeText}
-                monthLabel={currentMonthLabel}
-                onPanelMouseEnter={handlePanelMouseEnter}
-                onPanelMouseLeave={handlePanelMouseLeave}
-              />
-            ) : null}
-          >
+            color={totalsData.pctChange.savings >= 0 ? 'text-green-500' : 'text-red-500'}
+            bg={totalsData.pctChange.savings >= 0 ? 'bg-green-500' : 'bg-red-500'}
+            onClick={() => openKpiDrawer('savings')} />
+          <SummaryCard title="Available Balance" monthLabel={currentMonthLabel} cardKey="balance"
+            amount={availableBalance} pctChange={totalsData.pctChange.balance}
+            sparklineData={getSparklineData('balance')} color={availableColor} bg={availableBg}
+            onClick={() => openKpiDrawer('balance')}>
             <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 text-[10px] font-semibold text-slate-500 space-y-1">
               <div className="flex justify-between"><span>Income</span><span className="text-slate-900 dark:text-white font-bold">₹{totalsData.current.income.toLocaleString('en-IN')}</span></div>
               <div className="flex justify-between"><span>Expenses</span><span className="text-red-400 font-bold">-₹{totalsData.current.expenses.toLocaleString('en-IN')}</span></div>
               <div className="flex justify-between"><span>Savings</span><span className="text-blue-400 font-bold">-₹{totalsData.current.savings.toLocaleString('en-IN')}</span></div>
-              {unpaidBillsSum > 0 && (
-                <div className="flex justify-between text-amber-500 font-bold"><span>Unpaid Bills</span><span>-₹{unpaidBillsSum.toLocaleString('en-IN')}</span></div>
-              )}
+              {unpaidBillsSum > 0 && <div className="flex justify-between text-amber-500 font-bold"><span>Unpaid</span><span>-₹{unpaidBillsSum.toLocaleString('en-IN')}</span></div>}
               <div className="border-t border-dashed border-slate-200 dark:border-slate-800 my-1"></div>
               <div className={`text-center font-extrabold mt-1 text-[10px] py-0.5 rounded ${statusBadgeBg} ${statusBadgeText}`}>
-                {totalsData.current.income === 0 ? 'Add income to start tracking' : unpaidBillsSum > 0 ? `Forecast: ₹${forecastedBalance.toLocaleString('en-IN')}` : availableBalance >= 0 ? `Available: ₹${availableBalance.toLocaleString('en-IN')}` : `Overspent: -₹${Math.abs(availableBalance).toLocaleString('en-IN')}`}
+                {totalsData.current.income === 0 ? 'Add income to start tracking' : availableBalance >= 0 ? `Available: ₹${availableBalance.toLocaleString('en-IN')}` : `Overspent: -₹${Math.abs(availableBalance).toLocaleString('en-IN')}`}
               </div>
             </div>
           </SummaryCard>
-
-          {/* ── Net Balance ── */}
-          <SummaryCard
-            title="Net Balance"
-            monthLabel={currentMonthLabel}
-            cardKey="netbalance"
-            amount={totalsData.current.balance}
-            pctChange={totalsData.pctChange.balance}
-            sparklineData={getSparklineData('balance')}
-            color={availableColor}
-            bg={availableBg}
-            isHovered={hoveredCard === 'netbalance'}
-            onCardMouseEnter={() => handleCardMouseEnter('netbalance')}
-            onCardMouseLeave={handleCardMouseLeave}
-            onMobileTap={() => setMobileSheetCard('netbalance')}
-            previewContent={hoveredCard === 'netbalance' ? (
-              <KpiNetBalancePanel
-                data={getKpiPreviewData('netbalance')}
-                monthLabel={currentMonthLabel}
-                onPanelMouseEnter={handlePanelMouseEnter}
-                onPanelMouseLeave={handlePanelMouseLeave}
-              />
-            ) : null}
-          >
+          <SummaryCard title="Net Balance" monthLabel={currentMonthLabel} cardKey="netbalance"
+            amount={totalsData.current.balance} pctChange={totalsData.pctChange.balance}
+            sparklineData={getSparklineData('balance')} color={availableColor} bg={availableBg}
+            onClick={() => openKpiDrawer('netbalance')}>
             <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 text-[10px] font-semibold text-slate-500 space-y-1">
               <div className="flex justify-between"><span>Income</span><span className="text-slate-900 dark:text-white font-bold">₹{totalsData.current.income.toLocaleString('en-IN')}</span></div>
               <div className="flex justify-between"><span>Expenses</span><span className="text-red-400 font-bold">-₹{totalsData.current.expenses.toLocaleString('en-IN')}</span></div>
               <div className="flex justify-between"><span>Savings</span><span className="text-blue-400 font-bold">-₹{totalsData.current.savings.toLocaleString('en-IN')}</span></div>
               <div className="border-t border-dashed border-slate-200 dark:border-slate-800 my-1"></div>
               <div className={`text-center font-extrabold mt-1 text-[10px] py-0.5 rounded ${statusBadgeBg} ${statusBadgeText}`}>
-                {totalsData.current.income === 0 ? 'Add income to start tracking' : totalsData.current.balance >= 0 ? `Net Balance: ₹${totalsData.current.balance.toLocaleString('en-IN')}` : `Net Deficit: -₹${Math.abs(totalsData.current.balance).toLocaleString('en-IN')}`}
+                {totalsData.current.income === 0 ? 'Add income to start tracking' : totalsData.current.balance >= 0 ? `Net: ₹${totalsData.current.balance.toLocaleString('en-IN')}` : `Deficit: -₹${Math.abs(totalsData.current.balance).toLocaleString('en-IN')}`}
               </div>
             </div>
           </SummaryCard>
-
-          {/* ── Savings Rate ── */}
-          <SummaryCard
-            title="Savings Rate"
-            monthLabel={currentMonthLabel}
-            amount={savingsRate}
-            isPercentage
-            pctChange={totalsData.pctChange.savingsRate}
-            color="text-orange-500"
-            bg="bg-orange-500"
-          />
+          <SummaryCard title="Savings Rate" monthLabel={currentMonthLabel}
+            amount={savingsRate} isPercentage pctChange={totalsData.pctChange.savingsRate}
+            color="text-orange-500" bg="bg-orange-500" />
         </div>
       )}
 
-      {/* Mobile Bottom Sheet for KPI previews */}
-      {mobileSheetCard && (
-        <div
-          className="fixed inset-0 z-50 flex items-end md:hidden"
-          onClick={() => setMobileSheetCard(null)}
-        >
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-          <div
-            className="relative w-full bg-slate-900 rounded-t-3xl border-t border-slate-700 max-h-[80vh] overflow-y-auto sheet-up"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="w-12 h-1.5 bg-slate-600 rounded-full mx-auto mt-3 mb-2" />
-            <div className="p-4 pb-8">
-              {mobileSheetCard === 'income' && <KpiIncomePanel data={getKpiPreviewData('income')} monthLabel={currentMonthLabel} navigate={navigate} onPanelMouseEnter={() => {}} onPanelMouseLeave={() => {}} />}
-              {mobileSheetCard === 'expenses' && <KpiExpensesPanel data={getKpiPreviewData('expenses')} monthLabel={currentMonthLabel} navigate={navigate} onPanelMouseEnter={() => {}} onPanelMouseLeave={() => {}} />}
-              {mobileSheetCard === 'savings' && <KpiSavingsPanel data={getKpiPreviewData('savings')} monthLabel={currentMonthLabel} navigate={navigate} onPanelMouseEnter={() => {}} onPanelMouseLeave={() => {}} />}
-              {mobileSheetCard === 'balance' && <KpiBalancePanel data={getKpiPreviewData('balance')} unpaidBillsSum={unpaidBillsSum} forecastedBalance={forecastedBalance} statusBadgeBg={statusBadgeBg} statusBadgeText={statusBadgeText} monthLabel={currentMonthLabel} onPanelMouseEnter={() => {}} onPanelMouseLeave={() => {}} />}
-              {mobileSheetCard === 'netbalance' && <KpiNetBalancePanel data={getKpiPreviewData('netbalance')} monthLabel={currentMonthLabel} onPanelMouseEnter={() => {}} onPanelMouseLeave={() => {}} />}
-            </div>
-          </div>
-        </div>
+      {/* KPI DETAIL DRAWER */}
+      {kpiDrawer && (
+        <KpiDrawer
+          drawerKey={kpiDrawer}
+          monthLabel={currentMonthLabel}
+          transactions={transactions}
+          totalsData={totalsData}
+          goals={goals}
+          unpaidBillsSum={unpaidBillsSum}
+          forecastedBalance={forecastedBalance}
+          now={now}
+          kpiSearch={kpiSearch} setKpiSearch={setKpiSearch}
+          kpiPaymentMethod={kpiPaymentMethod} setKpiPaymentMethod={setKpiPaymentMethod}
+          kpiSortBy={kpiSortBy} setKpiSortBy={setKpiSortBy}
+          kpiMinAmount={kpiMinAmount} setKpiMinAmount={setKpiMinAmount}
+          kpiMaxAmount={kpiMaxAmount} setKpiMaxAmount={setKpiMaxAmount}
+          kpiDateStart={kpiDateStart} setKpiDateStart={setKpiDateStart}
+          kpiDateEnd={kpiDateEnd} setKpiDateEnd={setKpiDateEnd}
+          getKpiFilteredTx={getKpiFilteredTx}
+          exportKpiCSV={exportKpiCSV}
+          getKpi12MonthTrend={getKpi12MonthTrend}
+          onClose={() => setKpiDrawer(null)}
+          onPrev={kpiPrev}
+          onNext={kpiNext}
+        />
       )}
 
       {/* FINANCIAL INSIGHTS SECTION */}
@@ -1414,7 +1262,7 @@ export default function Dashboard() {
                 Quick Log {txFormType}
               </h3>
               <button onClick={() => setIsAddTxOpen(false)} className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">
-                <XIcon className="w-5 h-5" />
+                <X className="w-5 h-5" />
               </button>
             </div>
             <form onSubmit={handleAddTxSubmit} className="p-6 space-y-4">
@@ -2044,50 +1892,17 @@ function Sparkline({ data, color }: { data: any[]; color: string }) {
   );
 }
 
-function SummaryCard({ title, monthLabel, cardKey, amount, pctChange, sparklineData, color, bg, isPercentage = false, inverseTrend = false, children, isHovered, onCardMouseEnter, onCardMouseLeave, onMobileTap, previewContent }: any) {
+function SummaryCard({ title, monthLabel, cardKey, amount, pctChange, sparklineData, color, bg, isPercentage = false, inverseTrend = false, children, onClick }: any) {
   const isPositive = pctChange >= 0;
   const isGood = inverseTrend ? !isPositive : isPositive;
-  const cardRef = useRef<HTMLDivElement>(null);
-  const [panelStyle, setPanelStyle] = useState<React.CSSProperties>({});
-
-  useEffect(() => {
-    if (isHovered && cardRef.current) {
-      const rect = cardRef.current.getBoundingClientRect();
-      const panelWidth = 320;
-      const spaceRight = window.innerWidth - rect.right;
-      const spaceLeft = rect.left;
-      let left = rect.left;
-      if (spaceRight < panelWidth + 12 && spaceLeft > panelWidth + 12) {
-        left = rect.right - panelWidth;
-      }
-      if (left + panelWidth > window.innerWidth - 8) left = window.innerWidth - panelWidth - 8;
-      if (left < 8) left = 8;
-      setPanelStyle({
-        position: 'fixed',
-        top: rect.bottom + 10,
-        left,
-        width: panelWidth,
-        zIndex: 9999,
-      });
-    }
-  }, [isHovered]);
 
   return (
     <div
-      ref={cardRef}
-      className={`bg-white dark:bg-slate-950 p-5 rounded-2xl border shadow-sm hover:shadow-xl transition-all relative overflow-visible group cursor-pointer select-none ${
-        isHovered
-          ? 'border-primary/50 ring-2 ring-primary/20 shadow-primary/10'
-          : 'border-slate-200 dark:border-slate-800'
-      }`}
-      onMouseEnter={onCardMouseEnter}
-      onMouseLeave={onCardMouseLeave}
-      onClick={onMobileTap}
+      className={`bg-white dark:bg-slate-950 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-xl hover:-translate-y-1 hover:border-primary/40 hover:ring-2 hover:ring-primary/10 transition-all duration-200 relative overflow-hidden group ${onClick ? 'cursor-pointer' : ''}`}
+      onClick={onClick}
     >
-      {/* Background glow orb */}
       <div className={`absolute -top-4 -right-4 w-20 h-20 rounded-full ${bg} opacity-5 group-hover:opacity-15 transition-opacity duration-300`}></div>
 
-      {/* Header: Title + Month Badge */}
       <div className="mb-2">
         <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{title}</p>
         {monthLabel && cardKey && (
@@ -2111,372 +1926,378 @@ function SummaryCard({ title, monthLabel, cardKey, amount, pctChange, sparklineD
 
       {children}
 
-      {/* Hover indicator dot */}
-      {cardKey && (
-        <div className={`absolute bottom-2.5 right-2.5 w-1.5 h-1.5 rounded-full transition-all duration-300 ${isHovered ? 'bg-primary scale-125' : 'bg-slate-300 dark:bg-slate-700'}`} />
-      )}
-
-      {/* Floating Preview Panel — rendered via portal-like fixed positioning */}
-      {isHovered && previewContent && typeof document !== 'undefined' && (
-        <div
-          style={panelStyle}
-          className="kpi-panel-enter hidden md:block"
-        >
-          {previewContent}
-        </div>
+      {/* Click indicator */}
+      {onClick && (
+        <div className="absolute bottom-2.5 right-2.5 w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-slate-700 group-hover:bg-primary group-hover:scale-125 transition-all duration-300" />
       )}
     </div>
   );
 }
 
-// ─── Shared KPI Transaction Row ───────────────────────────────────────────────
-function KpiTxRow({ t, amountColor = 'text-green-400' }: { t: any; amountColor?: string }) {
-  const d = new Date(t.date);
-  return (
-    <div className="flex items-center justify-between gap-2 py-2 border-b border-slate-800/60 last:border-0">
-      <div className="flex items-center gap-2 min-w-0">
-        <div className="shrink-0 text-center bg-slate-800 rounded-lg px-2 py-1 min-w-[40px]">
-          <p className="text-[8px] text-slate-400 font-bold uppercase">{d.toLocaleString('default', { month: 'short' })}</p>
-          <p className="text-xs font-black text-white leading-none">{d.getDate()}</p>
-        </div>
-        <div className="min-w-0">
-          <p className="text-xs font-bold text-slate-200 truncate max-w-[130px]">{t.notes || t.category_name || '—'}</p>
-          <div className="flex items-center gap-1 mt-0.5">
-            <span className="text-[9px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded font-semibold">{t.payment_method || 'UPI'}</span>
-            {t.category_name && <span className="text-[9px] text-slate-500 font-medium truncate max-w-[80px]">{t.category_name}</span>}
-          </div>
-        </div>
-      </div>
-      <span className={`text-xs font-black font-mono shrink-0 ${amountColor}`}>
-        ₹{Number(t.amount).toLocaleString('en-IN')}
-      </span>
-    </div>
-  );
-}
+// ─── KPI Drawer ──────────────────────────────────────────────────────────────
+const KPI_META: Record<string, { emoji: string; label: string; color: string; accent: string }> = {
+  income:     { emoji: '💚', label: 'Monthly Income',     color: 'text-green-400',  accent: 'from-green-900/60 to-emerald-900/40' },
+  expenses:   { emoji: '💸', label: 'Monthly Expenses',   color: 'text-red-400',    accent: 'from-red-900/60 to-rose-900/40' },
+  savings:    { emoji: '🏦', label: 'Monthly Savings',    color: 'text-blue-400',   accent: 'from-blue-900/60 to-indigo-900/40' },
+  balance:    { emoji: '💰', label: 'Available Balance',  color: 'text-purple-400', accent: 'from-purple-900/60 to-violet-900/40' },
+  netbalance: { emoji: '📈', label: 'Net Balance',        color: 'text-cyan-400',   accent: 'from-cyan-900/60 to-teal-900/40' },
+};
 
-// ─── KPI Panel Wrapper ────────────────────────────────────────────────────────
-function KpiPanelWrapper({ children, onPanelMouseEnter, onPanelMouseLeave }: { children: React.ReactNode; onPanelMouseEnter: () => void; onPanelMouseLeave: () => void }) {
-  return (
-    <div
-      onMouseEnter={onPanelMouseEnter}
-      onMouseLeave={onPanelMouseLeave}
-      className="bg-slate-900 border border-slate-700/60 rounded-2xl shadow-2xl shadow-black/40 overflow-hidden"
-    >
-      {children}
-    </div>
-  );
-}
+function KpiDrawer({ drawerKey, monthLabel, transactions, totalsData, goals, unpaidBillsSum, forecastedBalance, now, kpiSearch, setKpiSearch, kpiPaymentMethod, setKpiPaymentMethod, kpiSortBy, setKpiSortBy, kpiMinAmount, setKpiMinAmount, kpiMaxAmount, setKpiMaxAmount, kpiDateStart, setKpiDateStart, setKpiDateEnd, getKpiFilteredTx, exportKpiCSV, onClose, onPrev, onNext }: any) {
+  const meta = KPI_META[drawerKey];
+  const drawerRef = useRef<HTMLDivElement>(null);
+  const summaryRef = useRef<HTMLDivElement>(null);
+  const txRef = useRef<HTMLDivElement>(null);
+  const trendRef = useRef<HTMLDivElement>(null);
+  const breakdownRef = useRef<HTMLDivElement>(null);
 
-// ─── Income Preview Panel ─────────────────────────────────────────────────────
-function KpiIncomePanel({ data, monthLabel, navigate, onPanelMouseEnter, onPanelMouseLeave }: any) {
-  if (!data) return null;
+  const scrollTo = (ref: React.RefObject<HTMLDivElement>) => {
+    ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  // Derive data from transactions
+  const prefix = now.toISOString().slice(0, 7);
+  const currMonthTx = transactions.filter((t: any) => t.date.startsWith(prefix));
+
+  // Per-type tx lists for summaries
+  const incomeTx   = currMonthTx.filter((t: any) => t.type === 'income');
+  const expenseTx  = currMonthTx.filter((t: any) => t.type === 'expense');
+  const savingsTx  = currMonthTx.filter((t: any) => t.type === 'savings');
+
+  const txTypeMap: Record<string, string> = { income: 'income', expenses: 'expense', savings: 'savings', balance: 'balance', netbalance: 'balance' };
+  const filteredTx = getKpiFilteredTx(txTypeMap[drawerKey]);
+
+  // Summary stats
+  const total   = (list: any[]) => list.reduce((s: number, t: any) => s + t.amount, 0);
+  const largest = (list: any[]) => list.reduce((m: number, t: any) => t.amount > m ? t.amount : m, 0);
+  const avg     = (list: any[]) => list.length > 0 ? total(list) / list.length : 0;
+  const smallest= (list: any[]) => list.length > 0 ? list.reduce((m: number, t: any) => t.amount < m ? t.amount : m, Infinity) : 0;
+
+  // Category breakdown map
+  const catBreakdown = (list: any[]) => {
+    const map: Record<string, number> = {};
+    list.forEach((t: any) => { map[t.category_name || 'Other'] = (map[t.category_name || 'Other'] || 0) + t.amount; });
+    return Object.entries(map).sort((a, b) => b[1] - a[1]);
+  };
+
+  // 12-month trend
+  const trend12: {month: string; amount: number}[] = [];
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const p = d.toISOString().slice(0, 7);
+    const type = drawerKey === 'expenses' ? 'expense' : drawerKey === 'netbalance' ? 'income' : drawerKey;
+    const amt = drawerKey === 'netbalance'
+      ? transactions.filter((t: any) => t.date.startsWith(p) && t.type === 'income').reduce((s: number, t: any) => s + t.amount, 0)
+      - transactions.filter((t: any) => t.date.startsWith(p) && t.type === 'expense').reduce((s: number, t: any) => s + t.amount, 0)
+      - transactions.filter((t: any) => t.date.startsWith(p) && t.type === 'savings').reduce((s: number, t: any) => s + t.amount, 0)
+      : transactions.filter((t: any) => t.date.startsWith(p) && t.type === type).reduce((s: number, t: any) => s + t.amount, 0);
+    trend12.push({ month: d.toLocaleString('default', { month: 'short', year: '2-digit' as any }), amount: amt });
+  }
+
+  // Group filtered tx by date
+  const grouped: Record<string, any[]> = {};
+  filteredTx.forEach((t: any) => { if (!grouped[t.date]) grouped[t.date] = []; grouped[t.date].push(t); });
+  const groupedDates = Object.keys(grouped).sort().reverse();
+
+  const fmtRupee = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
+
+  const handleExport = () => exportKpiCSV(filteredTx, `${meta.label}_${monthLabel}`);
+  const handlePrint  = () => window.print();
+
+  const resetFilters = () => { setKpiSearch(''); setKpiPaymentMethod('All'); setKpiSortBy('newest'); setKpiMinAmount(''); setKpiMaxAmount(''); setKpiDateStart(''); setKpiDateEnd(''); };
+
+  // Goal progress for savings
+  const totalGoalTarget = goals.filter((g: any) => g.status !== 'completed').reduce((s: number, g: any) => s + g.target_amount, 0);
+  const totalGoalSaved  = goals.filter((g: any) => g.status !== 'completed').reduce((s: number, g: any) => s + g.current_saved, 0);
+  const goalPct = totalGoalTarget > 0 ? (totalGoalSaved / totalGoalTarget) * 100 : 0;
+
   return (
-    <KpiPanelWrapper onPanelMouseEnter={onPanelMouseEnter} onPanelMouseLeave={onPanelMouseLeave}>
-      {/* Header */}
-      <div className="bg-gradient-to-r from-green-900/60 to-emerald-900/40 px-4 py-3 border-b border-slate-700/60">
-        <div className="flex items-center gap-2">
-          <span className="text-lg">💚</span>
-          <div>
-            <p className="text-[10px] font-black text-green-400 uppercase tracking-wider">Income</p>
-            <p className="text-xs font-bold text-slate-300">{monthLabel}</p>
-          </div>
-        </div>
-      </div>
-      {/* Quick Summary */}
-      <div className="px-4 pt-3 pb-2">
-        <p className="text-[9px] font-black text-primary uppercase tracking-wider mb-2">💡 Quick Summary</p>
-        <div className="grid grid-cols-2 gap-2">
-          <div className="bg-slate-800/60 rounded-xl p-2.5">
-            <p className="text-[9px] text-slate-400 font-semibold">Total Income</p>
-            <p className="text-sm font-black text-green-400 font-mono">₹{Number(data.total).toLocaleString('en-IN')}</p>
-          </div>
-          <div className="bg-slate-800/60 rounded-xl p-2.5">
-            <p className="text-[9px] text-slate-400 font-semibold">Transactions</p>
-            <p className="text-sm font-black text-white">{data.count}</p>
-          </div>
-          <div className="bg-slate-800/60 rounded-xl p-2.5">
-            <p className="text-[9px] text-slate-400 font-semibold">Largest</p>
-            <p className="text-sm font-black text-green-300 font-mono">₹{Number(data.largest).toLocaleString('en-IN')}</p>
-          </div>
-          <div className="bg-slate-800/60 rounded-xl p-2.5">
-            <p className="text-[9px] text-slate-400 font-semibold">Latest</p>
-            <p className="text-sm font-black text-slate-200">{data.latestDate}</p>
-          </div>
-        </div>
-      </div>
-      {/* Transactions */}
-      {data.recentTx.length > 0 && (
-        <div className="px-4 pb-2">
-          <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1 mt-1">Recent Income</p>
-          <div>{data.recentTx.map((t: any) => <KpiTxRow key={t.id} t={t} amountColor="text-green-400" />)}</div>
-        </div>
-      )}
-      {/* Footer */}
-      <button
-        onClick={() => navigate('/transactions')}
-        className="w-full py-2.5 text-[10px] font-black text-primary hover:text-white hover:bg-primary/20 transition-colors border-t border-slate-700/60 tracking-wider uppercase"
+    <>
+      {/* Backdrop */}
+      <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200" onClick={onClose} />
+
+      {/* Drawer Panel */}
+      <div
+        ref={drawerRef}
+        className="fixed right-0 top-0 bottom-0 z-50 w-full md:max-w-2xl bg-slate-950 border-l border-slate-800 shadow-2xl flex flex-col h-screen overflow-hidden animate-in slide-in-from-right duration-300"
       >
-        View All Income →
-      </button>
-    </KpiPanelWrapper>
-  );
-}
+        {/* Header */}
+        <div className={`p-5 border-b border-slate-800 bg-gradient-to-r ${meta.accent} shrink-0`}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl p-2 bg-slate-900/60 rounded-xl">{meta.emoji}</span>
+              <div>
+                <h3 className={`font-black text-lg text-white`}>{meta.label}</h3>
+                <p className={`text-[10px] font-bold uppercase tracking-wider ${meta.color}`}>{monthLabel} · KPI Detail</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={onPrev} className="p-2 rounded-lg bg-slate-900/60 border border-slate-700 hover:bg-slate-800 text-slate-400 hover:text-white transition" title="Previous KPI"><ChevronLeft className="w-4 h-4" /></button>
+              <button onClick={onNext} className="p-2 rounded-lg bg-slate-900/60 border border-slate-700 hover:bg-slate-800 text-slate-400 hover:text-white transition" title="Next KPI"><ChevronRight className="w-4 h-4" /></button>
+              <button onClick={onClose} className="p-2 rounded-lg bg-slate-900/60 border border-slate-700 hover:bg-slate-800 text-slate-400 hover:text-white transition ml-1"><X className="w-4 h-4" /></button>
+            </div>
+          </div>
 
-// ─── Expenses Preview Panel ───────────────────────────────────────────────────
-function KpiExpensesPanel({ data, monthLabel, navigate, onPanelMouseEnter, onPanelMouseLeave }: any) {
-  if (!data) return null;
-  return (
-    <KpiPanelWrapper onPanelMouseEnter={onPanelMouseEnter} onPanelMouseLeave={onPanelMouseLeave}>
-      <div className="bg-gradient-to-r from-red-900/60 to-rose-900/40 px-4 py-3 border-b border-slate-700/60">
-        <div className="flex items-center gap-2">
-          <span className="text-lg">💸</span>
-          <div>
-            <p className="text-[10px] font-black text-red-400 uppercase tracking-wider">Expenses</p>
-            <p className="text-xs font-bold text-slate-300">{monthLabel}</p>
+          {/* Section Chips */}
+          <div className="flex gap-2 mt-3 flex-wrap">
+            {[{ label: '📊 Summary', ref: summaryRef }, { label: '📋 Transactions', ref: txRef }, { label: '📈 Trend', ref: trendRef }, { label: '🍩 Breakdown', ref: breakdownRef }].map(chip => (
+              <button key={chip.label} onClick={() => scrollTo(chip.ref as any)} className="text-[10px] font-black px-2.5 py-1 rounded-full bg-slate-900/60 border border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white transition">
+                {chip.label}
+              </button>
+            ))}
           </div>
         </div>
-      </div>
-      <div className="px-4 pt-3 pb-2">
-        <p className="text-[9px] font-black text-primary uppercase tracking-wider mb-2">💡 Quick Summary</p>
-        <div className="grid grid-cols-2 gap-2">
-          <div className="bg-slate-800/60 rounded-xl p-2.5">
-            <p className="text-[9px] text-slate-400 font-semibold">Total</p>
-            <p className="text-sm font-black text-red-400 font-mono">₹{Number(data.total).toLocaleString('en-IN')}</p>
-          </div>
-          <div className="bg-slate-800/60 rounded-xl p-2.5">
-            <p className="text-[9px] text-slate-400 font-semibold">Transactions</p>
-            <p className="text-sm font-black text-white">{data.count}</p>
-          </div>
-          <div className="bg-slate-800/60 rounded-xl p-2.5">
-            <p className="text-[9px] text-slate-400 font-semibold">Largest</p>
-            <p className="text-sm font-black text-red-300 font-mono">₹{Number(data.largest).toLocaleString('en-IN')}</p>
-          </div>
-          <div className="bg-slate-800/60 rounded-xl p-2.5">
-            <p className="text-[9px] text-slate-400 font-semibold">Avg / Tx</p>
-            <p className="text-sm font-black text-slate-200 font-mono">₹{Math.round(data.avg || 0).toLocaleString('en-IN')}</p>
-          </div>
-        </div>
-        <div className="mt-2 flex gap-2">
-          <div className="flex-1 bg-slate-800/60 rounded-xl p-2.5">
-            <p className="text-[9px] text-slate-400 font-semibold">Top Method</p>
-            <p className="text-xs font-black text-amber-300">{data.topMethod}</p>
-          </div>
-          <div className="flex-1 bg-slate-800/60 rounded-xl p-2.5">
-            <p className="text-[9px] text-slate-400 font-semibold">Highest Day</p>
-            <p className="text-xs font-black text-orange-300">{data.highestDay}</p>
-          </div>
-        </div>
-      </div>
-      {data.recentTx.length > 0 && (
-        <div className="px-4 pb-2">
-          <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1 mt-1">Recent Expenses</p>
-          <div>{data.recentTx.map((t: any) => <KpiTxRow key={t.id} t={t} amountColor="text-red-400" />)}</div>
-        </div>
-      )}
-      <button
-        onClick={() => navigate('/transactions')}
-        className="w-full py-2.5 text-[10px] font-black text-primary hover:text-white hover:bg-primary/20 transition-colors border-t border-slate-700/60 tracking-wider uppercase"
-      >
-        View All Expenses →
-      </button>
-    </KpiPanelWrapper>
-  );
-}
 
-// ─── Savings Preview Panel ────────────────────────────────────────────────────
-function KpiSavingsPanel({ data, monthLabel, navigate, onPanelMouseEnter, onPanelMouseLeave }: any) {
-  if (!data) return null;
-  return (
-    <KpiPanelWrapper onPanelMouseEnter={onPanelMouseEnter} onPanelMouseLeave={onPanelMouseLeave}>
-      <div className="bg-gradient-to-r from-blue-900/60 to-indigo-900/40 px-4 py-3 border-b border-slate-700/60">
-        <div className="flex items-center gap-2">
-          <span className="text-lg">🏦</span>
-          <div>
-            <p className="text-[10px] font-black text-blue-400 uppercase tracking-wider">Savings</p>
-            <p className="text-xs font-bold text-slate-300">{monthLabel}</p>
-          </div>
-        </div>
-      </div>
-      <div className="px-4 pt-3 pb-2">
-        <p className="text-[9px] font-black text-primary uppercase tracking-wider mb-2">💡 Quick Summary</p>
-        <div className="grid grid-cols-2 gap-2 mb-3">
-          <div className="bg-slate-800/60 rounded-xl p-2.5">
-            <p className="text-[9px] text-slate-400 font-semibold">Total Saved</p>
-            <p className="text-sm font-black text-blue-400 font-mono">₹{Number(data.total).toLocaleString('en-IN')}</p>
-          </div>
-          <div className="bg-slate-800/60 rounded-xl p-2.5">
-            <p className="text-[9px] text-slate-400 font-semibold">Transactions</p>
-            <p className="text-sm font-black text-white">{data.count}</p>
-          </div>
-        </div>
-        {data.cats.length > 0 && (
-          <>
-            <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1.5">By Category</p>
-            <div className="space-y-1.5">
-              {data.cats.map(([cat, amt]: [string, number]) => (
-                <div key={cat} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <div className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
-                    <span className="text-xs text-slate-300 font-semibold truncate max-w-[150px]">{cat}</span>
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-6 no-scrollbar">
+
+          {/* ── SUMMARY SECTION ── */}
+          <div ref={summaryRef}>
+            <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-3">📊 Summary</p>
+
+            {/* Income */}
+            {drawerKey === 'income' && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {[
+                  { label: 'Total Income', value: fmtRupee(total(incomeTx)), color: 'text-green-400' },
+                  { label: 'Transactions', value: incomeTx.length, color: 'text-white' },
+                  { label: 'Largest', value: fmtRupee(largest(incomeTx)), color: 'text-green-300' },
+                  { label: 'Average', value: fmtRupee(avg(incomeTx)), color: 'text-slate-300' },
+                ].map(s => (
+                  <div key={s.label} className="bg-slate-900/60 border border-slate-800 p-3.5 rounded-xl">
+                    <p className="text-[9px] text-slate-500 font-bold uppercase">{s.label}</p>
+                    <p className={`text-lg font-black font-mono mt-1 ${s.color}`}>{s.value}</p>
                   </div>
-                  <span className="text-xs font-black text-blue-300 font-mono shrink-0">₹{Number(amt).toLocaleString('en-IN')}</span>
+                ))}
+              </div>
+            )}
+
+            {/* Expenses */}
+            {drawerKey === 'expenses' && (
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                {[
+                  { label: 'Total Expenses', value: fmtRupee(total(expenseTx)), color: 'text-red-400' },
+                  { label: 'Transactions', value: expenseTx.length, color: 'text-white' },
+                  { label: 'Highest', value: fmtRupee(largest(expenseTx)), color: 'text-red-300' },
+                  { label: 'Average', value: fmtRupee(avg(expenseTx)), color: 'text-slate-300' },
+                  { label: 'Lowest', value: fmtRupee(smallest(expenseTx) === Infinity ? 0 : smallest(expenseTx)), color: 'text-green-400' },
+                  { label: 'Daily Avg', value: fmtRupee(total(expenseTx) / Math.max(now.getDate(), 1)), color: 'text-amber-400' },
+                ].map(s => (
+                  <div key={s.label} className="bg-slate-900/60 border border-slate-800 p-3.5 rounded-xl">
+                    <p className="text-[9px] text-slate-500 font-bold uppercase">{s.label}</p>
+                    <p className={`text-lg font-black font-mono mt-1 ${s.color}`}>{s.value}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Savings */}
+            {drawerKey === 'savings' && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {[
+                  { label: 'Total Saved', value: fmtRupee(total(savingsTx)), color: 'text-blue-400' },
+                  { label: 'Transactions', value: savingsTx.length, color: 'text-white' },
+                  { label: 'Largest', value: fmtRupee(largest(savingsTx)), color: 'text-blue-300' },
+                  { label: 'Goal Progress', value: `${goalPct.toFixed(0)}%`, color: 'text-purple-400' },
+                ].map(s => (
+                  <div key={s.label} className="bg-slate-900/60 border border-slate-800 p-3.5 rounded-xl">
+                    <p className="text-[9px] text-slate-500 font-bold uppercase">{s.label}</p>
+                    <p className={`text-lg font-black font-mono mt-1 ${s.color}`}>{s.value}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Available Balance / Net Balance */}
+            {(drawerKey === 'balance' || drawerKey === 'netbalance') && (
+              <>
+                <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 space-y-2.5 text-xs font-semibold">
+                  {[
+                    { label: 'Income', value: fmtRupee(totalsData.current.income), color: 'text-green-400', sign: '+' },
+                    { label: 'Expenses', value: fmtRupee(totalsData.current.expenses), color: 'text-red-400', sign: '−' },
+                    { label: 'Savings', value: fmtRupee(totalsData.current.savings), color: 'text-blue-400', sign: '−' },
+                  ].map(row => (
+                    <div key={row.label} className="flex justify-between items-center">
+                      <span className="text-slate-400 flex items-center gap-2"><span className="w-2 h-2 rounded-full inline-block" style={{backgroundColor: row.color === 'text-green-400' ? '#4ade80' : row.color === 'text-red-400' ? '#f87171' : '#60a5fa'}} />{row.label}</span>
+                      <span className={`font-black font-mono ${row.color}`}>{row.sign}  {row.value}</span>
+                    </div>
+                  ))}
+                  {drawerKey === 'balance' && unpaidBillsSum > 0 && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-amber-400 flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />Unpaid Bills</span>
+                      <span className="font-black font-mono text-amber-400">− {fmtRupee(unpaidBillsSum)}</span>
+                    </div>
+                  )}
+                  <div className="border-t border-dashed border-slate-700 pt-2 flex justify-between items-center">
+                    <span className="text-white font-black">{drawerKey === 'balance' ? 'Available Balance' : 'Net Balance'}</span>
+                    <span className={`text-lg font-black font-mono ${totalsData.current.balance >= 0 ? 'text-green-400' : 'text-red-400'}`}>{fmtRupee(totalsData.current.balance)}</span>
+                  </div>
+                  {drawerKey === 'balance' && unpaidBillsSum > 0 && (
+                    <div className="flex justify-between items-center pt-1">
+                      <span className="text-amber-400 text-[10px] font-bold">Forecasted Balance</span>
+                      <span className="text-amber-300 font-black font-mono text-sm">{fmtRupee(forecastedBalance)}</span>
+                    </div>
+                  )}
                 </div>
-              ))}
-            </div>
-          </>
-        )}
-      </div>
-      <button
-        onClick={() => navigate('/records')}
-        className="w-full py-2.5 text-[10px] font-black text-primary hover:text-white hover:bg-primary/20 transition-colors border-t border-slate-700/60 tracking-wider uppercase"
-      >
-        View All Savings →
-      </button>
-    </KpiPanelWrapper>
-  );
-}
-
-// ─── Available Balance Preview Panel ─────────────────────────────────────────
-function KpiBalancePanel({ data, unpaidBillsSum, forecastedBalance, monthLabel, onPanelMouseEnter, onPanelMouseLeave }: any) {
-  if (!data) return null;
-  return (
-    <KpiPanelWrapper onPanelMouseEnter={onPanelMouseEnter} onPanelMouseLeave={onPanelMouseLeave}>
-      <div className="bg-gradient-to-r from-purple-900/60 to-violet-900/40 px-4 py-3 border-b border-slate-700/60">
-        <div className="flex items-center gap-2">
-          <span className="text-lg">💰</span>
-          <div>
-            <p className="text-[10px] font-black text-purple-400 uppercase tracking-wider">Available Balance</p>
-            <p className="text-xs font-bold text-slate-300">{monthLabel}</p>
+              </>
+            )}
           </div>
+
+          {/* ── FILTERS & EXPORT ── */}
+          <div className="bg-slate-900/40 border border-slate-800 p-4 rounded-xl space-y-3 text-xs font-semibold">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+              <h4 className="text-[9px] text-slate-400 font-black uppercase tracking-widest">Filters & Controls</h4>
+              <div className="flex gap-2">
+                <button onClick={handleExport} className="text-[9px] font-black text-green-400 hover:text-green-300 uppercase px-2 py-1 rounded bg-green-400/10 border border-green-400/20 hover:bg-green-400/20 transition">CSV ↓</button>
+                <button onClick={handlePrint} className="text-[9px] font-black text-blue-400 hover:text-blue-300 uppercase px-2 py-1 rounded bg-blue-400/10 border border-blue-400/20 hover:bg-blue-400/20 transition">Print</button>
+                <button onClick={resetFilters} className="text-[9px] font-black text-purple-400 hover:text-purple-300 uppercase">Reset</button>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5">
+              <div className="col-span-2 md:col-span-1">
+                <label className="block text-slate-500 mb-1 text-[9px]">Search</label>
+                <input type="text" placeholder="Description, category..." value={kpiSearch} onChange={e => setKpiSearch(e.target.value)} className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:ring-1 focus:ring-purple-500 text-[11px]" />
+              </div>
+              <div>
+                <label className="block text-slate-500 mb-1 text-[9px]">Payment Method</label>
+                <select value={kpiPaymentMethod} onChange={e => setKpiPaymentMethod(e.target.value)} className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:ring-1 focus:ring-purple-500 text-[11px]">
+                  {['All','UPI','Cash','Card','Net Banking','Bank Transfer'].map(m => <option key={m} value={m}>{m === 'All' ? 'All Methods' : m}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-slate-500 mb-1 text-[9px]">Sort By</label>
+                <select value={kpiSortBy} onChange={e => setKpiSortBy(e.target.value as any)} className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:ring-1 focus:ring-purple-500 text-[11px]">
+                  <option value="newest">Newest First</option>
+                  <option value="oldest">Oldest First</option>
+                  <option value="high">Highest Amount</option>
+                  <option value="low">Lowest Amount</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-slate-500 mb-1 text-[9px]">Min Amount (₹)</label>
+                <input type="number" placeholder="Min" value={kpiMinAmount} onChange={e => setKpiMinAmount(e.target.value)} className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:ring-1 focus:ring-purple-500 text-[11px]" />
+              </div>
+              <div>
+                <label className="block text-slate-500 mb-1 text-[9px]">Max Amount (₹)</label>
+                <input type="number" placeholder="Max" value={kpiMaxAmount} onChange={e => setKpiMaxAmount(e.target.value)} className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:ring-1 focus:ring-purple-500 text-[11px]" />
+              </div>
+              <div>
+                <label className="block text-slate-500 mb-1 text-[9px]">Start Date</label>
+                <input type="date" value={kpiDateStart} onChange={e => setKpiDateStart(e.target.value)} className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:ring-1 focus:ring-purple-500 text-[11px]" />
+              </div>
+            </div>
+          </div>
+
+          {/* ── TRANSACTIONS SECTION ── */}
+          <div ref={txRef}>
+            <div className="flex justify-between items-center mb-3">
+              <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">📋 Transactions ({filteredTx.length})</p>
+            </div>
+
+            {filteredTx.length === 0 ? (
+              <div className="py-8 text-center text-slate-500 text-sm bg-slate-900/40 rounded-xl border border-dashed border-slate-800">
+                <p className="text-2xl mb-2">📭</p>
+                <p className="font-semibold">No transactions match your filters</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {groupedDates.map(date => {
+                  const txs = grouped[date];
+                  const dayTotal = txs.reduce((s: number, t: any) => s + t.amount, 0);
+                  const d = new Date(date);
+                  const dateLabel = d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
+                  return (
+                    <div key={date} className="bg-slate-900/40 border border-slate-800 rounded-xl overflow-hidden">
+                      <div className="flex justify-between items-center px-4 py-2 bg-slate-900/60 border-b border-slate-800">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">{dateLabel}</span>
+                        <span className={`text-[10px] font-black font-mono ${meta.color}`}>{fmtRupee(dayTotal)}</span>
+                      </div>
+                      <div className="divide-y divide-slate-800/60">
+                        {txs.map((t: any) => (
+                          <div key={t.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-slate-800/30 transition">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="shrink-0 w-1.5 h-8 rounded-full" style={{ backgroundColor: t.category_color || '#64748b' }} />
+                              <div className="min-w-0">
+                                <p className="text-xs font-bold text-slate-200 truncate max-w-[180px]">{t.notes || t.category_name || '—'}</p>
+                                <div className="flex items-center gap-1.5 mt-0.5">
+                                  <span className="text-[9px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded font-semibold">{t.payment_method || 'UPI'}</span>
+                                  {t.category_name && <span className="text-[9px] text-slate-500 font-medium truncate max-w-[100px]">{t.category_name}</span>}
+                                </div>
+                              </div>
+                            </div>
+                            <span className={`text-sm font-black font-mono shrink-0 ml-3 ${drawerKey === 'income' ? 'text-green-400' : drawerKey === 'savings' ? 'text-blue-400' : 'text-red-400'}`}>
+                              {fmtRupee(t.amount)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* ── 12-MONTH TREND SECTION ── */}
+          <div ref={trendRef} className="bg-slate-900/40 border border-slate-800 p-4 rounded-xl">
+            <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-3">📈 12-Month Trend</p>
+            <div className="h-44">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={trend12} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="kpiGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%"  stopColor={drawerKey === 'income' ? '#10b981' : drawerKey === 'expenses' ? '#ef4444' : drawerKey === 'savings' ? '#3b82f6' : '#8b5cf6'} stopOpacity={0.3} />
+                      <stop offset="95%" stopColor={drawerKey === 'income' ? '#10b981' : drawerKey === 'expenses' ? '#ef4444' : drawerKey === 'savings' ? '#3b82f6' : '#8b5cf6'} stopOpacity={0.01} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="month" stroke="#64748b" fontSize={8} tickLine={false} axisLine={false} />
+                  <YAxis stroke="#64748b" fontSize={8} tickLine={false} axisLine={false} tickFormatter={v => `₹${Math.abs(Number(v)) >= 1000 ? `${(Number(v)/1000).toFixed(0)}k` : v}`} />
+                  <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#1e293b', borderRadius: '8px', fontSize: '10px', color: '#fff' }} formatter={(v: any) => [fmtRupee(Number(v)), '']} />
+                  <Area type="monotone" dataKey="amount" stroke={drawerKey === 'income' ? '#10b981' : drawerKey === 'expenses' ? '#ef4444' : drawerKey === 'savings' ? '#3b82f6' : '#8b5cf6'} strokeWidth={2} fill="url(#kpiGrad)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* ── BREAKDOWN SECTION ── */}
+          <div ref={breakdownRef} className="bg-slate-900/40 border border-slate-800 p-4 rounded-xl">
+            <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-3">🍩 Category Breakdown</p>
+            {(() => {
+              const txList = drawerKey === 'income' ? incomeTx : drawerKey === 'expenses' ? expenseTx : drawerKey === 'savings' ? savingsTx : currMonthTx;
+              const cats = catBreakdown(txList);
+              const grandTotal = total(txList);
+              if (cats.length === 0) return <p className="text-slate-500 text-xs text-center py-4">No data for this period</p>;
+              return (
+                <div className="space-y-2.5">
+                  {cats.map(([cat, amt], i) => {
+                    const pct = grandTotal > 0 ? (amt / grandTotal) * 100 : 0;
+                    const barColor = ['#10b981','#3b82f6','#f59e0b','#ec4899','#8b5cf6','#ef4444','#06b6d4','#f97316'][i % 8];
+                    return (
+                      <div key={cat}>
+                        <div className="flex justify-between items-center mb-1">
+                          <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: barColor }} />
+                            <span className="text-xs text-slate-300 font-semibold truncate max-w-[160px]">{cat}</span>
+                          </div>
+                          <div className="flex items-center gap-3 shrink-0">
+                            <span className="text-[9px] text-slate-500 font-semibold">{pct.toFixed(0)}%</span>
+                            <span className="text-xs font-black text-white font-mono">{fmtRupee(amt)}</span>
+                          </div>
+                        </div>
+                        <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, backgroundColor: barColor }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </div>
+
         </div>
       </div>
-      <div className="px-4 pt-3 pb-3">
-        {/* Balance Breakdown */}
-        <div className="space-y-2 mb-3">
-          <div className="flex justify-between items-center">
-            <span className="text-xs text-slate-400 font-semibold flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-green-400 inline-block" />Income</span>
-            <span className="text-xs font-black text-green-400 font-mono">+₹{Number(data.income).toLocaleString('en-IN')}</span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-xs text-slate-400 font-semibold flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-red-400 inline-block" />Expenses</span>
-            <span className="text-xs font-black text-red-400 font-mono">−₹{Number(data.expenses).toLocaleString('en-IN')}</span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-xs text-slate-400 font-semibold flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-blue-400 inline-block" />Savings</span>
-            <span className="text-xs font-black text-blue-400 font-mono">−₹{Number(data.savings).toLocaleString('en-IN')}</span>
-          </div>
-          {unpaidBillsSum > 0 && (
-            <div className="flex justify-between items-center">
-              <span className="text-xs text-slate-400 font-semibold flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />Unpaid Bills</span>
-              <span className="text-xs font-black text-amber-400 font-mono">−₹{Number(unpaidBillsSum).toLocaleString('en-IN')}</span>
-            </div>
-          )}
-          <div className="border-t border-dashed border-slate-700 pt-2 flex justify-between items-center">
-            <span className="text-xs font-black text-slate-200">Balance</span>
-            <span className={`text-sm font-black font-mono ${data.balance >= 0 ? 'text-green-400' : 'text-red-400'}`}>₹{Number(data.balance).toLocaleString('en-IN')}</span>
-          </div>
-          {unpaidBillsSum > 0 && (
-            <div className="flex justify-between items-center">
-              <span className="text-xs text-amber-400 font-bold">Forecasted Balance</span>
-              <span className="text-xs font-black text-amber-300 font-mono">₹{Number(forecastedBalance).toLocaleString('en-IN')}</span>
-            </div>
-          )}
-        </div>
-        {/* Recent Transactions */}
-        {data.recentTx?.length > 0 && (
-          <>
-            <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1">Recent Activity</p>
-            <div>{data.recentTx.map((t: any) => <KpiTxRow key={t.id} t={t} amountColor={t.type === 'income' ? 'text-green-400' : 'text-red-400'} />)}</div>
-          </>
-        )}
-      </div>
-    </KpiPanelWrapper>
-  );
-}
-
-// ─── Net Balance Preview Panel ────────────────────────────────────────────────
-function KpiNetBalancePanel({ data, monthLabel, onPanelMouseEnter, onPanelMouseLeave }: any) {
-  if (!data) return null;
-  const maxNet = data.trend ? Math.max(...data.trend.map((d: any) => Math.abs(d.net)), 1) : 1;
-  return (
-    <KpiPanelWrapper onPanelMouseEnter={onPanelMouseEnter} onPanelMouseLeave={onPanelMouseLeave}>
-      <div className="bg-gradient-to-r from-cyan-900/60 to-teal-900/40 px-4 py-3 border-b border-slate-700/60">
-        <div className="flex items-center gap-2">
-          <span className="text-lg">📈</span>
-          <div>
-            <p className="text-[10px] font-black text-cyan-400 uppercase tracking-wider">Net Balance</p>
-            <p className="text-xs font-bold text-slate-300">{monthLabel}</p>
-          </div>
-        </div>
-      </div>
-      <div className="px-4 pt-3 pb-3">
-        {/* Calculation */}
-        <div className="space-y-1.5 mb-3">
-          <div className="flex justify-between items-center">
-            <span className="text-xs text-slate-400 font-semibold">Income</span>
-            <span className="text-xs font-black text-green-400 font-mono">₹{Number(data.income).toLocaleString('en-IN')}</span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-xs text-slate-400 font-semibold">− Expenses</span>
-            <span className="text-xs font-black text-red-400 font-mono">₹{Number(data.expenses).toLocaleString('en-IN')}</span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-xs text-slate-400 font-semibold">− Savings</span>
-            <span className="text-xs font-black text-blue-400 font-mono">₹{Number(data.savings).toLocaleString('en-IN')}</span>
-          </div>
-          <div className="border-t border-dashed border-slate-700 pt-1.5 flex justify-between items-center">
-            <span className="text-xs font-black text-white">Net Balance</span>
-            <span className={`text-sm font-black font-mono ${data.balance >= 0 ? 'text-green-400' : 'text-red-400'}`}>₹{Number(data.balance).toLocaleString('en-IN')}</span>
-          </div>
-        </div>
-
-        {/* 6-Month Trend Bar Chart */}
-        {data.trend && (
-          <>
-            <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-2">6-Month Net Trend</p>
-            <div className="flex items-end gap-1.5 h-16">
-              {data.trend.map((d: any, i: number) => {
-                const heightPct = Math.abs(d.net) / maxNet * 100;
-                const isPos = d.net >= 0;
-                const isCurrent = i === data.trend.length - 1;
-                return (
-                  <div key={d.month} className="flex flex-col items-center flex-1 gap-0.5">
-                    <div
-                      className={`w-full rounded-t-md transition-all ${
-                        isCurrent ? (isPos ? 'bg-cyan-400' : 'bg-red-400') : (isPos ? 'bg-cyan-700/60' : 'bg-red-700/60')
-                      }`}
-                      style={{ height: `${Math.max(heightPct, 4)}%` }}
-                      title={`${d.month}: ₹${d.net.toLocaleString('en-IN')}`}
-                    />
-                    <span className={`text-[8px] font-bold ${isCurrent ? 'text-cyan-400' : 'text-slate-500'}`}>{d.month}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </>
-        )}
-      </div>
-    </KpiPanelWrapper>
-  );
-}
-
-function XIcon(props: any) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      {...props}
-    >
-      <line x1="18" y1="6" x2="6" y2="18" />
-      <line x1="6" y1="6" x2="18" y2="18" />
-    </svg>
+    </>
   );
 }
 
@@ -2533,21 +2354,17 @@ function InsightCard({ item, index, getCategoryIcon }: InsightCardProps) {
   let badgeText = 'NEW';
 
   if (notEnoughHistory) {
-    // Case 4: Insufficient history
     badgeText = 'No Data';
     badgeColorClass = 'bg-blue-500/10 text-blue-500 border border-blue-500/20';
   } else if (prevMonthTotal === 0) {
-    // Case 1: Previous month was zero
     badgeText = 'First Month';
     badgeColorClass = 'bg-blue-500/10 text-blue-500 border border-blue-500/20';
   } else if (item.difference > 0) {
-    // Case 2: Spending increased
     badgeText = `+₹${Math.round(item.difference)} ↑${Math.round(item.pctChange)}%`;
     badgeColorClass = item.type === 'savings'
       ? 'bg-green-500/10 text-green-500 border border-green-500/20'
       : 'bg-red-500/10 text-red-500 border border-red-500/20';
   } else if (item.difference < 0) {
-    // Case 3: Spending decreased
     badgeText = `-₹${Math.round(Math.abs(item.difference))} ↓${Math.round(Math.abs(item.pctChange))}%`;
     badgeColorClass = item.type === 'savings'
       ? 'bg-red-500/10 text-red-500 border border-red-500/20'
@@ -2565,7 +2382,6 @@ function InsightCard({ item, index, getCategoryIcon }: InsightCardProps) {
 
   const lastMonthLabel = item.sparklineData[item.sparklineData.length - 1]?.month;
 
-  // Format contextual label for average spending/savings
   const avgLabel = item.type === 'savings' 
     ? `Avg Saved: ₹${Math.round(item.avgMonthlySpend).toLocaleString('en-IN')}`
     : `Avg Spent: ₹${Math.round(item.avgMonthlySpend).toLocaleString('en-IN')}`;
