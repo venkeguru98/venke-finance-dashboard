@@ -407,9 +407,12 @@ router.post('/import', async (req, res) => {
     let inserted = 0;
     for (const t of transactions) {
       let catId = 15;
-      const cat = await query("SELECT id FROM categories WHERE name LIKE ? LIMIT 1", [`%${t.category}%`]);
-      if (cat.length > 0) catId = cat[0].id;
-      const type = t.amount >= 0 ? 'income' : 'expense';
+      let type = t.amount >= 0 ? 'income' : 'expense';
+      const cat = await query("SELECT id, type FROM categories WHERE name LIKE ? LIMIT 1", [`%${t.category}%`]);
+      if (cat.length > 0) {
+        catId = cat[0].id;
+        type = cat[0].type;
+      }
       const absAmount = Math.abs(t.amount);
       const date = t.date ? new Date(t.date).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
       await execute(
