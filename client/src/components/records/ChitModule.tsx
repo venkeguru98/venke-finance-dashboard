@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import { Plus, Edit2, Trash2, ArrowLeft, Landmark, Calendar, AlertCircle } from 'lucide-react';
+import { Plus, Edit2, Trash2, ArrowLeft, Landmark, Calendar, AlertCircle, ChevronRight } from 'lucide-react';
 import Button from '../ui/Button';
 import CsvImportModal from './CsvImportModal';
 import { formatDisplayDate } from '../../utils/date';
@@ -18,6 +18,7 @@ export default function ChitModule({ onBack }: ChitModuleProps) {
   const [yearlySummary, setYearlySummary] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const [isDetailCollapsed, setIsDetailCollapsed] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
 
   // Pagination states
@@ -90,6 +91,7 @@ export default function ChitModule({ onBack }: ChitModuleProps) {
 
   const handleSelectChit = (c: any) => {
     setActiveChit(c);
+    setIsDetailCollapsed(false);
     fetchPayments(c.id);
   };
 
@@ -213,9 +215,9 @@ export default function ChitModule({ onBack }: ChitModuleProps) {
           </Button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 transition-all duration-350">
           {/* POLICIES LIST */}
-          <div className="space-y-3.5">
+          <div className={`space-y-3.5 transition-all duration-350 ${isDetailCollapsed ? 'lg:col-span-3' : 'lg:col-span-1'}`}>
             <h2 className="text-xs font-black uppercase text-slate-400 tracking-wider">Chit Groups ({chits.length})</h2>
             <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
               {chits.map((c) => {
@@ -224,6 +226,11 @@ export default function ChitModule({ onBack }: ChitModuleProps) {
                   <div
                     key={c.id}
                     onClick={() => handleSelectChit(c)}
+                    onDoubleClick={() => {
+                      if (activeChit && activeChit.id === c.id) {
+                        setIsDetailCollapsed(!isDetailCollapsed);
+                      }
+                    }}
                     className={`p-4.5 rounded-2xl border transition cursor-pointer flex flex-col justify-between gap-3 ${
                       isActive 
                         ? 'bg-purple-500/10 border-purple-500/50 shadow-lg shadow-purple-500/5' 
@@ -266,13 +273,22 @@ export default function ChitModule({ onBack }: ChitModuleProps) {
           </div>
 
           {/* ACTIVE DETAILS */}
-          {activeChit && (
+          {!isDetailCollapsed && activeChit && (
             <div className="lg:col-span-2 space-y-6">
               {/* DETAILS CARD */}
               <div className="bg-slate-950/40 border border-slate-850 p-6 rounded-3xl space-y-6">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-slate-900 pb-5 gap-3">
                   <div>
-                    <h2 className="text-lg font-black text-white">{activeChit.chit_name}</h2>
+                    <h2 className="text-lg font-black text-white flex items-center gap-1.5">
+                      {activeChit.chit_name}
+                      <button
+                        onClick={() => setIsDetailCollapsed(true)}
+                        className="p-1 rounded text-slate-500 hover:text-white hover:bg-slate-800 transition"
+                        title="Collapse details panel"
+                      >
+                        <ChevronRight className="w-4.5 h-4.5" />
+                      </button>
+                    </h2>
                     <p className="text-xs text-slate-400 mt-0.5">Organizer: <code className="text-purple-400 font-bold">{activeChit.organizer_name || 'N/A'}</code></p>
                   </div>
                   <div className="flex gap-2">

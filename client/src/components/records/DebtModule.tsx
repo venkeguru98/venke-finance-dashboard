@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import { Plus, Edit2, Trash2, ArrowLeft, ArrowUpRight, ArrowDownLeft, ShieldAlert, ChevronDown, ChevronUp, Calendar, Trash } from 'lucide-react';
+import { Plus, Edit2, Trash2, ArrowLeft, ArrowUpRight, ArrowDownLeft, ShieldAlert, ChevronDown, ChevronUp, Calendar, Trash, ChevronRight } from 'lucide-react';
 import Button from '../ui/Button';
 import CsvImportModal from './CsvImportModal';
 import { formatDisplayDate } from '../../utils/date';
@@ -17,6 +17,7 @@ export default function DebtModule({ onBack }: DebtModuleProps) {
   const [transactions, setTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const [isDetailCollapsed, setIsDetailCollapsed] = useState(false);
 
   // Filters
   const [filterType, setFilterType] = useState<'All' | 'Borrowed' | 'Lent'>('All');
@@ -98,6 +99,7 @@ export default function DebtModule({ onBack }: DebtModuleProps) {
 
   const handleSelectAccount = (a: any) => {
     setActiveAccount(a);
+    setIsDetailCollapsed(false);
     fetchTransactions(a.id);
     setExpandedTxId(null);
   };
@@ -391,9 +393,9 @@ export default function DebtModule({ onBack }: DebtModuleProps) {
           </Button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start transition-all duration-350">
           {/* LEFT SIDEBAR: LIST OF DEBT ACCOUNTS */}
-          <div className="lg:col-span-1 space-y-3.5">
+          <div className={`space-y-3.5 transition-all duration-350 ${isDetailCollapsed ? 'lg:col-span-4' : 'lg:col-span-1'}`}>
             <h2 className="text-xs font-black uppercase text-slate-500 tracking-wider">Debt Accounts ({accounts.length})</h2>
             <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1 custom-scrollbar">
               {accounts.map((a) => {
@@ -402,6 +404,11 @@ export default function DebtModule({ onBack }: DebtModuleProps) {
                   <div
                     key={a.id}
                     onClick={() => handleSelectAccount(a)}
+                    onDoubleClick={() => {
+                      if (activeAccount && activeAccount.id === a.id) {
+                        setIsDetailCollapsed(!isDetailCollapsed);
+                      }
+                    }}
                     className={`p-4 rounded-2xl border transition cursor-pointer flex flex-col gap-2 relative ${
                       isActive 
                         ? 'bg-purple-500/10 border-purple-500/40 shadow-lg shadow-purple-500/2' 
@@ -446,9 +453,10 @@ export default function DebtModule({ onBack }: DebtModuleProps) {
           </div>
 
           {/* RIGHT VIEWPORT: DASHBOARD STATS AND TRANSACTION LEDGER */}
-          <div className="lg:col-span-3 space-y-6">
-            {/* OVERVIEW STATS ROW */}
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 bg-slate-950/20 border border-slate-900 p-4.5 rounded-3xl">
+          {!isDetailCollapsed && (
+            <div className="lg:col-span-3 space-y-6">
+              {/* OVERVIEW STATS ROW */}
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 bg-slate-950/20 border border-slate-900 p-4.5 rounded-3xl">
               <div className="p-3.5 bg-slate-950/40 border border-slate-900 rounded-2xl">
                 <p className="text-[10px] text-slate-500 font-bold uppercase">Total Borrowed</p>
                 <p className="text-base font-black text-white font-mono mt-1">₹{overall.totalBorrowed.toLocaleString('en-IN')}</p>
@@ -484,6 +492,13 @@ export default function DebtModule({ onBack }: DebtModuleProps) {
                   <div>
                     <h3 className="text-sm font-black text-white flex items-center gap-2 flex-wrap">
                       {activeAccount.account_name} Ledger
+                      <button
+                        onClick={() => setIsDetailCollapsed(true)}
+                        className="p-1 rounded text-slate-500 hover:text-white hover:bg-slate-800 transition"
+                        title="Collapse details panel"
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
                       {(activeAccount.outstandingPay === 0 && activeAccount.outstandingReceive === 0) ? (
                         <span className="bg-green-500/10 text-green-400 border border-green-500/20 px-2 py-0.5 rounded text-[8px] uppercase tracking-wider font-black">
                           Closed (Fully Settled)
@@ -731,8 +746,9 @@ export default function DebtModule({ onBack }: DebtModuleProps) {
               </div>
             )}
           </div>
-        </div>
-      )}
+        )}
+      </div>
+    )}
 
       {/* ACCOUNT MODAL */}
       {showAccModal && (

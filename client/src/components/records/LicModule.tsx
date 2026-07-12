@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import { Plus, Edit2, Trash2, Calendar, Shield, AlertCircle, ArrowLeft } from 'lucide-react';
+import { Plus, Edit2, Trash2, Calendar, Shield, AlertCircle, ArrowLeft, ChevronRight } from 'lucide-react';
 import Button from '../ui/Button';
 import CsvImportModal from './CsvImportModal';
 import { formatDisplayDate } from '../../utils/date';
@@ -19,6 +19,7 @@ export default function LicModule({ onBack }: LicModuleProps) {
   const [loading, setLoading] = useState(true);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [isDetailCollapsed, setIsDetailCollapsed] = useState(false);
 
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
@@ -95,6 +96,7 @@ export default function LicModule({ onBack }: LicModuleProps) {
 
   const handleSelectPolicy = (p: any) => {
     setActivePolicy(p);
+    setIsDetailCollapsed(false);
     fetchPremiums(p.id);
   };
 
@@ -246,9 +248,9 @@ export default function LicModule({ onBack }: LicModuleProps) {
           </Button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 transition-all duration-350">
           {/* POLICIES LIST */}
-          <div className="space-y-3.5">
+          <div className={`space-y-3.5 transition-all duration-350 ${isDetailCollapsed ? 'lg:col-span-3' : 'lg:col-span-1'}`}>
             <h2 className="text-xs font-black uppercase text-slate-400 tracking-wider">Your Policies ({policies.length})</h2>
             <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
               {policies.map((p) => {
@@ -257,6 +259,11 @@ export default function LicModule({ onBack }: LicModuleProps) {
                   <div
                     key={p.id}
                     onClick={() => handleSelectPolicy(p)}
+                    onDoubleClick={() => {
+                      if (activePolicy && activePolicy.id === p.id) {
+                        setIsDetailCollapsed(!isDetailCollapsed);
+                      }
+                    }}
                     className={`p-4.5 rounded-2xl border transition cursor-pointer flex flex-col justify-between gap-3 ${
                       isActive 
                         ? 'bg-cyan-500/10 border-cyan-500/50 shadow-lg shadow-cyan-500/5' 
@@ -299,13 +306,22 @@ export default function LicModule({ onBack }: LicModuleProps) {
           </div>
 
           {/* ACTIVE POLICY DETAILS */}
-          {activePolicy && (
+          {!isDetailCollapsed && activePolicy && (
             <div className="lg:col-span-2 space-y-6">
               {/* DETAILS CARD */}
               <div className="bg-slate-950/40 border border-slate-850 p-6 rounded-3xl space-y-6">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-slate-900 pb-5 gap-3">
                   <div>
-                    <h2 className="text-lg font-black text-white">{activePolicy.policy_name}</h2>
+                    <h2 className="text-lg font-black text-white flex items-center gap-1.5">
+                      {activePolicy.policy_name}
+                      <button
+                        onClick={() => setIsDetailCollapsed(true)}
+                        className="p-1 rounded text-slate-500 hover:text-white hover:bg-slate-800 transition"
+                        title="Collapse details panel"
+                      >
+                        <ChevronRight className="w-4.5 h-4.5" />
+                      </button>
+                    </h2>
                     <p className="text-xs text-slate-400 mt-0.5">Policy Number: <code className="text-cyan-400 font-bold">{activePolicy.policy_number}</code></p>
                   </div>
                   <div className="flex gap-2">

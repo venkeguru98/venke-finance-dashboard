@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import { Plus, Edit2, Trash2, ArrowLeft, Wallet, TrendingUp, TrendingDown, ArrowLeftRight } from 'lucide-react';
+import { Plus, Edit2, Trash2, ArrowLeft, Wallet, TrendingUp, TrendingDown, ArrowLeftRight, ChevronRight } from 'lucide-react';
 import Button from '../ui/Button';
 import CsvImportModal from './CsvImportModal';
 import { formatDisplayDate } from '../../utils/date';
@@ -20,6 +20,7 @@ export default function SavingsModule({ onBack }: SavingsModuleProps) {
   const [loading, setLoading] = useState(true);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [isDetailCollapsed, setIsDetailCollapsed] = useState(false);
 
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
@@ -88,6 +89,7 @@ export default function SavingsModule({ onBack }: SavingsModuleProps) {
 
   const handleSelectAccount = (a: any) => {
     setActiveAccount(a);
+    setIsDetailCollapsed(false);
     fetchTransactions(a.id);
   };
 
@@ -205,9 +207,9 @@ export default function SavingsModule({ onBack }: SavingsModuleProps) {
           </Button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 transition-all duration-350">
           {/* ACCOUNTS LIST */}
-          <div className="space-y-3.5">
+          <div className={`space-y-3.5 transition-all duration-350 ${isDetailCollapsed ? 'lg:col-span-3' : 'lg:col-span-1'}`}>
             <h2 className="text-xs font-black uppercase text-slate-400 tracking-wider">Offline Accounts ({accounts.length})</h2>
             <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
               {accounts.map((a) => {
@@ -216,6 +218,11 @@ export default function SavingsModule({ onBack }: SavingsModuleProps) {
                   <div
                     key={a.id}
                     onClick={() => handleSelectAccount(a)}
+                    onDoubleClick={() => {
+                      if (activeAccount && activeAccount.id === a.id) {
+                        setIsDetailCollapsed(!isDetailCollapsed);
+                      }
+                    }}
                     className={`p-4.5 rounded-2xl border transition cursor-pointer flex flex-col justify-between gap-3 ${
                       isActive 
                         ? 'bg-blue-500/10 border-blue-500/50 shadow-lg shadow-blue-500/5' 
@@ -250,7 +257,7 @@ export default function SavingsModule({ onBack }: SavingsModuleProps) {
           </div>
 
           {/* ACTIVE ACCOUNT DETAILS */}
-          {activeAccount && (
+          {!isDetailCollapsed && activeAccount && (
             <div className="lg:col-span-2 space-y-6">
               {/* DETAILS CARD */}
               <div className="bg-slate-950/40 border border-slate-850 p-6 rounded-3xl space-y-6">
@@ -258,7 +265,16 @@ export default function SavingsModule({ onBack }: SavingsModuleProps) {
                   <div className="flex items-center space-x-2.5">
                     <span className="w-3.5 h-3.5 rounded-full shrink-0 animate-pulse" style={{ backgroundColor: activeAccount.color_tag || '#3B82F6' }} />
                     <div>
-                      <h2 className="text-lg font-black text-white">{activeAccount.account_name}</h2>
+                      <h2 className="text-lg font-black text-white flex items-center gap-1.5">
+                        {activeAccount.account_name}
+                        <button
+                          onClick={() => setIsDetailCollapsed(true)}
+                          className="p-1 rounded text-slate-500 hover:text-white hover:bg-slate-800 transition"
+                          title="Collapse details panel"
+                        >
+                          <ChevronRight className="w-4.5 h-4.5" />
+                        </button>
+                      </h2>
                       <p className="text-xs text-slate-400 mt-0.5">Opening balance: ₹{activeAccount.opening_balance.toLocaleString('en-IN')}</p>
                     </div>
                   </div>

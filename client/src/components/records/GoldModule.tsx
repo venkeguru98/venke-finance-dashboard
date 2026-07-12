@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
-import { Plus, Edit2, Trash2, ArrowLeft, Coins } from 'lucide-react';
+import { Plus, Edit2, Trash2, ArrowLeft, Coins, ChevronRight } from 'lucide-react';
 import Button from '../ui/Button';
 import CsvImportModal from './CsvImportModal';
 import { formatDisplayDate } from '../../utils/date';
@@ -25,6 +25,7 @@ export default function GoldModule({ onBack }: GoldModuleProps) {
   const [loading, setLoading] = useState(true);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [isDetailCollapsed, setIsDetailCollapsed] = useState(false);
 
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
@@ -96,6 +97,7 @@ export default function GoldModule({ onBack }: GoldModuleProps) {
 
   const handleSelectGold = (g: any) => {
     setActiveGold(g);
+    setIsDetailCollapsed(false);
     fetchDetails(g.id);
   };
 
@@ -238,9 +240,9 @@ export default function GoldModule({ onBack }: GoldModuleProps) {
           </Button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 transition-all duration-350">
           {/* LIST */}
-          <div className="space-y-3.5">
+          <div className={`space-y-3.5 transition-all duration-350 ${isDetailCollapsed ? 'lg:col-span-3' : 'lg:col-span-1'}`}>
             <h2 className="text-xs font-black uppercase text-slate-400 tracking-wider">Gold Accounts ({investments.length})</h2>
             <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
               {investments.map((g) => {
@@ -249,6 +251,11 @@ export default function GoldModule({ onBack }: GoldModuleProps) {
                   <div
                     key={g.id}
                     onClick={() => handleSelectGold(g)}
+                    onDoubleClick={() => {
+                      if (activeGold && activeGold.id === g.id) {
+                        setIsDetailCollapsed(!isDetailCollapsed);
+                      }
+                    }}
                     className={`p-4.5 rounded-2xl border transition cursor-pointer flex flex-col justify-between gap-3.5 ${
                       isActive 
                         ? 'bg-amber-500/10 border-amber-500/50 shadow-lg shadow-amber-500/5' 
@@ -282,13 +289,22 @@ export default function GoldModule({ onBack }: GoldModuleProps) {
           </div>
 
           {/* ACTIVE ACCOUNT DETAILS */}
-          {activeGold && (
+          {!isDetailCollapsed && activeGold && (
             <div className="lg:col-span-2 space-y-6">
               {/* DETAILS CARD */}
               <div className="bg-slate-950/40 border border-slate-850 p-6 rounded-3xl space-y-6">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-slate-900 pb-5 gap-3">
                   <div>
-                    <h2 className="text-lg font-black text-white">{activeGold.investment_name}</h2>
+                    <h2 className="text-lg font-black text-white flex items-center gap-1.5">
+                      {activeGold.investment_name}
+                      <button
+                        onClick={() => setIsDetailCollapsed(true)}
+                        className="p-1 rounded text-slate-500 hover:text-white hover:bg-slate-800 transition"
+                        title="Collapse details panel"
+                      >
+                        <ChevronRight className="w-4.5 h-4.5" />
+                      </button>
+                    </h2>
                     <p className="text-xs text-slate-400 mt-0.5">Platform: <code className="text-amber-500 font-bold">{activeGold.platform}</code> | Started: {formatDisplayDate(activeGold.start_date)}</p>
                   </div>
                   <div className="flex gap-2">
