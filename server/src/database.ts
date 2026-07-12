@@ -188,6 +188,124 @@ export const initializeDatabase = async () => {
       await execute('ALTER TABLE users ADD COLUMN telegram_token TEXT NULL');
     } catch (e) {}
 
+    // Apply Schema Migrations for Debt Manager (Accounts, Transactions, Settlements)
+    try {
+      if (isPg && pgPool) {
+        await pgPool.query(`
+          CREATE TABLE IF NOT EXISTS debt_accounts (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            account_name VARCHAR(255) NOT NULL,
+            description TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+        await pgPool.query(`
+          CREATE TABLE IF NOT EXISTS debt_transactions (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            account_id INTEGER NOT NULL REFERENCES debt_accounts(id) ON DELETE CASCADE,
+            type VARCHAR(50) NOT NULL,
+            amount REAL NOT NULL,
+            date DATE NOT NULL,
+            description TEXT NOT NULL,
+            notes TEXT,
+            status VARCHAR(50) DEFAULT 'Pending',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+        await pgPool.query(`
+          CREATE TABLE IF NOT EXISTS debt_settlements (
+            id SERIAL PRIMARY KEY,
+            transaction_id INTEGER NOT NULL REFERENCES debt_transactions(id) ON DELETE CASCADE,
+            amount REAL NOT NULL,
+            date DATE NOT NULL,
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+      } else {
+        await execute(`
+          CREATE TABLE IF NOT EXISTS debt_accounts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            account_name TEXT NOT NULL,
+            description TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+          )
+        `);
+        await execute(`
+          CREATE TABLE IF NOT EXISTS debt_transactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            account_id INTEGER NOT NULL,
+            type TEXT CHECK(type IN ('Borrowed', 'Lent')) NOT NULL,
+            amount REAL NOT NULL,
+            date DATE NOT NULL,
+            description TEXT NOT NULL,
+            notes TEXT,
+            status TEXT CHECK(status IN ('Pending', 'Partially Settled', 'Settled')) DEFAULT 'Pending',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY(account_id) REFERENCES debt_accounts(id) ON DELETE CASCADE
+          )
+        `);
+        await execute(`
+          CREATE TABLE IF NOT EXISTS debt_settlements (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            transaction_id INTEGER NOT NULL,
+            amount REAL NOT NULL,
+            date DATE NOT NULL,
+            notes TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(transaction_id) REFERENCES debt_transactions(id) ON DELETE CASCADE
+          )
+        `);
+      }
+      console.log('Debt Manager database tables verified/created.');
+    } catch (dbErr) {
+      console.error('Migration failed for debt manager tables:', dbErr);
+    }
+
+    // Dynamic Migration of legacy debts_loans entries to debt_accounts structure
+    try {
+      const oldDebts = await query(`SELECT * FROM debts_loans`);
+      if (oldDebts && oldDebts.length > 0) {
+        const accountsCheck = await query(`SELECT COUNT(*) as count FROM debt_accounts`);
+        const accCount = accountsCheck[0]?.count || 0;
+        if (Number(accCount) === 0) {
+          console.log(`[DB Migration] Migrating ${oldDebts.length} legacy debts_loans entries to new account structure...`);
+          const accountMap = new Map<string, number>();
+
+          for (const d of oldDebts) {
+            const key = `${d.user_id}_${d.person_name}`;
+            let accId = accountMap.get(key);
+            if (!accId) {
+              const res = await execute(
+                `INSERT INTO debt_accounts (user_id, account_name, description) VALUES (?, ?, ?)`,
+                [d.user_id || 1, d.person_name, `Migrated account for ${d.person_name}`]
+              );
+              accId = res.lastID;
+              accountMap.set(key, accId!);
+            }
+
+            const txStatus = d.status === 'paid' ? 'Settled' : 'Pending';
+            const txType = d.type === 'borrowed' ? 'Borrowed' : 'Lent';
+
+            await execute(
+              `INSERT INTO debt_transactions (user_id, account_id, type, amount, date, description, notes, status) 
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+              [d.user_id || 1, accId, txType, d.amount, d.date, `Legacy debt record: ${d.notes || 'No description'}`, d.notes || '', txStatus]
+            );
+          }
+          console.log('[DB Migration] Legacy debts_loans migration complete.');
+        }
+      }
+    } catch (_) {
+      // Ignore errors if debts_loans table is missing or doesn't exist
+    }
+
   } catch (error) {
     console.error('Failed to initialize database schema', error);
   }

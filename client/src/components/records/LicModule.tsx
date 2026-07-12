@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { Plus, Edit2, Trash2, Calendar, Shield, AlertCircle, ArrowLeft } from 'lucide-react';
 import Button from '../ui/Button';
+import CsvImportModal from './CsvImportModal';
+import { formatDisplayDate } from '../../utils/date';
 
 const API = window.location.port === '5173' ? 'http://localhost:5000/api' : '/api';
 
@@ -16,6 +18,11 @@ export default function LicModule({ onBack }: LicModuleProps) {
   const [yearlySummary, setYearlySummary] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const rowsPerPage = 5;
 
   // Forms
   const [showPolicyModal, setShowPolicyModal] = useState(false);
@@ -75,6 +82,7 @@ export default function LicModule({ onBack }: LicModuleProps) {
       const res = await axios.get(`${API}/records/lic/${id}/premiums`);
       setPremiums(res.data.premiums || []);
       setYearlySummary(res.data.yearlySummary || []);
+      setCurrentPage(1);
     } catch (_) {
     } finally {
       setLoadingDetails(false);
@@ -301,6 +309,9 @@ export default function LicModule({ onBack }: LicModuleProps) {
                     <p className="text-xs text-slate-400 mt-0.5">Policy Number: <code className="text-cyan-400 font-bold">{activePolicy.policy_number}</code></p>
                   </div>
                   <div className="flex gap-2">
+                    <Button onClick={() => setShowImportModal(true)} variant="ghost" className="text-xs py-2 px-3 border border-slate-800 text-slate-400 hover:text-white">
+                      Import CSV
+                    </Button>
                     <Button onClick={() => handleOpenEditPolicy(activePolicy)} variant="ghost" className="text-xs py-2 px-3">
                       <Edit2 className="w-3.5 h-3.5 mr-1" /> Edit
                     </Button>
@@ -357,8 +368,8 @@ export default function LicModule({ onBack }: LicModuleProps) {
                   <div className="flex items-center space-x-2.5">
                     <Calendar className="w-5 h-5 text-cyan-400 shrink-0" />
                     <div>
-                      <p className="font-bold text-white">Maturity Date: {activePolicy.maturity_date}</p>
-                      <p className="text-[10px] text-slate-400 mt-0.5">Start Date: {activePolicy.start_date} ({activePolicy.policy_term} years term)</p>
+                      <p className="font-bold text-white">Maturity Date: {formatDisplayDate(activePolicy.maturity_date)}</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">Start Date: {formatDisplayDate(activePolicy.start_date)} ({activePolicy.policy_term} years term)</p>
                     </div>
                   </div>
                   <div className="text-left sm:text-right shrink-0">
@@ -424,40 +435,70 @@ export default function LicModule({ onBack }: LicModuleProps) {
                     <div className="text-center py-6 text-xs text-slate-400 font-semibold">Loading premium history...</div>
                   ) : premiums.length === 0 ? (
                     <div className="text-center py-6 text-xs text-slate-500">No logged premiums found. Click Log Premium above to start.</div>
-                  ) : (
-                    <div className="overflow-x-auto max-h-[300px] overflow-y-auto">
-                      <table className="w-full text-left text-xs border-collapse">
-                        <thead>
-                          <tr className="border-b border-slate-900 text-slate-500 font-bold">
-                            <th className="py-2.5 pr-2">Period</th>
-                            <th className="py-2.5 px-2">Amount Paid</th>
-                            <th className="py-2.5 px-2">Paid Date</th>
-                            <th className="py-2.5 px-2">Remarks</th>
-                            <th className="py-2.5 pl-2 text-right">Action</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {premiums.map((p) => {
-                            const dateObj = new Date(2000, p.month - 1);
-                            const monthStr = dateObj.toLocaleString('default', { month: 'short' });
-                            return (
-                              <tr key={p.id} className="border-b border-slate-900/60 hover:bg-slate-900/40">
-                                <td className="py-2.5 pr-2 font-bold text-white">{monthStr} {p.year}</td>
-                                <td className="py-2.5 px-2 font-black text-green-400">₹{p.amount_paid.toLocaleString('en-IN')}</td>
-                                <td className="py-2.5 px-2 text-slate-400">{p.paid_date}</td>
-                                <td className="py-2.5 px-2 text-slate-400 truncate max-w-[120px]" title={p.remarks}>{p.remarks || '-'}</td>
-                                <td className="py-2.5 pl-2 text-right">
-                                  <button onClick={() => handleDeletePremium(p.id)} className="p-1 text-slate-500 hover:text-red-400 transition rounded-lg hover:bg-slate-900">
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </td>
+                  ) : (() => {
+                    const totalPages = Math.ceil(premiums.length / rowsPerPage);
+                    const paginated = premiums.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
+                    return (
+                      <div className="space-y-4">
+                        <div className="overflow-x-auto max-h-[300px] overflow-y-auto custom-scrollbar">
+                          <table className="w-full text-left text-xs border-collapse">
+                            <thead>
+                              <tr className="border-b border-slate-900 text-slate-500 font-bold">
+                                <th className="py-2.5 pr-2">Period</th>
+                                <th className="py-2.5 px-2">Amount Paid</th>
+                                <th className="py-2.5 px-2">Paid Date</th>
+                                <th className="py-2.5 px-2">Remarks</th>
+                                <th className="py-2.5 pl-2 text-right">Action</th>
                               </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
+                            </thead>
+                            <tbody>
+                              {paginated.map((p) => {
+                                const dateObj = new Date(2000, p.month - 1);
+                                const monthStr = dateObj.toLocaleString('default', { month: 'short' });
+                                return (
+                                  <tr key={p.id} className="border-b border-slate-900/60 hover:bg-slate-900/40">
+                                    <td className="py-2.5 pr-2 font-bold text-white">{monthStr} {p.year}</td>
+                                    <td className="py-2.5 px-2 font-black text-green-400">₹{p.amount_paid.toLocaleString('en-IN')}</td>
+                                    <td className="py-2.5 px-2 text-slate-400 font-mono">{formatDisplayDate(p.paid_date)}</td>
+                                    <td className="py-2.5 px-2 text-slate-400 truncate max-w-[120px]" title={p.remarks}>{p.remarks || '-'}</td>
+                                    <td className="py-2.5 pl-2 text-right">
+                                      <button onClick={() => handleDeletePremium(p.id)} className="p-1 text-slate-500 hover:text-red-400 transition rounded-lg hover:bg-slate-900">
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {totalPages > 1 && (
+                          <div className="flex items-center justify-between pt-2">
+                            <span className="text-[10px] text-slate-500 font-bold uppercase">Page {currentPage} of {totalPages}</span>
+                            <div className="flex space-x-2">
+                              <Button 
+                                disabled={currentPage === 1} 
+                                onClick={() => setCurrentPage(c => Math.max(1, c - 1))}
+                                variant="ghost" 
+                                className="border border-slate-900 px-3 py-1 text-[11px]"
+                              >
+                                Prev
+                              </Button>
+                              <Button 
+                                disabled={currentPage === totalPages} 
+                                onClick={() => setCurrentPage(c => Math.min(totalPages, c + 1))}
+                                variant="ghost" 
+                                className="border border-slate-900 px-3 py-1 text-[11px]"
+                              >
+                                Next
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
@@ -668,6 +709,18 @@ export default function LicModule({ onBack }: LicModuleProps) {
             </form>
           </div>
         </div>
+      )}
+      {showImportModal && activePolicy && (
+        <CsvImportModal
+          isOpen={showImportModal}
+          onClose={() => setShowImportModal(false)}
+          onSuccess={(msg) => {
+            alert(msg);
+            fetchPolicies();
+          }}
+          importUrl={`${API}/records/lic/${activePolicy.id}/import`}
+          moduleType="lic"
+        />
       )}
     </div>
   );

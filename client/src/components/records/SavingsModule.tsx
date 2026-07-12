@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { Plus, Edit2, Trash2, ArrowLeft, Wallet, TrendingUp, TrendingDown, ArrowLeftRight } from 'lucide-react';
 import Button from '../ui/Button';
+import CsvImportModal from './CsvImportModal';
+import { formatDisplayDate } from '../../utils/date';
 
 const API = window.location.port === '5173' ? 'http://localhost:5000/api' : '/api';
 
@@ -17,6 +19,11 @@ export default function SavingsModule({ onBack }: SavingsModuleProps) {
   const [yearlySummary, setYearlySummary] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const rowsPerPage = 5;
 
   // Forms
   const [showAccModal, setShowAccModal] = useState(false);
@@ -68,6 +75,7 @@ export default function SavingsModule({ onBack }: SavingsModuleProps) {
       setTransactions(res.data.transactions || []);
       setMonthlySummary(res.data.monthlySummary || []);
       setYearlySummary(res.data.yearlySummary || []);
+      setCurrentPage(1);
     } catch (_) {
     } finally {
       setLoadingDetails(false);
@@ -255,6 +263,9 @@ export default function SavingsModule({ onBack }: SavingsModuleProps) {
                     </div>
                   </div>
                   <div className="flex gap-2">
+                    <Button onClick={() => setShowImportModal(true)} variant="ghost" className="text-xs py-2 px-3 border border-slate-800 text-slate-400 hover:text-white">
+                      Import CSV
+                    </Button>
                     <Button onClick={() => handleOpenEditAcc(activeAccount)} variant="ghost" className="text-xs py-2 px-3">
                       <Edit2 className="w-3.5 h-3.5 mr-1" /> Edit
                     </Button>
@@ -357,41 +368,71 @@ export default function SavingsModule({ onBack }: SavingsModuleProps) {
                     <div className="text-center py-6 text-xs text-slate-400 font-semibold">Loading ledger records...</div>
                   ) : transactions.length === 0 ? (
                     <div className="text-center py-6 text-xs text-slate-500">No transactions recorded for this account yet. Use the buttons above to log credits/debits.</div>
-                  ) : (
-                    <div className="overflow-x-auto max-h-[300px] overflow-y-auto">
-                      <table className="w-full text-left text-xs border-collapse">
-                        <thead>
-                          <tr className="border-b border-slate-900 text-slate-500 font-bold">
-                            <th className="py-2.5 pr-2">Date</th>
-                            <th className="py-2.5 px-2">Type</th>
-                            <th className="py-2.5 px-2">Amount</th>
-                            <th className="py-2.5 px-2">Description</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {transactions.map((t) => (
-                            <tr key={t.id} className="border-b border-slate-900/60 hover:bg-slate-900/40">
-                              <td className="py-2.5 pr-2 font-bold text-white">{t.date}</td>
-                              <td className="py-2.5 px-2">
-                                <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${
-                                  t.type === 'Credit' ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
-                                }`}>
-                                  {t.type}
-                                </span>
-                              </td>
-                              <td className={`py-2.5 px-2 font-black ${t.type === 'Credit' ? 'text-green-400' : 'text-red-400'}`}>
-                                ₹{t.amount.toLocaleString('en-IN')}
-                              </td>
-                              <td className="py-2.5 px-2 text-slate-400 max-w-[180px] truncate" title={t.description}>
-                                {t.description || '-'} 
-                                {t.transfer_account_name && <span className="text-[10px] text-slate-500 block">Rel: {t.transfer_account_name}</span>}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
+                  ) : (() => {
+                    const totalPages = Math.ceil(transactions.length / rowsPerPage);
+                    const paginated = transactions.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
+                    return (
+                      <div className="space-y-4">
+                        <div className="overflow-x-auto max-h-[300px] overflow-y-auto custom-scrollbar">
+                          <table className="w-full text-left text-xs border-collapse">
+                            <thead>
+                              <tr className="border-b border-slate-900 text-slate-500 font-bold">
+                                <th className="py-2.5 pr-2">Date</th>
+                                <th className="py-2.5 px-2">Type</th>
+                                <th className="py-2.5 px-2">Amount</th>
+                                <th className="py-2.5 px-2">Description</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {paginated.map((t) => (
+                                <tr key={t.id} className="border-b border-slate-900/60 hover:bg-slate-900/40">
+                                  <td className="py-2.5 pr-2 font-mono text-white">{formatDisplayDate(t.date)}</td>
+                                  <td className="py-2.5 px-2">
+                                    <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${
+                                      t.type === 'Credit' ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
+                                    }`}>
+                                      {t.type}
+                                    </span>
+                                  </td>
+                                  <td className={`py-2.5 px-2 font-black ${t.type === 'Credit' ? 'text-green-400' : 'text-red-400'}`}>
+                                    ₹{t.amount.toLocaleString('en-IN')}
+                                  </td>
+                                  <td className="py-2.5 px-2 text-slate-400 max-w-[180px] truncate" title={t.description}>
+                                    {t.description || '-'} 
+                                    {t.transfer_account_name && <span className="text-[10px] text-slate-500 block">Rel: {t.transfer_account_name}</span>}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {totalPages > 1 && (
+                          <div className="flex items-center justify-between pt-2">
+                            <span className="text-[10px] text-slate-500 font-bold uppercase">Page {currentPage} of {totalPages}</span>
+                            <div className="flex space-x-2">
+                              <Button 
+                                disabled={currentPage === 1} 
+                                onClick={() => setCurrentPage(c => Math.max(1, c - 1))}
+                                variant="ghost" 
+                                className="border border-slate-900 px-3 py-1 text-[11px]"
+                              >
+                                Prev
+                              </Button>
+                              <Button 
+                                disabled={currentPage === totalPages} 
+                                onClick={() => setCurrentPage(c => Math.min(totalPages, c + 1))}
+                                variant="ghost" 
+                                className="border border-slate-900 px-3 py-1 text-[11px]"
+                              >
+                                Next
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
@@ -528,6 +569,18 @@ export default function SavingsModule({ onBack }: SavingsModuleProps) {
             </form>
           </div>
         </div>
+      )}
+      {showImportModal && activeAccount && (
+        <CsvImportModal
+          isOpen={showImportModal}
+          onClose={() => setShowImportModal(false)}
+          onSuccess={(msg) => {
+            alert(msg);
+            fetchAccounts();
+          }}
+          importUrl={`${API}/records/savings/${activeAccount.id}/import`}
+          moduleType="savings"
+        />
       )}
     </div>
   );

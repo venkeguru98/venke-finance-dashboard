@@ -1,21 +1,22 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, lazy, Suspense } from 'react';
 import axios from 'axios';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts';
 import { 
-  Shield, Coins, Landmark, Wallet, Bell, AlertTriangle, ChevronRight
+  Shield, Landmark, Bell, AlertTriangle, ChevronRight, ShieldAlert
 } from 'lucide-react';
 
-// Sub modules
-import LicModule from '../components/records/LicModule';
-import GoldModule from '../components/records/GoldModule';
-import ChitModule from '../components/records/ChitModule';
-import SavingsModule from '../components/records/SavingsModule';
+// Lazy load sub-modules for extreme performance
+const LicModule = lazy(() => import('../components/records/LicModule'));
+const GoldModule = lazy(() => import('../components/records/GoldModule'));
+const ChitModule = lazy(() => import('../components/records/ChitModule'));
+const SavingsModule = lazy(() => import('../components/records/SavingsModule'));
+const DebtModule = lazy(() => import('../components/records/DebtModule'));
 
 const API = window.location.port === '5173' ? 'http://localhost:5000/api' : '/api';
 const COLORS = ['#3B82F6', '#8B5CF6', '#EC4899', '#10B981', '#F59E0B', '#EF4444', '#06B6D4'];
 
 export default function FinancialRecords() {
-  const [subView, setSubView] = useState<null | 'lic' | 'gold' | 'chit' | 'savings'>(null);
+  const [subView, setSubView] = useState<null | 'lic' | 'gold' | 'chit' | 'savings' | 'debt'>(null);
   const [dashboardData, setDashboardData] = useState<any>({
     stats: {
       activeLicPolicies: 0,
@@ -23,7 +24,9 @@ export default function FinancialRecords() {
       digitalGoldInvested: 0,
       runningChitFunds: 0,
       upcomingChitPayments: 0,
-      offlineSavingsBalance: 0
+      offlineSavingsBalance: 0,
+      outstandingDebt: 0,
+      receivableAmount: 0
     },
     reminders: [],
     charts: {
@@ -47,7 +50,9 @@ export default function FinancialRecords() {
           digitalGoldInvested: 0,
           runningChitFunds: 0,
           upcomingChitPayments: 0,
-          offlineSavingsBalance: 0
+          offlineSavingsBalance: 0,
+          outstandingDebt: 0,
+          receivableAmount: 0
         },
         reminders: [],
         charts: {
@@ -70,17 +75,16 @@ export default function FinancialRecords() {
     }
   }, [subView]);
 
-  if (subView === 'lic') {
-    return <LicModule onBack={() => setSubView(null)} />;
-  }
-  if (subView === 'gold') {
-    return <GoldModule onBack={() => setSubView(null)} />;
-  }
-  if (subView === 'chit') {
-    return <ChitModule onBack={() => setSubView(null)} />;
-  }
-  if (subView === 'savings') {
-    return <SavingsModule onBack={() => setSubView(null)} />;
+  if (subView !== null) {
+    return (
+      <Suspense fallback={<div className="text-center py-12 text-slate-400 font-bold uppercase tracking-wider">Loading component...</div>}>
+        {subView === 'lic' && <LicModule onBack={() => setSubView(null)} />}
+        {subView === 'gold' && <GoldModule onBack={() => setSubView(null)} />}
+        {subView === 'chit' && <ChitModule onBack={() => setSubView(null)} />}
+        {subView === 'savings' && <SavingsModule onBack={() => setSubView(null)} />}
+        {subView === 'debt' && <DebtModule onBack={() => setSubView(null)} />}
+      </Suspense>
+    );
   }
 
   const { stats, reminders, charts, timeline } = dashboardData;
@@ -89,8 +93,8 @@ export default function FinancialRecords() {
     <div className="space-y-6 text-xs font-semibold text-slate-350">
       {/* HUB HEADER */}
       <div className="border-b border-slate-900 pb-4">
-        <h1 className="text-xl font-bold text-white">Financial Records</h1>
-        <p className="text-xs text-slate-400 mt-1">Manage long-term investments, savings, LIC policies, chit funds and offline account balances.</p>
+        <h1 className="text-xl font-bold text-white uppercase tracking-wider">Financial Records Hub</h1>
+        <p className="text-xs text-slate-400 mt-1">Manage long-term assets, liabilities, investments, policies, and offline account registries.</p>
       </div>
 
       {loading ? (
@@ -114,97 +118,119 @@ export default function FinancialRecords() {
             </div>
           )}
 
-          {/* SUMMARY CARDS ROW */}
-          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
-            <div className="p-4 bg-slate-950/40 border border-slate-850 rounded-2xl space-y-1">
-              <p className="text-[10px] text-slate-500 font-bold uppercase">Active LIC Policies</p>
-              <p className="text-lg font-black text-white">{stats.activeLicPolicies}</p>
-            </div>
-            <div className="p-4 bg-slate-950/40 border border-slate-850 rounded-2xl space-y-1">
-              <p className="text-[10px] text-slate-500 font-bold uppercase">LIC Premium Due</p>
-              <p className="text-lg font-black text-cyan-400">₹{stats.licPremiumDue.toLocaleString('en-IN')}</p>
-            </div>
-            <div className="p-4 bg-slate-950/40 border border-slate-850 rounded-2xl space-y-1">
-              <p className="text-[10px] text-slate-500 font-bold uppercase">DigiGold Invested</p>
-              <p className="text-lg font-black text-amber-500">₹{stats.digitalGoldInvested.toLocaleString('en-IN')}</p>
-            </div>
-            <div className="p-4 bg-slate-950/40 border border-slate-850 rounded-2xl space-y-1">
-              <p className="text-[10px] text-slate-500 font-bold uppercase">Running Chits</p>
-              <p className="text-lg font-black text-white">{stats.runningChitFunds}</p>
-            </div>
-            <div className="p-4 bg-slate-950/40 border border-slate-850 rounded-2xl space-y-1">
-              <p className="text-[10px] text-slate-500 font-bold uppercase">Upcoming Chit Payments</p>
-              <p className="text-lg font-black text-purple-400">₹{stats.upcomingChitPayments.toLocaleString('en-IN')}</p>
-            </div>
-            <div className="p-4 bg-slate-950/40 border border-slate-850 rounded-2xl space-y-1">
-              <p className="text-[10px] text-slate-500 font-bold uppercase">Offline Savings Balance</p>
-              <p className="text-lg font-black text-blue-400">₹{stats.offlineSavingsBalance.toLocaleString('en-IN')}</p>
+          {/* QUICK SUMMARY CARDS */}
+          <div className="space-y-2.5">
+            <h2 className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Quick Summary</h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-4">
+              <div className="p-3.5 bg-slate-950/40 border border-slate-850 rounded-2xl space-y-1">
+                <p className="text-[9px] text-slate-500 font-bold uppercase truncate">Active LIC</p>
+                <p className="text-sm font-black text-white">{stats.activeLicPolicies}</p>
+              </div>
+              <div className="p-3.5 bg-slate-950/40 border border-slate-850 rounded-2xl space-y-1">
+                <p className="text-[9px] text-slate-500 font-bold uppercase truncate">Premium Due</p>
+                <p className="text-sm font-black text-cyan-400">₹{stats.licPremiumDue.toLocaleString('en-IN')}</p>
+              </div>
+              <div className="p-3.5 bg-slate-950/40 border border-slate-850 rounded-2xl space-y-1">
+                <p className="text-[9px] text-slate-500 font-bold uppercase truncate">Digital Gold</p>
+                <p className="text-sm font-black text-amber-500">₹{stats.digitalGoldInvested.toLocaleString('en-IN')}</p>
+              </div>
+              <div className="p-3.5 bg-slate-950/40 border border-slate-850 rounded-2xl space-y-1">
+                <p className="text-[9px] text-slate-500 font-bold uppercase truncate">Running Chits</p>
+                <p className="text-sm font-black text-white">{stats.runningChitFunds}</p>
+              </div>
+              <div className="p-3.5 bg-slate-950/40 border border-slate-850 rounded-2xl space-y-1">
+                <p className="text-[9px] text-slate-500 font-bold uppercase truncate">Offline Balance</p>
+                <p className="text-sm font-black text-blue-400">₹{stats.offlineSavingsBalance.toLocaleString('en-IN')}</p>
+              </div>
+              <div className="p-3.5 bg-red-500/5 border border-red-500/10 rounded-2xl space-y-1">
+                <p className="text-[9px] text-slate-500 font-bold uppercase truncate">Outstanding Debt</p>
+                <p className="text-sm font-black text-red-400">₹{stats.outstandingDebt.toLocaleString('en-IN')}</p>
+              </div>
+              <div className="p-3.5 bg-green-500/5 border border-green-500/10 rounded-2xl space-y-1">
+                <p className="text-[9px] text-slate-500 font-bold uppercase truncate">Receivable</p>
+                <p className="text-sm font-black text-green-400 font-mono">₹{stats.receivableAmount.toLocaleString('en-IN')}</p>
+              </div>
             </div>
           </div>
 
-          {/* THE 4 MODULAR HUB NAVIGATION CARDS */}
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5.5">
-            <div 
-              onClick={() => setSubView('lic')}
-              className="group p-5.5 bg-slate-950/40 border border-slate-850 hover:border-cyan-500/30 hover:bg-slate-900/40 rounded-3xl cursor-pointer transition-all duration-200 flex flex-col justify-between min-h-[140px]"
-            >
-              <div className="flex justify-between items-start">
-                <div className="p-3 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 group-hover:scale-105 transition-all">
-                  <Shield className="w-6 h-6" />
+          {/* OVERVIEW SECTIONS */}
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+            {/* FINANCIAL ASSETS */}
+            <div className="space-y-3 bg-slate-950/20 border border-slate-900 p-5 rounded-3xl">
+              <h2 className="text-[10px] font-black uppercase text-cyan-400 tracking-wider flex items-center gap-1.5 pb-2 border-b border-slate-900">
+                <Shield className="w-4 h-4 text-cyan-400" /> Financial Assets
+              </h2>
+              <div className="space-y-3">
+                <div 
+                  onClick={() => setSubView('lic')}
+                  className="group p-4 bg-slate-950/40 border border-slate-850 hover:border-cyan-500/30 hover:bg-slate-900/40 rounded-2xl cursor-pointer transition flex items-center justify-between"
+                >
+                  <div>
+                    <h3 className="text-xs font-black text-white group-hover:text-cyan-400 transition-colors">LIC Policies</h3>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Track policies, monthly premium schedules, and maturity countdowns.</p>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-cyan-400 group-hover:translate-x-1 transition" />
                 </div>
-                <ChevronRight className="w-5 h-5 text-slate-500 group-hover:text-cyan-400 group-hover:translate-x-1 transition-all" />
-              </div>
-              <div className="mt-4">
-                <h3 className="text-sm font-black text-white group-hover:text-cyan-400 transition-colors">LIC Policies</h3>
-                <p className="text-[11px] text-slate-400 font-semibold mt-1">Track multiple policies, monthly premiums, paid progress counts, and maturity countdowns.</p>
+
+                <div 
+                  onClick={() => setSubView('gold')}
+                  className="group p-4 bg-slate-950/40 border border-slate-850 hover:border-amber-500/30 hover:bg-slate-900/40 rounded-2xl cursor-pointer transition flex items-center justify-between"
+                >
+                  <div>
+                    <h3 className="text-xs font-black text-white group-hover:text-amber-500 transition-colors">Digital Gold</h3>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Monitor gold holdings, purchases history logs, and growth charts.</p>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-amber-400 group-hover:translate-x-1 transition" />
+                </div>
+
+                <div 
+                  onClick={() => setSubView('savings')}
+                  className="group p-4 bg-slate-950/40 border border-slate-850 hover:border-blue-500/30 hover:bg-slate-900/40 rounded-2xl cursor-pointer transition flex items-center justify-between"
+                >
+                  <div>
+                    <h3 className="text-xs font-black text-white group-hover:text-blue-400 transition-colors">Offline Accounts</h3>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Manage bank account balances, offline assets, and cash logs.</p>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-blue-400 group-hover:translate-x-1 transition" />
+                </div>
               </div>
             </div>
 
-            <div 
-              onClick={() => setSubView('gold')}
-              className="group p-5.5 bg-slate-950/40 border border-slate-850 hover:border-amber-500/30 hover:bg-slate-900/40 rounded-3xl cursor-pointer transition-all duration-200 flex flex-col justify-between min-h-[140px]"
-            >
-              <div className="flex justify-between items-start">
-                <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-500 group-hover:scale-105 transition-all">
-                  <Coins className="w-6 h-6" />
+            {/* LIABILITIES */}
+            <div className="space-y-3 bg-slate-950/20 border border-slate-900 p-5 rounded-3xl">
+              <h2 className="text-[10px] font-black uppercase text-red-400 tracking-wider flex items-center gap-1.5 pb-2 border-b border-slate-900">
+                <ShieldAlert className="w-4 h-4 text-red-400" /> Liabilities
+              </h2>
+              <div className="space-y-3">
+                <div 
+                  onClick={() => setSubView('debt')}
+                  className="group p-4 bg-slate-950/40 border border-slate-850 hover:border-purple-500/30 hover:bg-slate-900/40 rounded-2xl cursor-pointer transition flex items-center justify-between"
+                >
+                  <div>
+                    <h3 className="text-xs font-black text-white group-hover:text-purple-400 transition-colors">Debt Manager</h3>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Register loans, borrowed totals, outstanding receivable/payable sums.</p>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-purple-400 group-hover:translate-x-1 transition" />
                 </div>
-                <ChevronRight className="w-5 h-5 text-slate-500 group-hover:text-amber-400 group-hover:translate-x-1 transition-all" />
-              </div>
-              <div className="mt-4">
-                <h3 className="text-sm font-black text-white group-hover:text-amber-500 transition-colors">Digital Gold</h3>
-                <p className="text-[11px] text-slate-400 font-semibold mt-1">Monitor digital gold accounts, record transactions, and analyze growth graphs.</p>
               </div>
             </div>
 
-            <div 
-              onClick={() => setSubView('chit')}
-              className="group p-5.5 bg-slate-950/40 border border-slate-850 hover:border-purple-500/30 hover:bg-slate-900/40 rounded-3xl cursor-pointer transition-all duration-200 flex flex-col justify-between min-h-[140px]"
-            >
-              <div className="flex justify-between items-start">
-                <div className="p-3 rounded-2xl bg-purple-500/10 border border-purple-500/20 text-purple-400 group-hover:scale-105 transition-all">
-                  <Landmark className="w-6 h-6" />
+            {/* INVESTMENTS */}
+            <div className="space-y-3 bg-slate-950/20 border border-slate-900 p-5 rounded-3xl">
+              <h2 className="text-[10px] font-black uppercase text-purple-400 tracking-wider flex items-center gap-1.5 pb-2 border-b border-slate-900">
+                <Landmark className="w-4 h-4 text-purple-400" /> Investments
+              </h2>
+              <div className="space-y-3">
+                <div 
+                  onClick={() => setSubView('chit')}
+                  className="group p-4 bg-slate-950/40 border border-slate-850 hover:border-purple-500/30 hover:bg-slate-900/40 rounded-2xl cursor-pointer transition flex items-center justify-between"
+                >
+                  <div>
+                    <h3 className="text-xs font-black text-white group-hover:text-purple-400 transition-colors">Chit Funds</h3>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Manage chit groups, flexible installments, and dividend schedules.</p>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-purple-400 group-hover:translate-x-1 transition" />
                 </div>
-                <ChevronRight className="w-5 h-5 text-slate-500 group-hover:text-purple-400 group-hover:translate-x-1 transition-all" />
-              </div>
-              <div className="mt-4">
-                <h3 className="text-sm font-black text-white group-hover:text-purple-400 transition-colors">Chit Funds</h3>
-                <p className="text-[11px] text-slate-400 font-semibold mt-1">Manage Cheetu group cycles, adjust flexible dividends, and log monthly payment timelines.</p>
-              </div>
-            </div>
-
-            <div 
-              onClick={() => setSubView('savings')}
-              className="group p-5.5 bg-slate-950/40 border border-slate-850 hover:border-blue-500/30 hover:bg-slate-900/40 rounded-3xl cursor-pointer transition-all duration-200 flex flex-col justify-between min-h-[140px]"
-            >
-              <div className="flex justify-between items-start">
-                <div className="p-3 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-500 group-hover:scale-105 transition-all">
-                  <Wallet className="w-6 h-6" />
-                </div>
-                <ChevronRight className="w-5 h-5 text-slate-500 group-hover:text-blue-400 group-hover:translate-x-1 transition-all" />
-              </div>
-              <div className="mt-4">
-                <h3 className="text-sm font-black text-white group-hover:text-blue-400 transition-colors">Offline Accounts</h3>
-                <p className="text-[11px] text-slate-400 font-semibold mt-1">Replaces spreadsheets like Canara or TMB. Track offline assets, cash holdings, and transfers.</p>
               </div>
             </div>
           </div>
@@ -266,7 +292,7 @@ export default function FinancialRecords() {
                     </ResponsiveContainer>
                   )}
                 </div>
-                <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1 custom-scrollbar">
                   {charts.savingsBalances.map((entry: any, index: number) => (
                     <div key={index} className="flex items-center space-x-2 text-[10px] p-1.5 bg-slate-900/40 rounded-xl">
                       <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: entry.color || COLORS[index % COLORS.length] }} />

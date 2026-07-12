@@ -3,6 +3,8 @@ import axios from 'axios';
 import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { Plus, Edit2, Trash2, ArrowLeft, Coins } from 'lucide-react';
 import Button from '../ui/Button';
+import CsvImportModal from './CsvImportModal';
+import { formatDisplayDate } from '../../utils/date';
 
 const API = window.location.port === '5173' ? 'http://localhost:5000/api' : '/api';
 
@@ -22,6 +24,11 @@ export default function GoldModule({ onBack }: GoldModuleProps) {
   });
   const [loading, setLoading] = useState(true);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const rowsPerPage = 5;
 
   // Forms
   const [showGoldModal, setShowGoldModal] = useState(false);
@@ -76,6 +83,7 @@ export default function GoldModule({ onBack }: GoldModuleProps) {
         overallTotal: 0,
         yearlySummary: []
       });
+      setCurrentPage(1);
     } catch (_) {
     } finally {
       setLoadingDetails(false);
@@ -264,7 +272,7 @@ export default function GoldModule({ onBack }: GoldModuleProps) {
                       </div>
                       <div className="text-right text-[10px] text-slate-400 font-semibold">
                         <p className="text-slate-500 font-bold uppercase text-[9px]">Started</p>
-                        <p className="mt-0.5">{g.start_date}</p>
+                        <p className="mt-0.5">{formatDisplayDate(g.start_date)}</p>
                       </div>
                     </div>
                   </div>
@@ -281,9 +289,12 @@ export default function GoldModule({ onBack }: GoldModuleProps) {
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-slate-900 pb-5 gap-3">
                   <div>
                     <h2 className="text-lg font-black text-white">{activeGold.investment_name}</h2>
-                    <p className="text-xs text-slate-400 mt-0.5">Platform: <code className="text-amber-500 font-bold">{activeGold.platform}</code> | Started: {activeGold.start_date}</p>
+                    <p className="text-xs text-slate-400 mt-0.5">Platform: <code className="text-amber-500 font-bold">{activeGold.platform}</code> | Started: {formatDisplayDate(activeGold.start_date)}</p>
                   </div>
                   <div className="flex gap-2">
+                    <Button onClick={() => setShowImportModal(true)} variant="ghost" className="text-xs py-2 px-3 border border-slate-800 text-slate-400 hover:text-white">
+                      Import CSV
+                    </Button>
                     <Button onClick={() => handleOpenEditGold(activeGold)} variant="ghost" className="text-xs py-2 px-3">
                       <Edit2 className="w-3.5 h-3.5 mr-1" /> Edit
                     </Button>
@@ -385,38 +396,68 @@ export default function GoldModule({ onBack }: GoldModuleProps) {
                     <div className="text-center py-6 text-xs text-slate-400 font-semibold">Loading records...</div>
                   ) : transactions.length === 0 ? (
                     <div className="text-center py-6 text-xs text-slate-500">No transactions recorded. Click Log Purchase above to record a gold buy.</div>
-                  ) : (
-                    <div className="overflow-x-auto max-h-[300px] overflow-y-auto">
-                      <table className="w-full text-left text-xs border-collapse">
-                        <thead>
-                          <tr className="border-b border-slate-900 text-slate-500 font-bold">
-                            <th className="py-2.5 pr-2">Period</th>
-                            <th className="py-2.5 px-2">Amount</th>
-                            <th className="py-2.5 px-2">Remarks</th>
-                            <th className="py-2.5 pl-2 text-right">Action</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {transactions.map((t) => {
-                            const dateObj = new Date(2000, t.month - 1);
-                            const monthStr = dateObj.toLocaleString('default', { month: 'short' });
-                            return (
-                              <tr key={t.id} className="border-b border-slate-900/60 hover:bg-slate-900/40">
-                                <td className="py-2.5 pr-2 font-bold text-white">{monthStr} {t.year}</td>
-                                <td className="py-2.5 px-2 font-black text-amber-500">₹{t.amount.toLocaleString('en-IN')}</td>
-                                <td className="py-2.5 px-2 text-slate-400 truncate max-w-[150px]" title={t.remarks}>{t.remarks || '-'}</td>
-                                <td className="py-2.5 pl-2 text-right">
-                                  <button onClick={() => handleDeleteTx(t.id)} className="p-1 text-slate-500 hover:text-red-400 transition rounded-lg hover:bg-slate-900">
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </td>
+                  ) : (() => {
+                    const totalPages = Math.ceil(transactions.length / rowsPerPage);
+                    const paginated = transactions.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
+                    return (
+                      <div className="space-y-4">
+                        <div className="overflow-x-auto max-h-[300px] overflow-y-auto custom-scrollbar">
+                          <table className="w-full text-left text-xs border-collapse">
+                            <thead>
+                              <tr className="border-b border-slate-900 text-slate-500 font-bold">
+                                <th className="py-2.5 pr-2">Period</th>
+                                <th className="py-2.5 px-2">Amount</th>
+                                <th className="py-2.5 px-2">Remarks</th>
+                                <th className="py-2.5 pl-2 text-right">Action</th>
                               </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
+                            </thead>
+                            <tbody>
+                              {paginated.map((t) => {
+                                const dateObj = new Date(2000, t.month - 1);
+                                const monthStr = dateObj.toLocaleString('default', { month: 'short' });
+                                return (
+                                  <tr key={t.id} className="border-b border-slate-900/60 hover:bg-slate-900/40">
+                                    <td className="py-2.5 pr-2 font-bold text-white">{monthStr} {t.year}</td>
+                                    <td className="py-2.5 px-2 font-black text-amber-500">₹{t.amount.toLocaleString('en-IN')}</td>
+                                    <td className="py-2.5 px-2 text-slate-400 truncate max-w-[150px]" title={t.remarks}>{t.remarks || '-'}</td>
+                                    <td className="py-2.5 pl-2 text-right">
+                                      <button onClick={() => handleDeleteTx(t.id)} className="p-1 text-slate-500 hover:text-red-400 transition rounded-lg hover:bg-slate-900">
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {totalPages > 1 && (
+                          <div className="flex items-center justify-between pt-2">
+                            <span className="text-[10px] text-slate-500 font-bold uppercase">Page {currentPage} of {totalPages}</span>
+                            <div className="flex space-x-2">
+                              <Button 
+                                disabled={currentPage === 1} 
+                                onClick={() => setCurrentPage(c => Math.max(1, c - 1))}
+                                variant="ghost" 
+                                className="border border-slate-900 px-3 py-1 text-[11px]"
+                              >
+                                Prev
+                              </Button>
+                              <Button 
+                                disabled={currentPage === totalPages} 
+                                onClick={() => setCurrentPage(c => Math.min(totalPages, c + 1))}
+                                variant="ghost" 
+                                className="border border-slate-900 px-3 py-1 text-[11px]"
+                              >
+                                Next
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
@@ -550,6 +591,18 @@ export default function GoldModule({ onBack }: GoldModuleProps) {
             </form>
           </div>
         </div>
+      )}
+      {showImportModal && activeGold && (
+        <CsvImportModal
+          isOpen={showImportModal}
+          onClose={() => setShowImportModal(false)}
+          onSuccess={(msg) => {
+            alert(msg);
+            fetchInvestments();
+          }}
+          importUrl={`${API}/records/gold/${activeGold.id}/import`}
+          moduleType="gold"
+        />
       )}
     </div>
   );

@@ -73,6 +73,29 @@ router.get('/dashboard', async (req: Request, res: Response) => {
       [userId]
     );
 
+    // Compute outstanding debt and receivable amounts for Debt Manager
+    const debtTx = await query(
+      `SELECT id, amount, type, status FROM debt_transactions WHERE user_id = ?`,
+      [userId]
+    );
+    let outstandingDebt = 0;
+    let receivableAmount = 0;
+
+    for (const tx of debtTx) {
+      if (tx.status === 'Settled') continue;
+      const settled = await get(
+        `SELECT SUM(amount) as total FROM debt_settlements WHERE transaction_id = ?`,
+        [tx.id]
+      );
+      const settledAmount = settled?.total || 0;
+      const outstanding = Math.max(0, tx.amount - settledAmount);
+      if (tx.type === 'Borrowed') {
+        outstandingDebt += outstanding;
+      } else if (tx.type === 'Lent') {
+        receivableAmount += outstanding;
+      }
+    }
+
     // 1.2 Reminders Engine
     const reminders: string[] = [];
 
@@ -233,7 +256,9 @@ router.get('/dashboard', async (req: Request, res: Response) => {
         digitalGoldInvested: Number(goldInvested?.total || 0),
         runningChitFunds: Number(activeChitsCount?.count || 0),
         upcomingChitPayments: Number(upcomingChitPayments || 0),
-        offlineSavingsBalance: Number(savingsBalance?.total || 0)
+        offlineSavingsBalance: Number(savingsBalance?.total || 0),
+        outstandingDebt: Number(outstandingDebt || 0),
+        receivableAmount: Number(receivableAmount || 0)
       },
       reminders,
       charts: {
@@ -838,6 +863,356 @@ router.post('/savings/transactions', async (req: Request, res: Response) => {
     }
 
     res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==========================================
+// 6. DEBT MANAGER MODULE
+// ==========================================
+
+// Helper to update transaction status based on settlements
+async function updateTransactionStatus(txId: number) {
+  const tx = await get(`SELECT amount FROM debt_transactions WHERE id = ?`, [txId]);
+  if (!tx) return;
+
+  const settlements = await get(`SELECT SUM(amount) as total FROM debt_settlements WHERE transaction_id = ?`, [txId]);
+  const totalSettled = Number(settlements?.total || 0);
+
+  let newStatus = 'Pending';
+  if (totalSettled >= tx.amount) {
+    newStatus = 'Settled';
+  } else if (totalSettled > 0) {
+    newStatus = 'Partially Settled';
+  }
+
+  await execute(`UPDATE debt_transactions SET status = ? WHERE id = ?`, [newStatus, txId]);
+}
+
+router.get('/debts', async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const accounts = await query(
+      `SELECT * FROM debt_accounts WHERE user_id = ? ORDER BY account_name ASC`,
+      [userId]
+    );
+
+    const enriched = [];
+    for (const acc of accounts) {
+      const txs = await query(
+        `SELECT id, type, amount, status FROM debt_transactions WHERE account_id = ?`,
+        [acc.id]
+      );
+
+      let totalBorrowed = 0;
+      let totalLent = 0;
+      let outstandingPay = 0;
+      let outstandingReceive = 0;
+      let settledAmount = 0;
+
+      for (const t of txs) {
+        const setRes = await get(
+          `SELECT SUM(amount) as total FROM debt_settlements WHERE transaction_id = ?`,
+          [t.id]
+        );
+        const settledVal = Number(setRes?.total || 0);
+        settledAmount += settledVal;
+
+        const outstanding = Math.max(0, t.amount - settledVal);
+
+        if (t.type === 'Borrowed') {
+          totalBorrowed += t.amount;
+          outstandingPay += outstanding;
+        } else {
+          totalLent += t.amount;
+          outstandingReceive += outstanding;
+        }
+      }
+
+      enriched.push({
+        ...acc,
+        totalBorrowed,
+        totalLent,
+        outstandingPay,
+        outstandingReceive,
+        settledAmount,
+        pendingAmount: outstandingPay + outstandingReceive,
+        runningBalance: outstandingReceive - outstandingPay
+      });
+    }
+
+    res.json(enriched);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/debts', async (req: Request, res: Response) => {
+  const { account_name, description } = req.body;
+  try {
+    const result = await execute(
+      `INSERT INTO debt_accounts (user_id, account_name, description) VALUES (?, ?, ?)`,
+      [req.user!.id, account_name, description || '']
+    );
+    res.json({ id: result.lastID, success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/debts/:id', async (req: Request, res: Response) => {
+  const { account_name, description } = req.body;
+  try {
+    await execute(
+      `UPDATE debt_accounts SET account_name = ?, description = ? WHERE id = ? AND user_id = ?`,
+      [account_name, description || '', Number(req.params.id), req.user!.id]
+    );
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/debts/:id', async (req: Request, res: Response) => {
+  try {
+    await execute(
+      `DELETE FROM debt_accounts WHERE id = ? AND user_id = ?`,
+      [Number(req.params.id), req.user!.id]
+    );
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Transactions under account
+router.get('/debts/:id/transactions', async (req: Request, res: Response) => {
+  const accountId = Number(req.params.id);
+  try {
+    const txs = await query(
+      `SELECT * FROM debt_transactions WHERE account_id = ? ORDER BY date DESC, id DESC`,
+      [accountId]
+    );
+
+    const enriched = [];
+    for (const t of txs) {
+      const settlements = await query(
+        `SELECT * FROM debt_settlements WHERE transaction_id = ? ORDER BY date DESC`,
+        [t.id]
+      );
+      const sumRes = await get(
+        `SELECT SUM(amount) as total FROM debt_settlements WHERE transaction_id = ?`,
+        [t.id]
+      );
+      const totalSettled = Number(sumRes?.total || 0);
+
+      enriched.push({
+        ...t,
+        settlements,
+        settledAmount: totalSettled,
+        outstandingAmount: Math.max(0, t.amount - totalSettled)
+      });
+    }
+
+    res.json(enriched);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/debts/:id/transactions', async (req: Request, res: Response) => {
+  const accountId = Number(req.params.id);
+  const { type, amount, date, description, notes } = req.body;
+  try {
+    const result = await execute(
+      `INSERT INTO debt_transactions (user_id, account_id, type, amount, date, description, notes, status) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [req.user!.id, accountId, type, Number(amount), date, description, notes || '', 'Pending']
+    );
+    res.json({ id: result.lastID, success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/debts/transactions/:txId', async (req: Request, res: Response) => {
+  const txId = Number(req.params.txId);
+  const { type, amount, date, description, notes } = req.body;
+  try {
+    await execute(
+      `UPDATE debt_transactions SET type = ?, amount = ?, date = ?, description = ?, notes = ? WHERE id = ?`,
+      [type, Number(amount), date, description, notes || '', txId]
+    );
+    await updateTransactionStatus(txId);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/debts/transactions/:txId', async (req: Request, res: Response) => {
+  try {
+    await execute(
+      `DELETE FROM debt_transactions WHERE id = ?`,
+      [Number(req.params.txId)]
+    );
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Settlement history sub-routes
+router.post('/debts/transactions/:txId/settlements', async (req: Request, res: Response) => {
+  const txId = Number(req.params.txId);
+  const { amount, date, notes } = req.body;
+  try {
+    const result = await execute(
+      `INSERT INTO debt_settlements (transaction_id, amount, date, notes) VALUES (?, ?, ?, ?)`,
+      [txId, Number(amount), date, notes || '']
+    );
+    await updateTransactionStatus(txId);
+    res.json({ id: result.lastID, success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/debts/settlements/:settlementId', async (req: Request, res: Response) => {
+  const settlementId = Number(req.params.settlementId);
+  try {
+    const settlement = await get(`SELECT transaction_id FROM debt_settlements WHERE id = ?`, [settlementId]);
+    if (!settlement) {
+      return res.status(404).json({ error: 'Settlement not found.' });
+    }
+    await execute(`DELETE FROM debt_settlements WHERE id = ?`, [settlementId]);
+    await updateTransactionStatus(settlement.transaction_id);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// CSV bulk import
+router.post('/debts/:id/import', async (req: Request, res: Response) => {
+  const accountId = Number(req.params.id);
+  const userId = req.user!.id;
+  const { transactions } = req.body; // Array of { date, description, type, amount, notes }
+  try {
+    let imported = 0;
+    for (const tx of transactions) {
+      await execute(
+        `INSERT INTO debt_transactions (user_id, account_id, type, amount, date, description, notes, status) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [userId, accountId, tx.type, Number(tx.amount), tx.date, tx.description, tx.notes || '', 'Pending']
+      );
+      imported++;
+    }
+    res.json({ success: true, count: imported });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/lic/:id/import', async (req: Request, res: Response) => {
+  const policyId = Number(req.params.id);
+  const { transactions } = req.body;
+  try {
+    let count = 0;
+    for (const tx of transactions) {
+      const dateObj = new Date(tx.date);
+      const month = dateObj.getMonth() + 1;
+      const year = dateObj.getFullYear();
+      await execute(
+        `INSERT INTO lic_premium_history (policy_id, month, year, amount_paid, paid_date, status, remarks) 
+         VALUES (?, ?, ?, ?, ?, 'Paid', ?)`,
+        [policyId, month, year, Number(tx.amount), tx.date, tx.description]
+      );
+      count++;
+    }
+    res.json({ success: true, count });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/gold/:id/import', async (req: Request, res: Response) => {
+  const goldId = Number(req.params.id);
+  const { transactions } = req.body;
+  try {
+    let count = 0;
+    for (const tx of transactions) {
+      const dateObj = new Date(tx.date);
+      const month = dateObj.getMonth() + 1;
+      const year = dateObj.getFullYear();
+      await execute(
+        `INSERT INTO digital_gold_transactions (gold_id, month, year, amount, remarks) 
+         VALUES (?, ?, ?, ?, ?)`,
+        [goldId, month, year, Number(tx.amount), tx.description]
+      );
+      count++;
+    }
+    res.json({ success: true, count });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/chits/:id/import', async (req: Request, res: Response) => {
+  const chitId = Number(req.params.id);
+  const { transactions } = req.body;
+  try {
+    let count = 0;
+    for (const tx of transactions) {
+      const dateObj = new Date(tx.date);
+      const month = dateObj.getMonth() + 1;
+      const year = dateObj.getFullYear();
+      
+      const existing = await get(
+        `SELECT id FROM chit_payments WHERE chit_id = ? AND month = ? AND year = ?`,
+        [chitId, month, year]
+      );
+      if (existing) {
+        await execute(
+          `UPDATE chit_payments SET installment_amount = ?, status = 'Paid', payment_date = ?, remarks = ? WHERE id = ?`,
+          [Number(tx.amount), tx.date, tx.description, existing.id]
+        );
+      } else {
+        await execute(
+          `INSERT INTO chit_payments (chit_id, month, year, installment_amount, status, payment_date, remarks) 
+           VALUES (?, ?, ?, ?, 'Paid', ?, ?)`,
+          [chitId, month, year, Number(tx.amount), tx.date, tx.description]
+        );
+      }
+      count++;
+    }
+    res.json({ success: true, count });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/savings/:id/import', async (req: Request, res: Response) => {
+  const accountId = Number(req.params.id);
+  const userId = req.user!.id;
+  const { transactions } = req.body;
+  try {
+    let count = 0;
+    for (const tx of transactions) {
+      await execute(
+        `INSERT INTO savings_transactions (user_id, account_id, type, amount, date, description) 
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [userId, accountId, tx.type, Number(tx.amount), tx.date, tx.description]
+      );
+      const balanceAdjustment = tx.type === 'Credit' ? Number(tx.amount) : -Number(tx.amount);
+      await execute(
+        `UPDATE savings_accounts SET current_balance = current_balance + ? WHERE id = ?`,
+        [balanceAdjustment, accountId]
+      );
+      count++;
+    }
+    res.json({ success: true, count });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

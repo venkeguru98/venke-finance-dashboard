@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { Plus, Edit2, Trash2, ArrowLeft, Landmark, Calendar, AlertCircle } from 'lucide-react';
 import Button from '../ui/Button';
+import CsvImportModal from './CsvImportModal';
+import { formatDisplayDate } from '../../utils/date';
 
 const API = window.location.port === '5173' ? 'http://localhost:5000/api' : '/api';
 
@@ -16,6 +18,11 @@ export default function ChitModule({ onBack }: ChitModuleProps) {
   const [yearlySummary, setYearlySummary] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const rowsPerPage = 5;
 
   // Forms
   const [showChitModal, setShowChitModal] = useState(false);
@@ -70,6 +77,7 @@ export default function ChitModule({ onBack }: ChitModuleProps) {
       const res = await axios.get(`${API}/records/chits/${id}/payments`);
       setPayments(res.data.payments || []);
       setYearlySummary(res.data.yearlySummary || []);
+      setCurrentPage(1);
     } catch (_) {
     } finally {
       setLoadingDetails(false);
@@ -268,6 +276,9 @@ export default function ChitModule({ onBack }: ChitModuleProps) {
                     <p className="text-xs text-slate-400 mt-0.5">Organizer: <code className="text-purple-400 font-bold">{activeChit.organizer_name || 'N/A'}</code></p>
                   </div>
                   <div className="flex gap-2">
+                    <Button onClick={() => setShowImportModal(true)} variant="ghost" className="text-xs py-2 px-3 border border-slate-800 text-slate-400 hover:text-white">
+                      Import CSV
+                    </Button>
                     <Button onClick={() => handleOpenEditChit(activeChit)} variant="ghost" className="text-xs py-2 px-3">
                       <Edit2 className="w-3.5 h-3.5 mr-1" /> Edit
                     </Button>
@@ -322,8 +333,8 @@ export default function ChitModule({ onBack }: ChitModuleProps) {
                   <div className="flex items-center space-x-2.5">
                     <Calendar className="w-5 h-5 text-purple-400 shrink-0" />
                     <div>
-                      <p className="font-bold text-white">Closing Date: {activeChit.closing_date}</p>
-                      <p className="text-[10px] text-slate-400 mt-0.5">Start Date: {activeChit.start_date} ({activeChit.total_months} months cycle)</p>
+                      <p className="font-bold text-white">Closing Date: {formatDisplayDate(activeChit.closing_date)}</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">Start Date: {formatDisplayDate(activeChit.start_date)} ({activeChit.total_months} months cycle)</p>
                     </div>
                   </div>
                   <div className="text-left sm:text-right shrink-0">
@@ -368,48 +379,78 @@ export default function ChitModule({ onBack }: ChitModuleProps) {
 
                   {loadingDetails ? (
                     <div className="text-center py-6 text-xs text-slate-400 font-semibold">Loading schedule...</div>
-                  ) : (
-                    <div className="overflow-x-auto max-h-[350px] overflow-y-auto">
-                      <table className="w-full text-left text-xs border-collapse">
-                        <thead>
-                          <tr className="border-b border-slate-900 text-slate-500 font-bold">
-                            <th className="py-2.5 pr-2">Installment</th>
-                            <th className="py-2.5 px-2">Amount Due</th>
-                            <th className="py-2.5 px-2">Status</th>
-                            <th className="py-2.5 px-2">Paid Date</th>
-                            <th className="py-2.5 pl-2 text-right">Action</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {payments.map((p) => {
-                            const dateObj = new Date(2000, p.month - 1);
-                            const monthStr = dateObj.toLocaleString('default', { month: 'short' });
-                            return (
-                              <tr key={p.id} className="border-b border-slate-900/60 hover:bg-slate-900/40">
-                                <td className="py-2.5 pr-2 font-bold text-white">{monthStr} {p.year}</td>
-                                <td className="py-2.5 px-2 font-black text-white">₹{p.installment_amount.toLocaleString('en-IN')}</td>
-                                <td className="py-2.5 px-2">
-                                  <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${
-                                    p.status === 'Paid' ? 'bg-green-500/10 text-green-400' :
-                                    p.status === 'Late' ? 'bg-red-500/10 text-red-400' :
-                                    'bg-amber-500/10 text-amber-400'
-                                  }`}>
-                                    {p.status}
-                                  </span>
-                                </td>
-                                <td className="py-2.5 px-2 text-slate-400">{p.payment_date || '-'}</td>
-                                <td className="py-2.5 pl-2 text-right">
-                                  <button onClick={() => handleOpenEditPayment(p)} className="p-1 text-purple-400 hover:bg-slate-900 rounded-lg transition" title="Log/Edit Payment">
-                                    <Edit2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </td>
+                  ) : (() => {
+                    const totalPages = Math.ceil(payments.length / rowsPerPage);
+                    const paginated = payments.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
+                    return (
+                      <div className="space-y-4">
+                        <div className="overflow-x-auto max-h-[350px] overflow-y-auto custom-scrollbar">
+                          <table className="w-full text-left text-xs border-collapse">
+                            <thead>
+                              <tr className="border-b border-slate-900 text-slate-500 font-bold">
+                                <th className="py-2.5 pr-2">Installment</th>
+                                <th className="py-2.5 px-2">Amount Due</th>
+                                <th className="py-2.5 px-2">Status</th>
+                                <th className="py-2.5 px-2">Paid Date</th>
+                                <th className="py-2.5 pl-2 text-right">Action</th>
                               </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
+                            </thead>
+                            <tbody>
+                              {paginated.map((p) => {
+                                const dateObj = new Date(2000, p.month - 1);
+                                const monthStr = dateObj.toLocaleString('default', { month: 'short' });
+                                return (
+                                  <tr key={p.id} className="border-b border-slate-900/60 hover:bg-slate-900/40">
+                                    <td className="py-2.5 pr-2 font-bold text-white">{monthStr} {p.year}</td>
+                                    <td className="py-2.5 px-2 font-black text-white">₹{p.installment_amount.toLocaleString('en-IN')}</td>
+                                    <td className="py-2.5 px-2">
+                                      <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${
+                                        p.status === 'Paid' ? 'bg-green-500/10 text-green-400' :
+                                        p.status === 'Late' ? 'bg-red-500/10 text-red-400' :
+                                        'bg-amber-500/10 text-amber-400'
+                                      }`}>
+                                        {p.status}
+                                      </span>
+                                    </td>
+                                    <td className="py-2.5 px-2 text-slate-400 font-mono">{p.payment_date ? formatDisplayDate(p.payment_date) : '-'}</td>
+                                    <td className="py-2.5 pl-2 text-right">
+                                      <button onClick={() => handleOpenEditPayment(p)} className="p-1 text-purple-400 hover:bg-slate-900 rounded-lg transition" title="Log/Edit Payment">
+                                        <Edit2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {totalPages > 1 && (
+                          <div className="flex items-center justify-between pt-2">
+                            <span className="text-[10px] text-slate-500 font-bold uppercase">Page {currentPage} of {totalPages}</span>
+                            <div className="flex space-x-2">
+                              <Button 
+                                disabled={currentPage === 1} 
+                                onClick={() => setCurrentPage(c => Math.max(1, c - 1))}
+                                variant="ghost" 
+                                className="border border-slate-900 px-3 py-1 text-[11px]"
+                              >
+                                Prev
+                              </Button>
+                              <Button 
+                                disabled={currentPage === totalPages} 
+                                onClick={() => setCurrentPage(c => Math.min(totalPages, c + 1))}
+                                variant="ghost" 
+                                className="border border-slate-900 px-3 py-1 text-[11px]"
+                              >
+                                Next
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
@@ -586,6 +627,18 @@ export default function ChitModule({ onBack }: ChitModuleProps) {
             </form>
           </div>
         </div>
+      )}
+      {showImportModal && activeChit && (
+        <CsvImportModal
+          isOpen={showImportModal}
+          onClose={() => setShowImportModal(false)}
+          onSuccess={(msg) => {
+            alert(msg);
+            fetchChits();
+          }}
+          importUrl={`${API}/records/chits/${activeChit.id}/import`}
+          moduleType="chit"
+        />
       )}
     </div>
   );
