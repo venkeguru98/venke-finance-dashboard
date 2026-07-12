@@ -1390,6 +1390,33 @@ router.get('/mutual-funds', async (req: Request, res: Response) => {
   }
 });
 
+// Proxy search requests to AMFI API to prevent CORS errors on frontend
+router.get('/mutual-funds/proxy/search', async (req: Request, res: Response) => {
+  const queryStr = String(req.query.q || '');
+  if (queryStr.length < 3) {
+    return res.json([]);
+  }
+  try {
+    const apiRes = await fetch(`https://api.mfapi.in/mf/search?q=${encodeURIComponent(queryStr)}`);
+    const data = await apiRes.json();
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Proxy details requests to AMFI API
+router.get('/mutual-funds/proxy/details/:schemeCode', async (req: Request, res: Response) => {
+  const schemeCode = req.params.schemeCode;
+  try {
+    const apiRes = await fetch(`https://api.mfapi.in/mf/${schemeCode}`);
+    const data = await apiRes.json();
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Create new mutual fund
 router.post('/mutual-funds', async (req: Request, res: Response) => {
   const userId = req.user!.id;

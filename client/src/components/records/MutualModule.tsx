@@ -86,9 +86,9 @@ export default function MutualModule({ onBack }: MutualModuleProps) {
     for (const f of list) {
       if (f.scheme_code) {
         try {
-          const apiRes = await fetch(`https://api.mfapi.in/mf/${f.scheme_code}`);
+          const apiRes = await fetch(`${API}/records/mutual-funds/proxy/details/${f.scheme_code}`);
           const apiData = await apiRes.json();
-          const latestNav = Number(apiData.data[0].nav);
+          const latestNav = Number(apiData.data?.[0]?.nav);
           if (latestNav && Math.abs(latestNav - f.current_nav) > 0.001) {
             await axios.put(`${API}/records/mutual-funds/${f.id}`, {
               fund_name: f.fund_name,
@@ -173,7 +173,7 @@ export default function MutualModule({ onBack }: MutualModuleProps) {
     }
     setSearching(true);
     try {
-      const res = await fetch(`https://api.mfapi.in/mf/search?q=${encodeURIComponent(queryStr)}`);
+      const res = await fetch(`${API}/records/mutual-funds/proxy/search?q=${encodeURIComponent(queryStr)}`);
       const data = await res.json();
       setSearchResults(data.slice(0, 10) || []); // Limit to top 10 matches
     } catch (_) {
@@ -185,7 +185,7 @@ export default function MutualModule({ onBack }: MutualModuleProps) {
   const handleSelectSearchResult = async (schemeCodeStr: string, schemeName: string) => {
     setSearching(true);
     try {
-      const res = await fetch(`https://api.mfapi.in/mf/${schemeCodeStr}`);
+      const res = await fetch(`${API}/records/mutual-funds/proxy/details/${schemeCodeStr}`);
       const data = await res.json();
       
       const latestNav = data.data?.[0]?.nav || '10.0';
