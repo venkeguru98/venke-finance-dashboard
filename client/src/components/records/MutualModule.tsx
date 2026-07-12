@@ -92,8 +92,8 @@ export default function MutualModule({ onBack }: MutualModuleProps) {
     for (const f of list) {
       if (f.scheme_code) {
         try {
-          const apiRes = await fetch(`${API}/records/mutual-funds/proxy/details/${f.scheme_code}`);
-          const apiData = await apiRes.json();
+          const apiRes = await axios.get(`${API}/records/mutual-funds/proxy/details/${f.scheme_code}`);
+          const apiData = apiRes.data;
           const latestNav = Number(apiData.data?.[0]?.nav);
           if (latestNav && Math.abs(latestNav - f.current_nav) > 0.001) {
             await axios.put(`${API}/records/mutual-funds/${f.id}`, {
@@ -237,11 +237,10 @@ export default function MutualModule({ onBack }: MutualModuleProps) {
       abortControllerRef.current = controller;
 
       try {
-        const res = await fetch(`${API}/records/mutual-funds/proxy/search?q=${encodeURIComponent(trimmedQuery)}`, {
+        const res = await axios.get(`${API}/records/mutual-funds/proxy/search?q=${encodeURIComponent(trimmedQuery)}`, {
           signal: controller.signal
         });
-        if (!res.ok) throw new Error('Network response error');
-        const data = await res.json();
+        const data = res.data;
         
         const sliced = (data || []).slice(0, 10);
         // Cache result
@@ -269,8 +268,8 @@ export default function MutualModule({ onBack }: MutualModuleProps) {
   const handleSelectSearchResult = async (schemeCodeStr: string, schemeName: string) => {
     setSearching(true);
     try {
-      const res = await fetch(`${API}/records/mutual-funds/proxy/details/${schemeCodeStr}`);
-      const data = await res.json();
+      const res = await axios.get(`${API}/records/mutual-funds/proxy/details/${schemeCodeStr}`);
+      const data = res.data;
       
       const latestNav = data.data?.[0]?.nav || '10.0';
       const categoryRaw = data.meta?.scheme_category || 'Equity Scheme - Small Cap Fund';
