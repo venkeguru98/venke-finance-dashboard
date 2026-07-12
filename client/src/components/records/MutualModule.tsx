@@ -52,7 +52,13 @@ export default function MutualModule({ onBack }: MutualModuleProps) {
   const [searchFundQuery, setSearchFundQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [wizardStep, setWizardStep] = useState<1 | 2>(1);
+
+  // Search Optimization Refs
+  const searchCache = React.useRef<{ [key: string]: any[] }>({});
+  const abortControllerRef = React.useRef<AbortController | null>(null);
+  const debounceTimerRef = React.useRef<any>(null);
   const [initialAmount, setInitialAmount] = useState('5000');
   const [initialDate, setInitialDate] = useState(new Date().toISOString().split('T')[0]);
   const [initialType, setInitialType] = useState<'SIP' | 'Lumpsum'>('SIP');
@@ -164,22 +170,100 @@ export default function MutualModule({ onBack }: MutualModuleProps) {
     fetchTransactions(f.id);
   };
 
-  // Fund Search from AMFI
-  const handleSearchFunds = async (queryStr: string) => {
+  const parseSearchResult = (name: string) => {
+    const parts = name.split(' ');
+    const firstWord = parts[0] || 'Unknown';
+    const amc = firstWord.toUpperCase() + " Mutual Fund";
+    
+    let category = "Equity Scheme";
+    const lowercaseName = name.toLowerCase();
+    if (lowercaseName.includes('small cap') || lowercaseName.includes('smallcap')) {
+      category = "Small Cap";
+    } else if (lowercaseName.includes('mid cap') || lowercaseName.includes('midcap')) {
+      category = "Mid Cap";
+    } else if (lowercaseName.includes('large cap') || lowercaseName.includes('bluechip')) {
+      category = "Large Cap";
+    } else if (lowercaseName.includes('flexi cap') || lowercaseName.includes('flexicap')) {
+      category = "Flexi Cap";
+    } else if (lowercaseName.includes('index')) {
+      category = "Index Fund";
+    } else if (lowercaseName.includes('elss') || lowercaseName.includes('tax saver')) {
+      category = "ELSS Tax Saver";
+    } else if (lowercaseName.includes('hybrid') || lowercaseName.includes('balanced')) {
+      category = "Hybrid / Balanced";
+    } else if (lowercaseName.includes('debt')) {
+      category = "Debt Fund";
+    }
+    
+    return { amc, category };
+  };
+
+  // Fund Search from AMFI (debounced, cached, cancellable)
+  const handleSearchFunds = (queryStr: string) => {
     setSearchFundQuery(queryStr);
-    if (queryStr.length < 3) {
+    setSearchError(null);
+
+    if (queryStr.trim().length < 3) {
       setSearchResults([]);
+      setSearching(false);
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
       return;
     }
-    setSearching(true);
-    try {
-      const res = await fetch(`${API}/records/mutual-funds/proxy/search?q=${encodeURIComponent(queryStr)}`);
-      const data = await res.json();
-      setSearchResults(data.slice(0, 10) || []); // Limit to top 10 matches
-    } catch (_) {
-    } finally {
+
+    const trimmedQuery = queryStr.trim().toLowerCase();
+
+    // 1. Check Cache first (synchronous lookup)
+    if (searchCache.current[trimmedQuery]) {
+      setSearchResults(searchCache.current[trimmedQuery]);
       setSearching(false);
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      return;
     }
+
+    setSearching(true);
+
+    // 2. Debounce implementation
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    debounceTimerRef.current = setTimeout(async () => {
+      // 3. Cancel previous pending fetch requests
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
+      try {
+        const res = await fetch(`${API}/records/mutual-funds/proxy/search?q=${encodeURIComponent(trimmedQuery)}`, {
+          signal: controller.signal
+        });
+        if (!res.ok) throw new Error('Network response error');
+        const data = await res.json();
+        
+        const sliced = (data || []).slice(0, 10);
+        // Cache result
+        searchCache.current[trimmedQuery] = sliced;
+        
+        // Update state if not aborted
+        if (!controller.signal.aborted) {
+          setSearchResults(sliced);
+          setSearchError(null);
+        }
+      } catch (err: any) {
+        if (err.name !== 'AbortError') {
+          console.error('Search error:', err);
+          setSearchResults([]);
+          setSearchError('Unable to fetch mutual funds. Please try again.');
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setSearching(false);
+        }
+      }
+    }, 400); // 400ms debounce
   };
 
   const handleSelectSearchResult = async (schemeCodeStr: string, schemeName: string) => {
@@ -1141,22 +1225,46 @@ export default function MutualModule({ onBack }: MutualModuleProps) {
                       className="w-full bg-slate-900 border border-slate-850 rounded-xl py-2.5 pl-3 pr-10 text-white focus:outline-none focus:ring-1 focus:ring-purple-500 font-bold text-xs"
                     />
                     {searching && (
-                      <div className="absolute right-3 top-3 text-[10px] text-slate-400 font-bold uppercase">Loading...</div>
+                      <div className="absolute right-3 top-3">
+                        <div className="w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+                      </div>
                     )}
                   </div>
                 </div>
 
+                {/* Error handling */}
+                {searchError && (
+                  <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-center text-red-400 font-black">
+                    {searchError}
+                  </div>
+                )}
+
+                {/* Search Results Dropdown */}
                 {searchResults.length > 0 && (
-                  <div className="space-y-1.5 max-h-48 overflow-y-auto border border-slate-900 p-2 rounded-xl custom-scrollbar">
-                    {searchResults.map(r => (
-                      <div
-                        key={r.schemeCode}
-                        onClick={() => handleSelectSearchResult(String(r.schemeCode), r.schemeName)}
-                        className="p-2.5 bg-slate-900/40 hover:bg-purple-950/20 hover:border-purple-500/20 border border-transparent rounded-lg cursor-pointer transition text-[11px] text-white font-bold leading-normal"
-                      >
-                        {r.schemeName}
-                      </div>
-                    ))}
+                  <div className="space-y-1 max-h-56 overflow-y-auto border border-slate-900 rounded-xl custom-scrollbar divide-y divide-slate-900/60 bg-slate-950">
+                    {searchResults.map(r => {
+                      const { amc, category } = parseSearchResult(r.schemeName);
+                      return (
+                        <div
+                          key={r.schemeCode}
+                          onClick={() => handleSelectSearchResult(String(r.schemeCode), r.schemeName)}
+                          className="p-3 bg-slate-900/10 hover:bg-purple-950/20 cursor-pointer transition flex flex-col gap-1 text-left"
+                        >
+                          <p className="text-[11px] text-white font-extrabold leading-normal">{r.schemeName}</p>
+                          <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">
+                            {amc} <span className="text-slate-600 font-black px-1">•</span> {category}
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Empty State */}
+                {searchResults.length === 0 && searchFundQuery.trim().length >= 3 && !searching && !searchError && (
+                  <div className="p-5 bg-slate-900/30 border border-slate-900 rounded-xl text-center text-slate-500 font-bold">
+                    <p className="text-[11px]">No mutual funds found.</p>
+                    <p className="text-[9px] text-slate-600 mt-0.5">Try another keyword.</p>
                   </div>
                 )}
                 

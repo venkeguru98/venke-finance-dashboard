@@ -12,6 +12,21 @@ const router = Router();
 // ─── Apply JWT auth to ALL routes in this router ──────────────────────────
 router.use(authMiddleware);
 
+// Proxy search requests to AMFI API (direct path requested in Prompt)
+router.get('/mutual-funds/search', async (req, res) => {
+  const queryStr = String(req.query.q || '');
+  if (queryStr.length < 3) {
+    return res.json([]);
+  }
+  try {
+    const apiRes = await fetch(`https://api.mfapi.in/mf/search?q=${encodeURIComponent(queryStr)}`);
+    const data = await apiRes.json();
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Cloudinary Setup (with local disk fallback) ──────────────────────────
 const CLOUDINARY_ENABLED = !!(
   process.env.CLOUDINARY_CLOUD_NAME &&
