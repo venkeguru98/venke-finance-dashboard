@@ -1393,19 +1393,20 @@ router.get('/mutual-funds', async (req: Request, res: Response) => {
 // Create new mutual fund
 router.post('/mutual-funds', async (req: Request, res: Response) => {
   const userId = req.user!.id;
-  const { fund_name, category, fund_house, expense_ratio, benchmark, risk_level, launch_year, notes, current_nav } = req.body;
+  const { fund_name, category, fund_house, expense_ratio, benchmark, risk_level, launch_year, notes, current_nav, scheme_code } = req.body;
   if (!fund_name || !category || !fund_house) {
     return res.status(400).json({ error: 'Fund Name, Category and Fund House are required.' });
   }
   try {
     const result = await execute(
-      `INSERT INTO mutual_funds (user_id, fund_name, category, fund_house, expense_ratio, benchmark, risk_level, launch_year, notes, current_nav) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO mutual_funds (user_id, fund_name, category, fund_house, expense_ratio, benchmark, risk_level, launch_year, notes, current_nav, scheme_code) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         userId, fund_name, category, fund_house, 
         Number(expense_ratio) || 0, benchmark || '', 
         risk_level || 'High', Number(launch_year) || null, 
-        notes || '', Number(current_nav) || 10.0
+        notes || '', Number(current_nav) || 10.0,
+        scheme_code || null
       ]
     );
     res.json({ success: true, id: result.lastID });
@@ -1417,20 +1418,21 @@ router.post('/mutual-funds', async (req: Request, res: Response) => {
 // Update fund details
 router.put('/mutual-funds/:id', async (req: Request, res: Response) => {
   const fundId = Number(req.params.id);
-  const { fund_name, category, fund_house, expense_ratio, benchmark, risk_level, launch_year, notes, current_nav } = req.body;
+  const { fund_name, category, fund_house, expense_ratio, benchmark, risk_level, launch_year, notes, current_nav, scheme_code } = req.body;
   if (!fund_name || !category || !fund_house) {
     return res.status(400).json({ error: 'Fund Name, Category and Fund House are required.' });
   }
   try {
     await execute(
       `UPDATE mutual_funds 
-       SET fund_name = ?, category = ?, fund_house = ?, expense_ratio = ?, benchmark = ?, risk_level = ?, launch_year = ?, notes = ?, current_nav = ? 
+       SET fund_name = ?, category = ?, fund_house = ?, expense_ratio = ?, benchmark = ?, risk_level = ?, launch_year = ?, notes = ?, current_nav = ?, scheme_code = ? 
        WHERE id = ?`,
       [
         fund_name, category, fund_house, 
         Number(expense_ratio) || 0, benchmark || '', 
         risk_level || 'High', Number(launch_year) || null, 
         notes || '', Number(current_nav) || 10.0,
+        scheme_code || null,
         fundId
       ]
     );

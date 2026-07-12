@@ -44,8 +44,18 @@ export default function MutualModule({ onBack }: MutualModuleProps) {
     risk_level: 'Very High',
     launch_year: '2015',
     notes: '',
-    current_nav: '100.00'
+    current_nav: '100.00',
+    scheme_code: ''
   });
+
+  // Search Wizard states for Add Fund
+  const [searchFundQuery, setSearchFundQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [wizardStep, setWizardStep] = useState<1 | 2>(1);
+  const [initialAmount, setInitialAmount] = useState('5000');
+  const [initialDate, setInitialDate] = useState(new Date().toISOString().split('T')[0]);
+  const [initialType, setInitialType] = useState<'SIP' | 'Lumpsum'>('SIP');
 
   const [showTxModal, setShowTxModal] = useState(false);
   const [editingTx, setEditingTx] = useState<any | null>(null);
@@ -70,6 +80,42 @@ export default function MutualModule({ onBack }: MutualModuleProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const rowsPerPage = 5;
 
+  // Background Sync function to avoid blocking main fetch
+  const syncLatestNAVs = async (list: any[]) => {
+    let hasChanges = false;
+    for (const f of list) {
+      if (f.scheme_code) {
+        try {
+          const apiRes = await fetch(`https://api.mfapi.in/mf/${f.scheme_code}`);
+          const apiData = await apiRes.json();
+          const latestNav = Number(apiData.data[0].nav);
+          if (latestNav && Math.abs(latestNav - f.current_nav) > 0.001) {
+            await axios.put(`${API}/records/mutual-funds/${f.id}`, {
+              fund_name: f.fund_name,
+              category: f.category,
+              fund_house: f.fund_house,
+              expense_ratio: f.expense_ratio,
+              benchmark: f.benchmark,
+              risk_level: f.risk_level,
+              launch_year: f.launch_year,
+              notes: f.notes,
+              current_nav: latestNav,
+              scheme_code: f.scheme_code
+            });
+            hasChanges = true;
+          }
+        } catch (_) {
+          // Ignore API/network errors for this fund
+        }
+      }
+    }
+    // Re-fetch quietly if any NAV was updated
+    if (hasChanges) {
+      const res = await axios.get(`${API}/records/mutual-funds`);
+      setFunds(res.data || []);
+    }
+  };
+
   const fetchFunds = async (selectId?: number) => {
     try {
       const res = await axios.get(`${API}/records/mutual-funds`);
@@ -87,6 +133,8 @@ export default function MutualModule({ onBack }: MutualModuleProps) {
         setActiveFund(null);
         setTransactions([]);
       }
+      // Trigger quiet background NAV sync
+      syncLatestNAVs(list);
     } catch (_) {
       alert('Error fetching Mutual Funds data.');
     } finally {
@@ -116,6 +164,87 @@ export default function MutualModule({ onBack }: MutualModuleProps) {
     fetchTransactions(f.id);
   };
 
+  // Fund Search from AMFI
+  const handleSearchFunds = async (queryStr: string) => {
+    setSearchFundQuery(queryStr);
+    if (queryStr.length < 3) {
+      setSearchResults([]);
+      return;
+    }
+    setSearching(true);
+    try {
+      const res = await fetch(`https://api.mfapi.in/mf/search?q=${encodeURIComponent(queryStr)}`);
+      const data = await res.json();
+      setSearchResults(data.slice(0, 10) || []); // Limit to top 10 matches
+    } catch (_) {
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const handleSelectSearchResult = async (schemeCodeStr: string, schemeName: string) => {
+    setSearching(true);
+    try {
+      const res = await fetch(`https://api.mfapi.in/mf/${schemeCodeStr}`);
+      const data = await res.json();
+      
+      const latestNav = data.data?.[0]?.nav || '10.0';
+      const categoryRaw = data.meta?.scheme_category || 'Equity Scheme - Small Cap Fund';
+      const amc = data.meta?.fund_house || 'Unknown AMC';
+
+      // Smart category mapping
+      let category = 'Small Cap';
+      let risk_level = 'Very High';
+      let benchmark = 'Nifty Smallcap 250 TRI';
+      let expense_ratio = '0.7';
+
+      if (categoryRaw.toLowerCase().includes('mid cap') || categoryRaw.toLowerCase().includes('midcap')) {
+        category = 'Mid Cap';
+        risk_level = 'Very High';
+        benchmark = 'Nifty Midcap 150 TRI';
+        expense_ratio = '0.6';
+      } else if (categoryRaw.toLowerCase().includes('large cap') || categoryRaw.toLowerCase().includes('bluechip')) {
+        category = 'Large Cap';
+        risk_level = 'High';
+        benchmark = 'Nifty 50 TRI';
+        expense_ratio = '0.5';
+      } else if (categoryRaw.toLowerCase().includes('flexi') || categoryRaw.toLowerCase().includes('multi cap')) {
+        category = 'Flexi Cap';
+        risk_level = 'Very High';
+        benchmark = 'Nifty 500 TRI';
+        expense_ratio = '0.6';
+      } else if (categoryRaw.toLowerCase().includes('index')) {
+        category = 'Index Fund';
+        risk_level = 'High';
+        benchmark = 'Nifty 50 TRI';
+        expense_ratio = '0.2';
+      } else if (categoryRaw.toLowerCase().includes('hybrid') || categoryRaw.toLowerCase().includes('debt')) {
+        category = 'Hybrid / Debt';
+        risk_level = 'Moderate';
+        benchmark = 'Crisil Hybrid Index';
+        expense_ratio = '0.4';
+      }
+
+      setFundForm({
+        fund_name: schemeName,
+        category,
+        fund_house: amc,
+        expense_ratio,
+        benchmark,
+        risk_level,
+        launch_year: '2015',
+        notes: '',
+        current_nav: latestNav,
+        scheme_code: schemeCodeStr
+      });
+      setWizardStep(2);
+    } catch (_) {
+      alert('Error fetching fund specifications from AMFI.');
+    } finally {
+      setSearching(false);
+    }
+  };
+
   // Fund Submit
   const handleFundSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -124,12 +253,31 @@ export default function MutualModule({ onBack }: MutualModuleProps) {
         await axios.put(`${API}/records/mutual-funds/${editingFund.id}`, fundForm);
         alert('Mutual Fund details updated!');
         fetchFunds(editingFund.id);
+        setShowFundModal(false);
       } else {
+        // Create fund profile
         const res = await axios.post(`${API}/records/mutual-funds`, fundForm);
-        alert('New Mutual Fund investment account added!');
-        fetchFunds(res.data.id);
+        const fundId = res.data.id;
+
+        // Auto-log initial investment transaction if amount is provided
+        const amt = Number(initialAmount);
+        if (amt > 0) {
+          const nav = Number(fundForm.current_nav);
+          const units = amt / nav;
+          await axios.post(`${API}/records/mutual-funds/${fundId}/transactions`, {
+            date: initialDate,
+            type: initialType,
+            amount: amt,
+            nav,
+            units,
+            remarks: fundForm.notes || 'Initial investment'
+          });
+        }
+
+        alert('Mutual Fund portfolio registered successfully!');
+        fetchFunds(fundId);
+        setShowFundModal(false);
       }
-      setShowFundModal(false);
     } catch (_) {
       alert('Failed to save Mutual Fund.');
     }
@@ -137,6 +285,12 @@ export default function MutualModule({ onBack }: MutualModuleProps) {
 
   const handleOpenAddFund = () => {
     setEditingFund(null);
+    setSearchFundQuery('');
+    setSearchResults([]);
+    setWizardStep(1);
+    setInitialAmount('5000');
+    setInitialDate(new Date().toISOString().split('T')[0]);
+    setInitialType('SIP');
     setFundForm({
       fund_name: '',
       category: 'Small Cap',
@@ -146,13 +300,15 @@ export default function MutualModule({ onBack }: MutualModuleProps) {
       risk_level: 'Very High',
       launch_year: '2015',
       notes: '',
-      current_nav: '100.00'
+      current_nav: '100.00',
+      scheme_code: ''
     });
     setShowFundModal(true);
   };
 
   const handleOpenEditFund = (f: any) => {
     setEditingFund(f);
+    setWizardStep(2); // directly edit fields
     setFundForm({
       fund_name: f.fund_name,
       category: f.category,
@@ -162,7 +318,8 @@ export default function MutualModule({ onBack }: MutualModuleProps) {
       risk_level: f.risk_level || 'High',
       launch_year: String(f.launch_year || '2015'),
       notes: f.notes || '',
-      current_nav: String(f.current_nav || '10.0')
+      current_nav: String(f.current_nav || '10.0'),
+      scheme_code: f.scheme_code || ''
     });
     setShowFundModal(true);
   };
@@ -964,127 +1121,155 @@ export default function MutualModule({ onBack }: MutualModuleProps) {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowFundModal(false)} />
           <form onSubmit={handleFundSubmit} className="relative bg-slate-950 border border-slate-880 rounded-3xl p-6 shadow-2xl w-full max-w-md space-y-4 text-xs">
-            <h3 className="text-sm font-black text-white border-b border-slate-900 pb-2 uppercase tracking-wider">
-              {editingFund ? 'Edit Mutual Fund Details' : 'Add New Mutual Fund'}
+            <h3 className="text-sm font-black text-white border-b border-slate-900 pb-2 uppercase tracking-wider flex justify-between items-center">
+              <span>{editingFund ? 'Edit Fund Profile' : 'Add Mutual Fund'}</span>
+              {!editingFund && <span className="text-[10px] text-purple-400 font-black">Step {wizardStep} of 2</span>}
             </h3>
-            
-            <div className="space-y-1">
-              <label className="block text-[9px] text-slate-500 font-bold uppercase">Fund Name *</label>
-              <input
-                type="text" required
-                value={fundForm.fund_name}
-                onChange={e => setFundForm(f => ({ ...f, fund_name: e.target.value }))}
-                placeholder="e.g. Parag Parikh Flexi Cap Fund"
-                className="w-full bg-slate-900 border border-slate-850 rounded-xl py-2 px-3 text-white focus:outline-none focus:ring-1 focus:ring-purple-500 font-bold text-xs"
-              />
-            </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="block text-[9px] text-slate-500 font-bold uppercase">Fund Category *</label>
-                <select
-                  value={fundForm.category}
-                  onChange={e => setFundForm(f => ({ ...f, category: e.target.value }))}
-                  className="w-full bg-slate-900 border border-slate-850 rounded-xl py-2 px-3 text-white focus:outline-none focus:ring-1 focus:ring-purple-500 font-bold text-xs uppercase"
-                >
-                  <option value="Small Cap">Small Cap</option>
-                  <option value="Mid Cap">Mid Cap</option>
-                  <option value="Large Cap">Large Cap</option>
-                  <option value="Flexi Cap">Flexi Cap</option>
-                  <option value="Index Fund">Index Fund</option>
-                  <option value="ELSS Tax Saver">ELSS Tax Saver</option>
-                  <option value="Hybrid / Debt">Hybrid / Debt</option>
-                </select>
+            {/* STEP 1: Search Fund */}
+            {wizardStep === 1 && !editingFund && (
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="block text-[9px] text-slate-500 font-bold uppercase">Search Mutual Fund *</label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      autoFocus
+                      value={searchFundQuery}
+                      onChange={e => handleSearchFunds(e.target.value)}
+                      placeholder="e.g. SBI Small Cap, Parag Parikh Flexi"
+                      className="w-full bg-slate-900 border border-slate-850 rounded-xl py-2.5 pl-3 pr-10 text-white focus:outline-none focus:ring-1 focus:ring-purple-500 font-bold text-xs"
+                    />
+                    {searching && (
+                      <div className="absolute right-3 top-3 text-[10px] text-slate-400 font-bold uppercase">Loading...</div>
+                    )}
+                  </div>
+                </div>
+
+                {searchResults.length > 0 && (
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto border border-slate-900 p-2 rounded-xl custom-scrollbar">
+                    {searchResults.map(r => (
+                      <div
+                        key={r.schemeCode}
+                        onClick={() => handleSelectSearchResult(String(r.schemeCode), r.schemeName)}
+                        className="p-2.5 bg-slate-900/40 hover:bg-purple-950/20 hover:border-purple-500/20 border border-transparent rounded-lg cursor-pointer transition text-[11px] text-white font-bold leading-normal"
+                      >
+                        {r.schemeName}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                <div className="flex justify-end pt-3 border-t border-slate-900">
+                  <Button onClick={() => setShowFundModal(false)} variant="ghost">Cancel</Button>
+                </div>
               </div>
+            )}
 
-              <div className="space-y-1">
-                <label className="block text-[9px] text-slate-500 font-bold uppercase">Fund House *</label>
-                <input
-                  type="text" required
-                  value={fundForm.fund_house}
-                  onChange={e => setFundForm(f => ({ ...f, fund_house: e.target.value }))}
-                  placeholder="e.g. Parag Parikh MF"
-                  className="w-full bg-slate-900 border border-slate-850 rounded-xl py-2 px-3 text-white focus:outline-none focus:ring-1 focus:ring-purple-500 font-bold text-xs"
-                />
+            {/* STEP 2: Configure & Save */}
+            {wizardStep === 2 && (
+              <div className="space-y-4">
+                {/* Auto-filled details from AMFI */}
+                <div className="bg-slate-900/30 border border-slate-900 p-3.5 rounded-2xl space-y-2">
+                  <div className="flex justify-between items-center text-[10px] gap-2">
+                    <span className="text-slate-500 font-bold uppercase shrink-0">Fund Name</span>
+                    <span className="text-white font-extrabold truncate max-w-[220px]" title={fundForm.fund_name}>{fundForm.fund_name}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-[10px]">
+                    <span className="text-slate-500 font-bold uppercase">AMC</span>
+                    <span className="text-purple-400 font-black">{fundForm.fund_house}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-[10px]">
+                    <span className="text-slate-500 font-bold uppercase">Category</span>
+                    <span className="text-white font-extrabold">{fundForm.category}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-[10px]">
+                    <span className="text-slate-500 font-bold uppercase">Current NAV</span>
+                    <span className="text-green-400 font-black font-mono">₹{Number(fundForm.current_nav).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-[10px]">
+                    <span className="text-slate-500 font-bold uppercase">Risk / Expense</span>
+                    <span className="text-slate-300 font-bold uppercase">{fundForm.risk_level} | {fundForm.expense_ratio}%</span>
+                  </div>
+                </div>
+
+                {!editingFund && (
+                  <>
+                    <h4 className="text-[10px] font-black uppercase text-purple-400 tracking-wider pt-2 border-t border-slate-900/60">
+                      Log Initial Investment
+                    </h4>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="block text-[9px] text-slate-500 font-bold uppercase">Investment Type</label>
+                        <select
+                          value={initialType}
+                          onChange={e => setInitialType(e.target.value as any)}
+                          className="w-full bg-slate-900 border border-slate-850 rounded-xl py-2 px-3 text-white focus:outline-none focus:ring-1 focus:ring-purple-500 font-bold text-xs uppercase"
+                        >
+                          <option value="SIP">SIP</option>
+                          <option value="Lumpsum">Lump sum</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="block text-[9px] text-slate-500 font-bold uppercase">Amount (₹)</label>
+                        <input
+                          type="number" step="0.01" min="1" required
+                          value={initialAmount}
+                          onChange={e => setInitialAmount(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-850 rounded-xl py-2 px-3 text-white focus:outline-none focus:ring-1 focus:ring-purple-500 font-bold text-xs font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="block text-[9px] text-slate-500 font-bold uppercase">Investment Date</label>
+                        <input
+                          type="date" required
+                          value={initialDate}
+                          onChange={e => setInitialDate(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-850 rounded-xl py-2 px-3 text-white focus:outline-none focus:ring-1 focus:ring-purple-500 font-bold text-xs font-mono"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="block text-[9px] text-slate-500 font-bold uppercase">Estimated Units</label>
+                        <input
+                          type="text" disabled
+                          value={Number(initialAmount) && Number(fundForm.current_nav) ? (Number(initialAmount) / Number(fundForm.current_nav)).toFixed(3) : '0.000'}
+                          className="w-full bg-slate-950 border border-slate-900 rounded-xl py-2 px-3 text-slate-500 font-bold text-xs font-mono"
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                <div className="space-y-1">
+                  <label className="block text-[9px] text-slate-500 font-bold uppercase">Investment Notes</label>
+                  <textarea
+                    value={fundForm.notes}
+                    onChange={e => setFundForm(f => ({ ...f, notes: e.target.value }))}
+                    placeholder="e.g. Long term retirement planning..."
+                    rows={2}
+                    className="w-full bg-slate-900 border border-slate-850 rounded-xl py-2 px-3 text-white focus:outline-none focus:ring-1 focus:ring-purple-500 font-bold text-xs"
+                  />
+                </div>
+
+                <div className="flex justify-end space-x-3 pt-3 border-t border-slate-900">
+                  {!editingFund && (
+                    <Button type="button" onClick={() => setWizardStep(1)} variant="ghost">
+                      &larr; Back to Search
+                    </Button>
+                  )}
+                  <Button onClick={() => setShowFundModal(false)} variant="ghost">Cancel</Button>
+                  <Button type="submit" variant="primary" className="bg-purple-600 hover:bg-purple-700 text-white font-extrabold px-5">
+                    {editingFund ? 'Save Changes' : 'Start Portfolio'}
+                  </Button>
+                </div>
               </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-1">
-                <label className="block text-[9px] text-slate-500 font-bold uppercase">Expense Ratio %</label>
-                <input
-                  type="number" step="0.01" min="0" max="5"
-                  value={fundForm.expense_ratio}
-                  onChange={e => setFundForm(f => ({ ...f, expense_ratio: e.target.value }))}
-                  className="w-full bg-slate-900 border border-slate-850 rounded-xl py-2 px-3 text-white focus:outline-none focus:ring-1 focus:ring-purple-500 font-bold text-xs"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-[9px] text-slate-500 font-bold uppercase">Current NAV *</label>
-                <input
-                  type="number" step="0.01" min="1" required
-                  value={fundForm.current_nav}
-                  onChange={e => setFundForm(f => ({ ...f, current_nav: e.target.value }))}
-                  className="w-full bg-slate-900 border border-slate-850 rounded-xl py-2 px-3 text-white focus:outline-none focus:ring-1 focus:ring-purple-500 font-bold text-xs"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-[9px] text-slate-500 font-bold uppercase">Risk Level</label>
-                <select
-                  value={fundForm.risk_level}
-                  onChange={e => setFundForm(f => ({ ...f, risk_level: e.target.value }))}
-                  className="w-full bg-slate-900 border border-slate-850 rounded-xl py-2 px-3 text-white focus:outline-none focus:ring-1 focus:ring-purple-500 font-bold text-xs uppercase"
-                >
-                  <option value="Low">Low</option>
-                  <option value="Moderate">Moderate</option>
-                  <option value="High">High</option>
-                  <option value="Very High">Very High</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="block text-[9px] text-slate-500 font-bold uppercase">Benchmark</label>
-                <input
-                  type="text"
-                  value={fundForm.benchmark}
-                  onChange={e => setFundForm(f => ({ ...f, benchmark: e.target.value }))}
-                  placeholder="e.g. Nifty 500 TRI"
-                  className="w-full bg-slate-900 border border-slate-850 rounded-xl py-2 px-3 text-white focus:outline-none focus:ring-1 focus:ring-purple-500 font-bold text-xs"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-[9px] text-slate-500 font-bold uppercase">Launch Year</label>
-                <input
-                  type="number" min="1990" max="2030"
-                  value={fundForm.launch_year}
-                  onChange={e => setFundForm(f => ({ ...f, launch_year: e.target.value }))}
-                  className="w-full bg-slate-900 border border-slate-850 rounded-xl py-2 px-3 text-white focus:outline-none focus:ring-1 focus:ring-purple-500 font-bold text-xs"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <label className="block text-[9px] text-slate-500 font-bold uppercase">Investment Notes</label>
-              <textarea
-                value={fundForm.notes}
-                onChange={e => setFundForm(f => ({ ...f, notes: e.target.value }))}
-                placeholder="Log long-term allocation strategy here..."
-                rows={3}
-                className="w-full bg-slate-900 border border-slate-850 rounded-xl py-2 px-3 text-white focus:outline-none focus:ring-1 focus:ring-purple-500 font-bold text-xs"
-              />
-            </div>
-
-            <div className="flex justify-end space-x-3 pt-3 border-t border-slate-900">
-              <Button onClick={() => setShowFundModal(false)} variant="ghost">Cancel</Button>
-              <Button type="submit" variant="primary" className="bg-purple-600 hover:bg-purple-700 text-white font-extrabold px-5">
-                Save
-              </Button>
-            </div>
+            )}
           </form>
         </div>
       )}

@@ -334,6 +334,16 @@ export const initializeDatabase = async () => {
         `);
       }
       console.log('Mutual Funds database tables verified/created.');
+      // Migrations to add scheme_code column to mutual_funds if not exists
+      try {
+        if (isPg && pgPool) {
+          await pgPool.query(`ALTER TABLE mutual_funds ADD COLUMN IF NOT EXISTS scheme_code VARCHAR(100) NULL`);
+        } else {
+          await execute(`ALTER TABLE mutual_funds ADD COLUMN scheme_code TEXT NULL`);
+        }
+      } catch (alterErr) {
+        // Ignore column already exists error
+      }
     } catch (mfErr) {
       console.error('Migration failed for mutual funds tables:', mfErr);
     }
