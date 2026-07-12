@@ -20,7 +20,7 @@ export default function DebtModule({ onBack }: DebtModuleProps) {
 
   // Filters
   const [filterType, setFilterType] = useState<'All' | 'Borrowed' | 'Lent'>('All');
-  const [filterStatus, setFilterStatus] = useState<'All' | 'Pending' | 'Settled'>('All');
+  const [filterStatus, setFilterStatus] = useState<'All' | 'Pending' | 'Partially Settled' | 'Fully Settled'>('All');
   const [filterStartDate, setFilterStartDate] = useState('');
   const [filterEndDate, setFilterEndDate] = useState('');
 
@@ -41,19 +41,14 @@ export default function DebtModule({ onBack }: DebtModuleProps) {
 
   const [showTxModal, setShowTxModal] = useState(false);
   const [editingTx, setEditingTx] = useState<any | null>(null);
+  const [editingSettlement, setEditingSettlement] = useState<any | null>(null);
   const [txForm, setTxForm] = useState({
-    type: 'Borrowed',
+    type: 'Borrowed', // 'Borrowed' | 'Lent' | 'Settlement'
+    settlementType: 'Repayment Made', // 'Repayment Made' | 'Collection Received'
+    parentTxId: '', // Target transaction to settle
     amount: '',
     date: new Date().toISOString().split('T')[0],
     description: '',
-    notes: ''
-  });
-
-  const [showSettlementModal, setShowSettlementModal] = useState(false);
-  const [settlementTxId, setSettlementTxId] = useState<number | null>(null);
-  const [settlementForm, setSettlementForm] = useState({
-    amount: '',
-    date: new Date().toISOString().split('T')[0],
     notes: ''
   });
 
@@ -152,8 +147,11 @@ export default function DebtModule({ onBack }: DebtModuleProps) {
   const handleOpenAddTx = () => {
     if (!activeAccount) return;
     setEditingTx(null);
+    setEditingSettlement(null);
     setTxForm({
       type: 'Borrowed',
+      settlementType: 'Repayment Made',
+      parentTxId: '',
       amount: '',
       date: new Date().toISOString().split('T')[0],
       description: '',
@@ -164,8 +162,11 @@ export default function DebtModule({ onBack }: DebtModuleProps) {
 
   const handleOpenEditTx = (t: any) => {
     setEditingTx(t);
+    setEditingSettlement(null);
     setTxForm({
       type: t.type,
+      settlementType: 'Repayment Made',
+      parentTxId: '',
       amount: String(t.amount),
       date: t.date.split('T')[0],
       description: t.description,
@@ -177,16 +178,71 @@ export default function DebtModule({ onBack }: DebtModuleProps) {
   const handleTxSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeAccount) return;
+
     try {
-      if (editingTx) {
-        await axios.put(`${API}/records/debts/transactions/${editingTx.id}`, txForm);
+      if (txForm.type === 'Settlement') {
+        if (!txForm.parentTxId) {
+          alert('Please select the original transaction to settle.');
+          return;
+        }
+        const parentTx = transactions.find(t => t.id === Number(txForm.parentTxId));
+        if (!parentTx) {
+          alert('Selected original transaction not found.');
+          return;
+        }
+
+        const currentSettledValue = editingSettlement ? Number(editingSettlement.amount) : 0;
+        const maxAllowed = parentTx.outstandingAmount + currentSettledValue;
+        const amountNum = Number(txForm.amount);
+
+        if (isNaN(amountNum) || amountNum <= 0) {
+          alert('Settlement amount must be a positive number.');
+          return;
+        }
+        if (amountNum > maxAllowed) {
+          alert(`Settlement amount (₹${amountNum.toLocaleString('en-IN')}) cannot exceed the remaining balance (₹${maxAllowed.toLocaleString('en-IN')}) of this transaction.`);
+          return;
+        }
+
+        const payload = {
+          amount: amountNum,
+          date: txForm.date,
+          notes: txForm.notes || txForm.description || 'Repayment'
+        };
+
+        if (editingSettlement) {
+          await axios.put(`${API}/records/debts/settlements/${editingSettlement.id}`, payload);
+        } else {
+          await axios.post(`${API}/records/debts/transactions/${parentTx.id}/settlements`, payload);
+        }
       } else {
-        await axios.post(`${API}/records/debts/${activeAccount.id}/transactions`, txForm);
+        const payload = {
+          type: txForm.type,
+          amount: Number(txForm.amount),
+          date: txForm.date,
+          description: txForm.description,
+          notes: txForm.notes || ''
+        };
+
+        if (editingTx) {
+          const hasSettlements = editingTx.settlements && editingTx.settlements.length > 0;
+          const isAmountChanged = Number(editingTx.amount) !== Number(txForm.amount);
+          if (hasSettlements && isAmountChanged) {
+            const proceed = confirm(
+              'This transaction already has settlements recorded. Changing the original amount will preserve the settlements and recalculate the remaining balance. Are you sure you want to proceed?'
+            );
+            if (!proceed) return;
+          }
+          await axios.put(`${API}/records/debts/transactions/${editingTx.id}`, payload);
+        } else {
+          await axios.post(`${API}/records/debts/${activeAccount.id}/transactions`, payload);
+        }
       }
+
       fetchAccounts(activeAccount.id);
       setShowTxModal(false);
     } catch (_) {
-      alert('Error saving transaction.');
+      alert('Error saving record.');
     }
   };
 
@@ -202,25 +258,37 @@ export default function DebtModule({ onBack }: DebtModuleProps) {
 
   // Settlement Management
   const handleOpenAddSettlement = (txId: number, outstanding: number) => {
-    setSettlementTxId(txId);
-    setSettlementForm({
+    const parentTx = transactions.find(t => t.id === txId);
+    if (!parentTx) return;
+    setEditingTx(null);
+    setEditingSettlement(null);
+    setTxForm({
+      type: 'Settlement',
+      settlementType: parentTx.type === 'Borrowed' ? 'Repayment Made' : 'Collection Received',
+      parentTxId: String(txId),
       amount: String(outstanding),
       date: new Date().toISOString().split('T')[0],
+      description: `Repayment for ${parentTx.description}`,
       notes: ''
     });
-    setShowSettlementModal(true);
+    setShowTxModal(true);
   };
 
-  const handleSettlementSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!settlementTxId) return;
-    try {
-      await axios.post(`${API}/records/debts/transactions/${settlementTxId}/settlements`, settlementForm);
-      setShowSettlementModal(false);
-      fetchAccounts(activeAccount.id);
-    } catch (_) {
-      alert('Error adding settlement log.');
-    }
+  const handleOpenEditSettlement = (txId: number, s: any) => {
+    const parentTx = transactions.find(t => t.id === txId);
+    if (!parentTx) return;
+    setEditingTx(null);
+    setEditingSettlement(s);
+    setTxForm({
+      type: 'Settlement',
+      settlementType: parentTx.type === 'Borrowed' ? 'Repayment Made' : 'Collection Received',
+      parentTxId: String(txId),
+      amount: String(s.amount),
+      date: s.date.split('T')[0],
+      description: s.notes || `Repayment for ${parentTx.description}`,
+      notes: s.notes || ''
+    });
+    setShowTxModal(true);
   };
 
   const handleDeleteSettlement = async (sId: number) => {
@@ -272,8 +340,9 @@ export default function DebtModule({ onBack }: DebtModuleProps) {
     return transactions.filter(t => {
       if (filterType !== 'All' && t.type !== filterType) return false;
       if (filterStatus !== 'All') {
-        if (filterStatus === 'Pending' && t.status === 'Settled') return false;
-        if (filterStatus === 'Settled' && t.status !== 'Settled') return false;
+        if (filterStatus === 'Pending' && t.status !== 'Pending') return false;
+        if (filterStatus === 'Partially Settled' && t.status !== 'Partially Settled') return false;
+        if (filterStatus === 'Fully Settled' && t.status !== 'Settled' && t.status !== 'Fully Settled') return false;
       }
       if (filterStartDate && new Date(t.date) < new Date(filterStartDate)) return false;
       if (filterEndDate && new Date(t.date) > new Date(filterEndDate)) return false;
@@ -364,6 +433,12 @@ export default function DebtModule({ onBack }: DebtModuleProps) {
                         {a.runningBalance >= 0 ? '+' : ''}₹{a.runningBalance.toLocaleString('en-IN')}
                       </span>
                     </div>
+                    {(a.outstandingPay === 0 && a.outstandingReceive === 0) && (
+                      <div className="flex justify-between items-center text-[8px] font-black uppercase tracking-wider mt-1.5 pt-1 border-t border-slate-900/40 text-green-400">
+                        <span>Status</span>
+                        <span className="bg-green-500/10 border border-green-500/20 px-1.5 py-0.5 rounded">Closed</span>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -383,7 +458,7 @@ export default function DebtModule({ onBack }: DebtModuleProps) {
                 <p className="text-base font-black text-white font-mono mt-1">₹{overall.totalLent.toLocaleString('en-IN')}</p>
               </div>
               <div className="p-3.5 bg-slate-950/40 border border-slate-900 rounded-2xl">
-                <p className="text-[10px] text-slate-500 font-bold uppercase">Settled Repayments</p>
+                <p className="text-[10px] text-slate-500 font-bold uppercase">Total Settled</p>
                 <p className="text-base font-black text-green-400 font-mono mt-1">₹{overall.settledAmount.toLocaleString('en-IN')}</p>
               </div>
               <div className="p-3.5 bg-red-500/5 border border-red-500/10 rounded-2xl">
@@ -395,7 +470,7 @@ export default function DebtModule({ onBack }: DebtModuleProps) {
                 <p className="text-base font-black text-green-400 font-mono mt-1">₹{overall.outstandingReceive.toLocaleString('en-IN')}</p>
               </div>
               <div className="p-3.5 bg-purple-500/5 border border-purple-500/10 rounded-2xl">
-                <p className="text-[10px] text-slate-500 font-bold uppercase">Total Net Balance</p>
+                <p className="text-[10px] text-slate-500 font-bold uppercase">Net Balance</p>
                 <p className={`text-base font-black font-mono mt-1 ${overall.outstandingReceive - overall.outstandingPay >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                   {overall.outstandingReceive - overall.outstandingPay >= 0 ? '+' : ''}₹{(overall.outstandingReceive - overall.outstandingPay).toLocaleString('en-IN')}
                 </p>
@@ -407,7 +482,18 @@ export default function DebtModule({ onBack }: DebtModuleProps) {
               <div className="bg-slate-950/40 border border-slate-850 p-5 rounded-3xl space-y-5">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-900 pb-4">
                   <div>
-                    <h3 className="text-sm font-black text-white">{activeAccount.account_name} Ledger</h3>
+                    <h3 className="text-sm font-black text-white flex items-center gap-2 flex-wrap">
+                      {activeAccount.account_name} Ledger
+                      {(activeAccount.outstandingPay === 0 && activeAccount.outstandingReceive === 0) ? (
+                        <span className="bg-green-500/10 text-green-400 border border-green-500/20 px-2 py-0.5 rounded text-[8px] uppercase tracking-wider font-black">
+                          Closed (Fully Settled)
+                        </span>
+                      ) : (
+                        <span className="bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2 py-0.5 rounded text-[8px] uppercase tracking-wider font-black">
+                          Active
+                        </span>
+                      )}
+                    </h3>
                     <p className="text-[10px] text-slate-500 font-bold uppercase mt-1">Running account balance: 
                       <span className={`font-mono font-black ml-1.5 ${activeAccount.runningBalance >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                         {activeAccount.runningBalance >= 0 ? '+' : ''}₹{activeAccount.runningBalance.toLocaleString('en-IN')}
@@ -446,8 +532,9 @@ export default function DebtModule({ onBack }: DebtModuleProps) {
                       className="w-full bg-slate-950 border border-slate-900 rounded-lg py-1 px-2 text-white focus:outline-none text-[11px]"
                     >
                       <option value="All">All Statuses</option>
-                      <option value="Pending">Pending / Partial</option>
-                      <option value="Settled">Settled</option>
+                      <option value="Pending">Pending</option>
+                      <option value="Partially Settled">Partially Settled</option>
+                      <option value="Fully Settled">Fully Settled</option>
                     </select>
                   </div>
                   <div>
@@ -529,14 +616,13 @@ export default function DebtModule({ onBack }: DebtModuleProps) {
                                         ? 'bg-amber-500/10 text-amber-400 border-amber-500/10'
                                         : 'bg-red-500/10 text-red-400 border-red-500/10'
                                     }`}>
-                                      {t.status}
+                                      {t.status === 'Settled' ? 'Fully Settled' : t.status}
                                     </span>
                                   </td>
-                                  <td className="py-2.5 px-2 text-right font-black text-white font-mono text-[11px]">
-                                    <p>₹{t.amount.toLocaleString('en-IN')}</p>
-                                    {t.outstandingAmount < t.amount && t.outstandingAmount > 0 && (
-                                      <p className="text-[9px] text-slate-500 font-semibold">Bal: ₹{t.outstandingAmount.toLocaleString('en-IN')}</p>
-                                    )}
+                                  <td className="py-2.5 px-2 text-right font-mono text-[10px] leading-relaxed">
+                                    <p className="font-extrabold text-white">Original: ₹{t.amount.toLocaleString('en-IN')}</p>
+                                    <p className="text-green-400 font-bold">Settled: ₹{t.settledAmount.toLocaleString('en-IN')}</p>
+                                    <p className="text-slate-400 font-black">Remaining: ₹{t.outstandingAmount.toLocaleString('en-IN')}</p>
                                   </td>
                                   <td className="py-2.5 px-3 text-center">
                                     <div className="flex items-center justify-center space-x-1.5">
@@ -571,17 +657,24 @@ export default function DebtModule({ onBack }: DebtModuleProps) {
                                         {t.settlements.length === 0 ? (
                                           <p className="text-slate-500 text-[10px] font-semibold py-1">No settlements logged for this debt entry.</p>
                                         ) : (
-                                          <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar">
+                                          <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar pr-1 pb-1">
                                             {t.settlements.map((s: any) => (
                                               <div key={s.id} className="flex justify-between items-center p-2.5 bg-slate-900/30 border border-slate-900 rounded-xl text-[10px]">
                                                 <div className="space-y-0.5">
                                                   <p className="font-extrabold text-white">₹{s.amount.toLocaleString('en-IN')}</p>
-                                                  <p className="text-slate-500 font-semibold">{s.notes || 'Repayment'}</p>
+                                                  <p className="text-slate-500 font-semibold">{s.notes || (t.type === 'Borrowed' ? 'Repayment Made' : 'Collection Received')}</p>
                                                 </div>
-                                                <div className="flex items-center space-x-3.5">
-                                                  <span className="text-slate-400 font-mono flex items-center gap-1">
+                                                <div className="flex items-center space-x-2">
+                                                  <span className="text-slate-400 font-mono flex items-center gap-1 mr-2">
                                                     <Calendar className="w-3 h-3 text-slate-500" /> {formatDisplayDate(s.date)}
                                                   </span>
+                                                  <button 
+                                                    onClick={() => handleOpenEditSettlement(t.id, s)}
+                                                    className="p-1 text-slate-500 hover:text-white hover:bg-slate-900 rounded transition"
+                                                    title="Edit Entry"
+                                                  >
+                                                    <Edit2 className="w-3.5 h-3.5" />
+                                                  </button>
                                                   <button 
                                                     onClick={() => handleDeleteSettlement(s.id)}
                                                     className="p-1 text-slate-500 hover:text-red-400 hover:bg-slate-900 rounded transition"
@@ -594,6 +687,10 @@ export default function DebtModule({ onBack }: DebtModuleProps) {
                                             ))}
                                           </div>
                                         )}
+                                        <div className="pt-2.5 border-t border-slate-900 flex justify-between items-center text-[10px] font-black uppercase text-slate-400">
+                                          <span>Remaining Balance</span>
+                                          <span className="font-mono text-white text-[11px]">₹{t.outstandingAmount.toLocaleString('en-IN')}</span>
+                                        </div>
                                       </div>
                                     </td>
                                   </tr>
@@ -682,29 +779,94 @@ export default function DebtModule({ onBack }: DebtModuleProps) {
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowTxModal(false)} />
           <form onSubmit={handleTxSubmit} className="relative bg-slate-950 border border-slate-800 rounded-3xl p-6 shadow-2xl w-full max-w-sm space-y-4">
             <h3 className="text-sm font-black text-white border-b border-slate-900 pb-2 uppercase tracking-wider">
-              {editingTx ? 'Edit Debt Record' : 'Log New Debt Record'}
+              {editingSettlement ? 'Edit Settlement' : editingTx ? 'Edit Debt Record' : 'Log New Record'}
             </h3>
 
-            <div className="grid grid-cols-2 gap-2 p-1 bg-slate-900 border border-slate-850 rounded-xl">
+            <div className="grid grid-cols-3 gap-2 p-1 bg-slate-900 border border-slate-850 rounded-xl">
               <button
                 type="button"
+                disabled={!!editingTx || !!editingSettlement}
                 onClick={() => setTxForm(f => ({ ...f, type: 'Borrowed' }))}
                 className={`py-2 text-[10px] font-black uppercase tracking-wider rounded-lg transition-colors ${
                   txForm.type === 'Borrowed' ? 'bg-red-500/20 text-red-400 border border-red-500/10' : 'text-slate-400 hover:text-white'
-                }`}
+                } disabled:opacity-50`}
               >
                 Borrowed
               </button>
               <button
                 type="button"
+                disabled={!!editingTx || !!editingSettlement}
                 onClick={() => setTxForm(f => ({ ...f, type: 'Lent' }))}
                 className={`py-2 text-[10px] font-black uppercase tracking-wider rounded-lg transition-colors ${
                   txForm.type === 'Lent' ? 'bg-green-500/20 text-green-400 border border-green-500/10' : 'text-slate-400 hover:text-white'
-                }`}
+                } disabled:opacity-50`}
               >
                 Lent
               </button>
+              <button
+                type="button"
+                disabled={!!editingTx || !!editingSettlement}
+                onClick={() => setTxForm(f => ({ ...f, type: 'Settlement' }))}
+                className={`py-2 text-[10px] font-black uppercase tracking-wider rounded-lg transition-colors ${
+                  txForm.type === 'Settlement' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/10' : 'text-slate-400 hover:text-white'
+                } disabled:opacity-50`}
+              >
+                Settlement
+              </button>
             </div>
+
+            {txForm.type === 'Settlement' && (
+              <>
+                <div className="space-y-1">
+                  <label className="block text-[10px] text-slate-500 font-bold uppercase">Settlement Type *</label>
+                  <select
+                    disabled={!!editingSettlement}
+                    value={txForm.settlementType}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setTxForm(f => ({ ...f, settlementType: val, parentTxId: '' }));
+                    }}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white focus:outline-none focus:ring-1 focus:ring-purple-500 text-xs font-bold"
+                  >
+                    <option value="Repayment Made">Repayment Made (I paid money back)</option>
+                    <option value="Collection Received">Collection Received (I received money back)</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-[10px] text-slate-500 font-bold uppercase">Original Transaction *</label>
+                  <select
+                    disabled={!!editingSettlement}
+                    required
+                    value={txForm.parentTxId}
+                    onChange={e => {
+                      const val = e.target.value;
+                      const targetType = txForm.settlementType === 'Repayment Made' ? 'Borrowed' : 'Lent';
+                      const eligible = transactions.filter(t => t.type === targetType && (t.status !== 'Settled' || String(t.id) === val));
+                      const selectedTx = eligible.find(tx => String(tx.id) === val);
+                      setTxForm(f => ({ 
+                        ...f, 
+                        parentTxId: val,
+                        amount: selectedTx ? String(selectedTx.outstandingAmount) : '',
+                        description: selectedTx ? `Repayment for ${selectedTx.description}` : ''
+                      }));
+                    }}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white focus:outline-none focus:ring-1 focus:ring-purple-500 text-xs font-bold"
+                  >
+                    <option value="">-- Select Transaction --</option>
+                    {(() => {
+                      const targetType = txForm.settlementType === 'Repayment Made' ? 'Borrowed' : 'Lent';
+                      const eligible = transactions.filter(t => t.type === targetType && (t.status !== 'Settled' || String(t.id) === txForm.parentTxId));
+                      return eligible.map(tx => (
+                        <option key={tx.id} value={tx.id}>
+                          {tx.description} (Orig: ₹{tx.amount.toLocaleString()} | Rem: ₹{tx.outstandingAmount.toLocaleString()})
+                        </option>
+                      ));
+                    })()}
+                  </select>
+                </div>
+              </>
+            )}
 
             <div className="grid grid-cols-2 gap-3.5">
               <div className="space-y-1">
@@ -716,6 +878,21 @@ export default function DebtModule({ onBack }: DebtModuleProps) {
                   placeholder="₹0.00"
                   className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white focus:outline-none focus:ring-1 focus:ring-purple-500 font-bold text-xs"
                 />
+                {(() => {
+                  if (txForm.type === 'Settlement' && txForm.parentTxId) {
+                    const selectedParent = transactions.find(t => String(t.id) === txForm.parentTxId);
+                    if (selectedParent) {
+                      const currentSettledValue = editingSettlement ? Number(editingSettlement.amount) : 0;
+                      const maxAllowed = selectedParent.outstandingAmount + currentSettledValue;
+                      return (
+                        <p className="text-[9px] text-slate-500 mt-1 font-semibold">
+                          Max allowed: <span className="text-purple-400">₹{maxAllowed.toLocaleString('en-IN')}</span>
+                        </p>
+                      );
+                    }
+                  }
+                  return null;
+                })()}
               </div>
               <div className="space-y-1">
                 <label className="block text-[10px] text-slate-500 font-bold uppercase">Date *</label>
@@ -752,57 +929,9 @@ export default function DebtModule({ onBack }: DebtModuleProps) {
 
             <div className="flex justify-end space-x-3.5 pt-2">
               <Button onClick={() => setShowTxModal(false)} variant="ghost">Cancel</Button>
-              <Button type="submit" variant="primary" className="bg-purple-600 hover:bg-purple-700 px-5 text-white">Log</Button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* REPAYMENT SETTLEMENT MODAL */}
-      {showSettlementModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowSettlementModal(false)} />
-          <form onSubmit={handleSettlementSubmit} className="relative bg-slate-950 border border-slate-800 rounded-3xl p-6 shadow-2xl w-full max-w-sm space-y-4">
-            <h3 className="text-sm font-black text-white border-b border-slate-900 pb-2 uppercase tracking-wider">
-              Add Repayment Settlement Entry
-            </h3>
-
-            <div className="grid grid-cols-2 gap-3.5">
-              <div className="space-y-1">
-                <label className="block text-[10px] text-slate-500 font-bold uppercase">Settled Amount *</label>
-                <input
-                  type="number" required min="0" step="any"
-                  value={settlementForm.amount}
-                  onChange={e => setSettlementForm(f => ({ ...f, amount: e.target.value }))}
-                  placeholder="₹0.00"
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white focus:outline-none focus:ring-1 focus:ring-purple-500 font-bold text-xs"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="block text-[10px] text-slate-500 font-bold uppercase">Date *</label>
-                <input
-                  type="date" required
-                  value={settlementForm.date}
-                  onChange={e => setSettlementForm(f => ({ ...f, date: e.target.value }))}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white focus:outline-none focus:ring-1 focus:ring-purple-500 font-mono text-[11px]"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <label className="block text-[10px] text-slate-500 font-bold uppercase">Notes / Remarks</label>
-              <input
-                type="text"
-                value={settlementForm.notes}
-                onChange={e => setSettlementForm(f => ({ ...f, notes: e.target.value }))}
-                placeholder="e.g. Partially paid by Cash, GPay"
-                className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white focus:outline-none focus:ring-1 focus:ring-purple-500 font-bold text-xs"
-              />
-            </div>
-
-            <div className="flex justify-end space-x-3.5 pt-2">
-              <Button onClick={() => setShowSettlementModal(false)} variant="ghost">Cancel</Button>
-              <Button type="submit" variant="primary" className="bg-green-600 hover:bg-green-700 px-5 text-white">Add Entry</Button>
+              <Button type="submit" variant="primary" className="bg-purple-600 hover:bg-purple-700 px-5 text-white">
+                {editingSettlement || editingTx ? 'Save' : 'Log'}
+              </Button>
             </div>
           </form>
         </div>

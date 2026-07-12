@@ -1094,6 +1094,25 @@ router.delete('/debts/settlements/:settlementId', async (req: Request, res: Resp
   }
 });
 
+router.put('/debts/settlements/:settlementId', async (req: Request, res: Response) => {
+  const settlementId = Number(req.params.settlementId);
+  const { amount, date, notes } = req.body;
+  try {
+    const settlement = await get(`SELECT transaction_id FROM debt_settlements WHERE id = ?`, [settlementId]);
+    if (!settlement) {
+      return res.status(404).json({ error: 'Settlement not found.' });
+    }
+    await execute(
+      `UPDATE debt_settlements SET amount = ?, date = ?, notes = ? WHERE id = ?`,
+      [Number(amount), date, notes || '', settlementId]
+    );
+    await updateTransactionStatus(settlement.transaction_id);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // CSV bulk import
 router.post('/debts/:id/import', async (req: Request, res: Response) => {
   const accountId = Number(req.params.id);
