@@ -11,12 +11,13 @@ const GoldModule = lazy(() => import('../components/records/GoldModule'));
 const ChitModule = lazy(() => import('../components/records/ChitModule'));
 const SavingsModule = lazy(() => import('../components/records/SavingsModule'));
 const DebtModule = lazy(() => import('../components/records/DebtModule'));
+const MutualModule = lazy(() => import('../components/records/MutualModule'));
 
 const API = window.location.port === '5173' ? 'http://localhost:5000/api' : '/api';
 const COLORS = ['#3B82F6', '#8B5CF6', '#EC4899', '#10B981', '#F59E0B', '#EF4444', '#06B6D4'];
 
 export default function FinancialRecords() {
-  const [subView, setSubView] = useState<null | 'lic' | 'gold' | 'chit' | 'savings' | 'debt'>(null);
+  const [subView, setSubView] = useState<null | 'lic' | 'gold' | 'chit' | 'savings' | 'debt' | 'mutual'>(null);
   const [dashboardData, setDashboardData] = useState<any>({
     stats: {
       activeLicPolicies: 0,
@@ -26,7 +27,8 @@ export default function FinancialRecords() {
       upcomingChitPayments: 0,
       offlineSavingsBalance: 0,
       outstandingDebt: 0,
-      receivableAmount: 0
+      receivableAmount: 0,
+      mutualFundsValue: 0
     },
     reminders: [],
     charts: {
@@ -38,7 +40,7 @@ export default function FinancialRecords() {
     timeline: []
   });
   const [loading, setLoading] = useState(true);
-
+ 
   const fetchDashboardData = async () => {
     setLoading(true);
     try {
@@ -52,7 +54,8 @@ export default function FinancialRecords() {
           upcomingChitPayments: 0,
           offlineSavingsBalance: 0,
           outstandingDebt: 0,
-          receivableAmount: 0
+          receivableAmount: 0,
+          mutualFundsValue: 0
         },
         reminders: [],
         charts: {
@@ -83,6 +86,7 @@ export default function FinancialRecords() {
         {subView === 'chit' && <ChitModule onBack={() => setSubView(null)} />}
         {subView === 'savings' && <SavingsModule onBack={() => setSubView(null)} />}
         {subView === 'debt' && <DebtModule onBack={() => setSubView(null)} />}
+        {subView === 'mutual' && <MutualModule onBack={() => setSubView(null)} />}
       </Suspense>
     );
   }
@@ -121,7 +125,11 @@ export default function FinancialRecords() {
           {/* QUICK SUMMARY CARDS */}
           <div className="space-y-2.5">
             <h2 className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Quick Summary</h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-4">
+              <div className="p-3.5 bg-slate-950/40 border border-slate-850 rounded-2xl space-y-1">
+                <p className="text-[9px] text-slate-500 font-bold uppercase truncate">Mutual Funds</p>
+                <p className="text-sm font-black text-purple-400">₹{(stats.mutualFundsValue || 0).toLocaleString('en-IN')}</p>
+              </div>
               <div className="p-3.5 bg-slate-950/40 border border-slate-850 rounded-2xl space-y-1">
                 <p className="text-[9px] text-slate-500 font-bold uppercase truncate">Active LIC</p>
                 <p className="text-sm font-black text-white">{stats.activeLicPolicies}</p>
@@ -192,6 +200,17 @@ export default function FinancialRecords() {
                     <p className="text-[10px] text-slate-400 mt-0.5">Manage bank account balances, offline assets, and cash logs.</p>
                   </div>
                   <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-blue-400 group-hover:translate-x-1 transition" />
+                </div>
+
+                <div 
+                  onClick={() => setSubView('mutual')}
+                  className="group p-4 bg-slate-950/40 border border-slate-850 hover:border-purple-500/30 hover:bg-slate-900/40 rounded-2xl cursor-pointer transition flex items-center justify-between"
+                >
+                  <div>
+                    <h3 className="text-xs font-black text-white group-hover:text-purple-400 transition-colors">Mutual Funds</h3>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Track mutual fund SIPs, lump-sum investments, growth and projection trends.</p>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-purple-400 group-hover:translate-x-1 transition" />
                 </div>
               </div>
             </div>

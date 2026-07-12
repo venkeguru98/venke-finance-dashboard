@@ -10,7 +10,7 @@ interface CsvImportModalProps {
   onClose: () => void;
   onSuccess: (message: string) => void;
   importUrl: string; // E.g. `${API}/records/lic/${policyId}/import`
-  moduleType: 'lic' | 'gold' | 'chit' | 'savings' | 'debt';
+  moduleType: 'lic' | 'gold' | 'chit' | 'savings' | 'debt' | 'mutual';
 }
 
 interface ParsedRow {
@@ -18,7 +18,9 @@ interface ParsedRow {
   date: string;
   description: string;
   amount: number;
-  type?: 'Credit' | 'Debit' | 'Borrowed' | 'Lent';
+  type?: 'Credit' | 'Debit' | 'Borrowed' | 'Lent' | 'SIP' | 'Lumpsum' | 'Redemption';
+  nav?: number;
+  units?: number;
   notes?: string;
   isValid: boolean;
   error?: string;
@@ -37,7 +39,10 @@ export default function CsvImportModal({ isOpen, onClose, onSuccess, importUrl, 
     let headers = 'Date,Description,Debit Amount,Credit Amount\n';
     let sampleRow = '2026-07-01,Sample Premium/Payment Out,1500.00,\n';
     
-    if (moduleType === 'savings') {
+    if (moduleType === 'mutual') {
+      headers = 'Date,Fund Name,Transaction Type,Investment Amount,NAV,Units,Remarks\n';
+      sampleRow = '2026-07-01,SBI Small Cap Fund,SIP,5000.00,125.45,39.856,Monthly SIP Installment\n2026-07-05,SBI Small Cap Fund,Redemption,2000.00,126.10,15.860,Partial redemption';
+    } else if (moduleType === 'savings') {
       sampleRow = '2026-07-01,Salary Credit,,50000.00\n2026-07-02,Rent Debit,15000.00,';
     } else if (moduleType === 'debt') {
       sampleRow = '2026-07-01,Borrowed from Ravi,,10000.00\n2026-07-02,Lent to Ashok,5000.00,';
@@ -90,6 +95,56 @@ export default function CsvImportModal({ isOpen, onClose, onSuccess, importUrl, 
       const cols = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(c => c.replace(/^"|"$/g, '').trim());
       
       const rowNum = i + 1;
+
+      if (moduleType === 'mutual') {
+        const dateStr = cols[0];
+        const typeStr = cols[2];
+        const amountStr = cols[3];
+        const navStr = cols[4];
+        const unitsStr = cols[5];
+        const remarksStr = cols[6];
+
+        let amount = Number(amountStr);
+        let nav = Number(navStr);
+        let units = Number(unitsStr);
+        let type = (typeStr || 'SIP') as 'SIP' | 'Lumpsum' | 'Redemption';
+        let isValid = true;
+        let error = '';
+
+        const parsedDate = parseCsvDate(dateStr);
+        if (!parsedDate) {
+          isValid = false;
+          error = 'Invalid date format (supported: DD/MM/YYYY, YYYY-MM-DD).';
+        } else if (!typeStr || !['SIP', 'Lumpsum', 'Redemption', 'Redeemed'].includes(typeStr)) {
+          isValid = false;
+          error = 'Type must be SIP, Lumpsum, or Redemption.';
+        } else if (isNaN(amount) || amount <= 0) {
+          isValid = false;
+          error = 'Amount must be a positive number.';
+        } else if (isNaN(nav) || nav <= 0) {
+          isValid = false;
+          error = 'NAV must be a positive number.';
+        } else if (isNaN(units) || units <= 0) {
+          isValid = false;
+          error = 'Units must be a positive number.';
+        }
+
+        if (typeStr === 'Redeemed') type = 'Redemption';
+
+        rows.push({
+          rowNum,
+          date: parsedDate || dateStr,
+          description: remarksStr || `${type} Investment`,
+          amount,
+          nav,
+          units,
+          type,
+          isValid,
+          error
+        });
+        continue;
+      }
+
       const dateStr = cols[0];
       const descStr = cols[1];
       const debitStr = cols[2];
@@ -267,8 +322,8 @@ export default function CsvImportModal({ isOpen, onClose, onSuccess, importUrl, 
                         </td>
                         <td className="py-2.5 px-2 text-right font-black text-white font-mono">
                           {r.type ? (
-                            <span className={r.type === 'Credit' || r.type === 'Borrowed' ? 'text-green-400' : 'text-red-400'}>
-                              {r.type === 'Credit' || r.type === 'Borrowed' ? '+' : '-'}₹{r.amount.toLocaleString('en-IN')}
+                            <span className={r.type === 'Credit' || r.type === 'Borrowed' || r.type === 'SIP' || r.type === 'Lumpsum' ? 'text-green-400' : 'text-red-400'}>
+                              {r.type === 'Credit' || r.type === 'Borrowed' || r.type === 'SIP' || r.type === 'Lumpsum' ? '+' : '-'}₹{r.amount.toLocaleString('en-IN')}
                             </span>
                           ) : (
                             <span>₹{r.amount.toLocaleString('en-IN')}</span>

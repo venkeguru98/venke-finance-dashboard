@@ -157,7 +157,7 @@ export const initializeDatabase = async () => {
         'savings_investments', 'notifications', 'debts', 'deposits', 'transfers',
         'chit_funds', 'notes', 'documents', 'ledger_entries',
         'lic_policies', 'lic_premium_history', 'digital_gold', 'digital_gold_transactions',
-        'chit_payments', 'savings_accounts', 'savings_transactions'
+        'chit_payments', 'savings_accounts', 'savings_transactions', 'mutual_funds', 'mutual_fund_transactions'
       ];
       for (const table of tables) {
         try {
@@ -266,6 +266,76 @@ export const initializeDatabase = async () => {
       console.log('Debt Manager database tables verified/created.');
     } catch (dbErr) {
       console.error('Migration failed for debt manager tables:', dbErr);
+    }
+
+    // Create Mutual Funds tables
+    try {
+      if (isPg && pgPool) {
+        await pgPool.query(`
+          CREATE TABLE IF NOT EXISTS mutual_funds (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            fund_name VARCHAR(255) NOT NULL,
+            category VARCHAR(100) NOT NULL,
+            fund_house VARCHAR(255) NOT NULL,
+            expense_ratio REAL NOT NULL DEFAULT 0,
+            benchmark VARCHAR(255),
+            risk_level VARCHAR(50) DEFAULT 'High',
+            launch_year INTEGER,
+            notes TEXT,
+            current_nav REAL NOT NULL DEFAULT 10.0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+        await pgPool.query(`
+          CREATE TABLE IF NOT EXISTS mutual_fund_transactions (
+            id SERIAL PRIMARY KEY,
+            fund_id INTEGER NOT NULL REFERENCES mutual_funds(id) ON DELETE CASCADE,
+            date DATE NOT NULL,
+            type VARCHAR(50) NOT NULL,
+            amount REAL NOT NULL,
+            nav REAL NOT NULL,
+            units REAL NOT NULL,
+            remarks TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+      } else {
+        await execute(`
+          CREATE TABLE IF NOT EXISTS mutual_funds (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            fund_name TEXT NOT NULL,
+            category TEXT NOT NULL,
+            fund_house TEXT NOT NULL,
+            expense_ratio REAL NOT NULL DEFAULT 0,
+            benchmark TEXT,
+            risk_level TEXT DEFAULT 'High',
+            launch_year INTEGER,
+            notes TEXT,
+            current_nav REAL NOT NULL DEFAULT 10.0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+          )
+        `);
+        await execute(`
+          CREATE TABLE IF NOT EXISTS mutual_fund_transactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            fund_id INTEGER NOT NULL,
+            date DATE NOT NULL,
+            type TEXT CHECK(type IN ('SIP', 'Lumpsum', 'Redemption')) NOT NULL,
+            amount REAL NOT NULL,
+            nav REAL NOT NULL,
+            units REAL NOT NULL,
+            remarks TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(fund_id) REFERENCES mutual_funds(id) ON DELETE CASCADE
+          )
+        `);
+      }
+      console.log('Mutual Funds database tables verified/created.');
+    } catch (mfErr) {
+      console.error('Migration failed for mutual funds tables:', mfErr);
     }
 
     // Dynamic Migration of legacy debts_loans entries to debt_accounts structure

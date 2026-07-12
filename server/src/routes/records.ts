@@ -238,6 +238,27 @@ router.get('/dashboard', async (req: Request, res: Response) => {
       return String(d);
     };
 
+    // Compute mutual funds portfolio total value
+    const fundsList = await query(`SELECT id, current_nav FROM mutual_funds WHERE user_id = ?`, [userId]);
+    let mutualFundsValue = 0;
+    for (const fund of fundsList) {
+      const txs = await query(
+        `SELECT amount, units, type FROM mutual_fund_transactions WHERE fund_id = ?`,
+        [fund.id]
+      );
+      let unitsHeld = 0;
+      for (const t of txs) {
+        if (t.type === 'SIP' || t.type === 'Lumpsum') {
+          unitsHeld += t.units;
+        } else if (t.type === 'Redemption') {
+          unitsHeld -= t.units;
+        }
+      }
+      if (unitsHeld > 0) {
+        mutualFundsValue += unitsHeld * fund.current_nav;
+      }
+    }
+
     // Combine and sort
     const allActivities = [
       ...licTimeline.map(x => ({ ...x, dateStr: formatDateStr(x.date) })),
@@ -258,7 +279,8 @@ router.get('/dashboard', async (req: Request, res: Response) => {
         upcomingChitPayments: Number(upcomingChitPayments || 0),
         offlineSavingsBalance: Number(savingsBalance?.total || 0),
         outstandingDebt: Number(outstandingDebt || 0),
-        receivableAmount: Number(receivableAmount || 0)
+        receivableAmount: Number(receivableAmount || 0),
+        mutualFundsValue: Number(mutualFundsValue || 0)
       },
       reminders,
       charts: {
@@ -1228,6 +1250,283 @@ router.post('/savings/:id/import', async (req: Request, res: Response) => {
       await execute(
         `UPDATE savings_accounts SET current_balance = current_balance + ? WHERE id = ?`,
         [balanceAdjustment, accountId]
+      );
+      count++;
+    }
+    res.json({ success: true, count });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==========================================
+// 6. MUTUAL FUNDS INVESTMENT MANAGER
+// ==========================================
+
+// Helper to calculate XIRR
+const calculateXIRR = (txs: any[], currentValue: number) => {
+  if (txs.length === 0) return 0;
+  
+  const cashFlows = txs.map(t => ({
+    amount: t.type === 'Redemption' ? Number(t.amount) : -Number(t.amount),
+    date: new Date(t.date)
+  }));
+  
+  // Add the final valuation flow today
+  cashFlows.push({
+    amount: currentValue,
+    date: new Date()
+  });
+
+  const xirrFunction = (r: number) => {
+    let val = 0;
+    for (const cf of cashFlows) {
+      const t = (cf.date.getTime() - cashFlows[0].date.getTime()) / (365.25 * 24 * 60 * 60 * 1000);
+      val += cf.amount / Math.pow(1 + r, t);
+    }
+    return val;
+  };
+
+  const xirrDerivative = (r: number) => {
+    let val = 0;
+    for (const cf of cashFlows) {
+      const t = (cf.date.getTime() - cashFlows[0].date.getTime()) / (365.25 * 24 * 60 * 60 * 1000);
+      val += -t * cf.amount / Math.pow(1 + r, t + 1);
+    }
+    return val;
+  };
+
+  let rate = 0.1; // 10% guess
+  for (let i = 0; i < 100; i++) {
+    const f = xirrFunction(rate);
+    const df = xirrDerivative(rate);
+    if (Math.abs(df) < 1e-12) break;
+    const nextRate = rate - f / df;
+    if (Math.abs(nextRate - rate) < 1e-6) {
+      rate = nextRate;
+      break;
+    }
+    rate = nextRate;
+  }
+  if (isNaN(rate) || rate < -0.99 || rate > 5.0) {
+    return 0;
+  }
+  return rate * 100;
+};
+
+// Retrieve all funds with computed metrics
+router.get('/mutual-funds', async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  try {
+    const funds = await query(
+      `SELECT * FROM mutual_funds WHERE user_id = ? ORDER BY fund_name ASC`,
+      [userId]
+    );
+
+    const result = [];
+    for (const fund of funds) {
+      const txs = await query(
+        `SELECT * FROM mutual_fund_transactions WHERE fund_id = ? ORDER BY date ASC`,
+        [fund.id]
+      );
+
+      let totalInvested = 0;
+      let unitsHeld = 0;
+      let totalSips = 0;
+
+      for (const t of txs) {
+        if (t.type === 'SIP' || t.type === 'Lumpsum') {
+          totalInvested += t.amount;
+          unitsHeld += t.units;
+          if (t.type === 'SIP') totalSips++;
+        } else if (t.type === 'Redemption') {
+          totalInvested -= t.amount;
+          unitsHeld -= t.units;
+        }
+      }
+
+      // Safeguard negative/zero units
+      if (unitsHeld < 0) unitsHeld = 0;
+      if (totalInvested < 0) totalInvested = 0;
+
+      const currentValue = unitsHeld * fund.current_nav;
+      const overallGain = currentValue - totalInvested;
+      const gainPct = totalInvested > 0 ? (overallGain / totalInvested) * 100 : 0;
+      const avgPurchasePrice = unitsHeld > 0 ? totalInvested / unitsHeld : 0;
+
+      // CAGR & Holding Period
+      let holdingPeriodDays = 0;
+      let cagr = 0;
+      if (txs.length > 0) {
+        const firstDate = new Date(txs[0].date);
+        holdingPeriodDays = Math.ceil((new Date().getTime() - firstDate.getTime()) / (1000 * 60 * 60 * 24));
+        const years = holdingPeriodDays / 365.25;
+        if (years > 0.05 && totalInvested > 0) {
+          cagr = (Math.pow(currentValue / totalInvested, 1 / years) - 1) * 100;
+        }
+      }
+
+      const xirr = calculateXIRR(txs, currentValue);
+
+      result.push({
+        ...fund,
+        totalInvested,
+        unitsHeld,
+        currentValue,
+        overallGain,
+        gainPct,
+        avgPurchasePrice,
+        holdingPeriodDays,
+        cagr,
+        xirr,
+        totalSips,
+        transactionCount: txs.length
+      });
+    }
+
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Create new mutual fund
+router.post('/mutual-funds', async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const { fund_name, category, fund_house, expense_ratio, benchmark, risk_level, launch_year, notes, current_nav } = req.body;
+  if (!fund_name || !category || !fund_house) {
+    return res.status(400).json({ error: 'Fund Name, Category and Fund House are required.' });
+  }
+  try {
+    const result = await execute(
+      `INSERT INTO mutual_funds (user_id, fund_name, category, fund_house, expense_ratio, benchmark, risk_level, launch_year, notes, current_nav) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        userId, fund_name, category, fund_house, 
+        Number(expense_ratio) || 0, benchmark || '', 
+        risk_level || 'High', Number(launch_year) || null, 
+        notes || '', Number(current_nav) || 10.0
+      ]
+    );
+    res.json({ success: true, id: result.lastID });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update fund details
+router.put('/mutual-funds/:id', async (req: Request, res: Response) => {
+  const fundId = Number(req.params.id);
+  const { fund_name, category, fund_house, expense_ratio, benchmark, risk_level, launch_year, notes, current_nav } = req.body;
+  if (!fund_name || !category || !fund_house) {
+    return res.status(400).json({ error: 'Fund Name, Category and Fund House are required.' });
+  }
+  try {
+    await execute(
+      `UPDATE mutual_funds 
+       SET fund_name = ?, category = ?, fund_house = ?, expense_ratio = ?, benchmark = ?, risk_level = ?, launch_year = ?, notes = ?, current_nav = ? 
+       WHERE id = ?`,
+      [
+        fund_name, category, fund_house, 
+        Number(expense_ratio) || 0, benchmark || '', 
+        risk_level || 'High', Number(launch_year) || null, 
+        notes || '', Number(current_nav) || 10.0,
+        fundId
+      ]
+    );
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete mutual fund
+router.delete('/mutual-funds/:id', async (req: Request, res: Response) => {
+  const fundId = Number(req.params.id);
+  try {
+    await execute(`DELETE FROM mutual_funds WHERE id = ?`, [fundId]);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get transactions for a fund
+router.get('/mutual-funds/:id/transactions', async (req: Request, res: Response) => {
+  const fundId = Number(req.params.id);
+  try {
+    const txs = await query(
+      `SELECT * FROM mutual_fund_transactions WHERE fund_id = ? ORDER BY date DESC, id DESC`,
+      [fundId]
+    );
+    res.json(txs);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Add a transaction
+router.post('/mutual-funds/:id/transactions', async (req: Request, res: Response) => {
+  const fundId = Number(req.params.id);
+  const { date, type, amount, nav, units, remarks } = req.body;
+  if (!date || !type || !amount || !nav || !units) {
+    return res.status(400).json({ error: 'Date, Type, Amount, NAV and Units are required.' });
+  }
+  try {
+    const result = await execute(
+      `INSERT INTO mutual_fund_transactions (fund_id, date, type, amount, nav, units, remarks) 
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [fundId, date, type, Number(amount), Number(nav), Number(units), remarks || '']
+    );
+    res.json({ success: true, id: result.lastID });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update a transaction
+router.put('/mutual-funds/transactions/:txId', async (req: Request, res: Response) => {
+  const txId = Number(req.params.txId);
+  const { date, type, amount, nav, units, remarks } = req.body;
+  if (!date || !type || !amount || !nav || !units) {
+    return res.status(400).json({ error: 'Date, Type, Amount, NAV and Units are required.' });
+  }
+  try {
+    await execute(
+      `UPDATE mutual_fund_transactions 
+       SET date = ?, type = ?, amount = ?, nav = ?, units = ?, remarks = ? 
+       WHERE id = ?`,
+      [date, type, Number(amount), Number(nav), Number(units), remarks || '', txId]
+    );
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete a transaction
+router.delete('/mutual-funds/transactions/:txId', async (req: Request, res: Response) => {
+  const txId = Number(req.params.txId);
+  try {
+    await execute(`DELETE FROM mutual_fund_transactions WHERE id = ?`, [txId]);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Bulk CSV Import
+router.post('/mutual-funds/:id/import', async (req: Request, res: Response) => {
+  const fundId = Number(req.params.id);
+  const { transactions } = req.body; // Array of { date, type, amount, nav, units, remarks }
+  try {
+    let count = 0;
+    for (const tx of transactions) {
+      if (!tx.date || !tx.type || !tx.amount || !tx.nav || !tx.units) continue;
+      await execute(
+        `INSERT INTO mutual_fund_transactions (fund_id, date, type, amount, nav, units, remarks) 
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [fundId, tx.date, tx.type, Number(tx.amount), Number(tx.nav), Number(tx.units), tx.remarks || '']
       );
       count++;
     }

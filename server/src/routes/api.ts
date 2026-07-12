@@ -889,7 +889,7 @@ router.get('/system/db-export', async (req, res) => {
       'savings_investments', 'budgets', 'goals', 'notifications', 
       'debts_loans', 'deposits', 'chit_funds', 'lic_policies', 
       'gold_investments', 'debt_settlements', 'lic_premiums', 
-      'chit_payments', 'gold_transactions'
+      'chit_payments', 'gold_transactions', 'mutual_funds', 'mutual_fund_transactions'
     ];
 
     const backupData: any = {};
