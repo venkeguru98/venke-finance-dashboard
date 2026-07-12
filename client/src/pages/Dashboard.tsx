@@ -1764,7 +1764,7 @@ export default function Dashboard() {
                       <AreaChart data={selectedInsight.sparklineData} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
                         <XAxis dataKey="month" stroke="#64748b" fontSize={9} tickLine={false} axisLine={false} />
                         <YAxis stroke="#64748b" fontSize={9} tickLine={false} axisLine={false} tickFormatter={v => `₹${v}`} />
-                        <Tooltip content={<InsightSparklineTooltip />} />
+                        <Tooltip content={<InsightSparklineTooltip />} allowEscapeViewBox={{ x: true, y: true }} />
                         <Area type="monotone" dataKey="amount" stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.1} />
                       </AreaChart>
                     </ResponsiveContainer>
@@ -2834,7 +2834,7 @@ function InsightCard({ item, index, getCategoryIcon }: InsightCardProps) {
 
   return (
     <div 
-      className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl w-[285px] h-[265px] flex-shrink-0 flex flex-col justify-between hover:-translate-y-1 hover:shadow-xl dark:hover:shadow-black/40 hover:border-primary/30 transition-all duration-200 ease-out cursor-grab active:cursor-grabbing animate-slide-up relative overflow-hidden group select-none"
+      className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl w-[285px] h-[265px] flex-shrink-0 flex flex-col justify-between hover:-translate-y-1 hover:shadow-xl dark:hover:shadow-black/40 hover:border-primary/30 transition-all duration-200 ease-out cursor-grab active:cursor-grabbing animate-slide-up relative overflow-hidden hover:overflow-visible group select-none"
       style={{ animationDelay: `${index * 100}ms` }}
     >
       {/* Top row: Icon and Badge */}
@@ -2875,7 +2875,7 @@ function InsightCard({ item, index, getCategoryIcon }: InsightCardProps) {
       </div>
 
       {/* Mini Sparkline anchored to the bottom */}
-      <div className="w-full h-12 mt-2 -mx-5 -mb-5 relative overflow-hidden rounded-b-2xl self-end shrink-0">
+      <div className="w-full h-12 mt-2 -mx-5 -mb-5 relative overflow-hidden group-hover:overflow-visible rounded-b-2xl self-end shrink-0">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={item.sparklineData} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
             <defs>
@@ -2897,7 +2897,7 @@ function InsightCard({ item, index, getCategoryIcon }: InsightCardProps) {
                 return null;
               }}
             />
-            <Tooltip content={<InsightSparklineTooltip />} />
+            <Tooltip content={<InsightSparklineTooltip />} allowEscapeViewBox={{ x: true, y: true }} />
           </AreaChart>
         </ResponsiveContainer>
       </div>
