@@ -40,7 +40,8 @@ const DEFAULT_WIDGETS = {
   heatmapWidget: true,
   forecastWidget: true,
   kpiWidget: true,
-  momWidget: true
+  momWidget: true,
+  weeklyExpenseWidget: true
 };
 
 export default function Dashboard() {
@@ -851,6 +852,79 @@ export default function Dashboard() {
     }
   };
 
+  const getWeeklyBreakdown = () => {
+    const selectedMonthPrefix = formatLocalYYYYMM(now);
+    const monthlyExpenses = transactions.filter((t: any) => t.date.startsWith(selectedMonthPrefix) && t.type === 'expense');
+
+    if (monthlyExpenses.length === 0) return [];
+
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+    const weekRanges = [
+      { num: 1, start: 1, end: 7 },
+      { num: 2, start: 8, end: 14 },
+      { num: 3, start: 15, end: 21 },
+      { num: 4, start: 22, end: 28 },
+    ];
+
+    if (daysInMonth >= 29) {
+      weekRanges.push({ num: 5, start: 29, end: daysInMonth });
+    }
+
+    const weeks = weekRanges.map(range => {
+      const txs = monthlyExpenses.filter((t: any) => {
+        const day = Number(t.date.split('-')[2]);
+        return day >= range.start && day <= range.end;
+      });
+
+      const totalExpense = txs.reduce((sum: number, t: any) => sum + t.amount, 0);
+
+      // Find top category
+      const categorySums: Record<string, number> = {};
+      txs.forEach((t: any) => {
+        const catName = t.category_name || 'Other';
+        categorySums[catName] = (categorySums[catName] || 0) + t.amount;
+      });
+
+      let topCategory = 'None';
+      let maxCatSum = 0;
+      Object.entries(categorySums).forEach(([cat, sum]) => {
+        if (sum > maxCatSum) {
+          maxCatSum = sum;
+          topCategory = cat;
+        }
+      });
+
+      // Find largest individual transaction
+      let largestTxAmount = 0;
+      txs.forEach((t: any) => {
+        if (t.amount > largestTxAmount) {
+          largestTxAmount = t.amount;
+        }
+      });
+
+      const formatDayLabel = (day: number) => {
+        const d = new Date(year, month, day);
+        return `${day} ${d.toLocaleString('default', { month: 'short' })}`;
+      };
+
+      const rangeLabel = `${formatDayLabel(range.start)} – ${formatDayLabel(range.end)}`;
+
+      return {
+        weekNum: range.num,
+        rangeLabel,
+        totalExpense,
+        transactionCount: txs.length,
+        topCategory,
+        largestTxAmount,
+      };
+    });
+
+    return weeks;
+  };
+
   // Filter transactions
   const filteredTx = transactions
     .filter(t => {
@@ -1434,45 +1508,157 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* EXPENSE BREAKDOWN WIDGET */}
-      {widgets.breakdownWidget && (
-        <div className="bg-white dark:bg-slate-950 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
-          <h3 className="text-base font-bold text-slate-900 dark:text-white mb-4">Expense Distribution</h3>
-          {categoryData.length === 0 ? (
-            <div className="py-8 text-center text-slate-400">No category breakdown data available</div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
-              <div className="h-[200px] flex justify-center">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={categoryData} cx="50%" cy="50%" innerRadius={55} outerRadius={80} paddingAngle={4} dataKey="value" stroke="none">
-                      {categoryData.map((_e, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]}/>
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '12px', color: '#fff' }}
-                      formatter={(v: any) => [`₹${Number(v).toLocaleString('en-IN')}`, '']}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
+      {/* EXPENSE BREAKDOWN & WEEKLY BREAKDOWN ROW */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {widgets.breakdownWidget && (
+          <div className="bg-white dark:bg-slate-950 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
+            <h3 className="text-base font-bold text-slate-900 dark:text-white mb-4">Expense Distribution</h3>
+            {categoryData.length === 0 ? (
+              <div className="py-8 text-center text-slate-400">No category breakdown data available</div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+                <div className="h-[200px] flex justify-center">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={categoryData} cx="50%" cy="50%" innerRadius={55} outerRadius={80} paddingAngle={4} dataKey="value" stroke="none">
+                        {categoryData.map((_e, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]}/>
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '12px', color: '#fff' }}
+                        formatter={(v: any) => [`₹${Number(v).toLocaleString('en-IN')}`, '']}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
 
-              <div className="space-y-2">
-                {categoryData.slice(0, 5).map((item, index) => (
-                  <div key={item.name} className="flex items-center justify-between text-xs bg-slate-50 dark:bg-slate-900 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
-                    <div className="flex items-center space-x-2">
-                      <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: COLORS[index % COLORS.length] }}></div>
-                      <span className="text-slate-600 dark:text-slate-400 font-semibold">{item.name}</span>
+                <div className="space-y-2">
+                  {categoryData.slice(0, 5).map((item, index) => (
+                    <div key={item.name} className="flex items-center justify-between text-xs bg-slate-50 dark:bg-slate-900 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
+                      <div className="flex items-center space-x-2">
+                        <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: COLORS[index % COLORS.length] }}></div>
+                        <span className="text-slate-600 dark:text-slate-400 font-semibold">{item.name}</span>
+                      </div>
+                      <span className="font-bold text-slate-800 dark:text-slate-200">₹{Number(item.value).toLocaleString('en-IN')}</span>
                     </div>
-                    <span className="font-bold text-slate-800 dark:text-slate-200">₹{Number(item.value).toLocaleString('en-IN')}</span>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
+            )}
+          </div>
+        )}
+
+        {widgets.weeklyExpenseWidget && (
+          <div className="bg-white dark:bg-slate-950 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between relative">
+            <div>
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">Weekly Expense Breakdown</h3>
+              <p className="text-xs text-slate-500 mt-0.5 font-medium">Cash spent across each week of the selected month.</p>
             </div>
-          )}
-        </div>
-      )}
+
+            {(() => {
+              const weeksData = getWeeklyBreakdown();
+              if (weeksData.length === 0) {
+                return (
+                  <div className="py-12 flex flex-col items-center justify-center text-center text-slate-400">
+                    <p className="text-2xl mb-1">📅</p>
+                    <p className="text-xs font-bold text-slate-500 max-w-[240px]">
+                      No expenses recorded for this month. Weekly insights will appear once transactions are available.
+                    </p>
+                  </div>
+                );
+              }
+
+              const maxWeeklyExpense = Math.max(...weeksData.map(w => w.totalExpense), 0);
+              
+              // Find highest and lowest weeks
+              const highestWeek = weeksData.reduce((max, w) => w.totalExpense > (max?.totalExpense || 0) ? w : max, weeksData[0]);
+              const lowestWeek = weeksData.reduce((min, w) => w.totalExpense < min.totalExpense ? w : min, weeksData[0]);
+
+              const totalExpenses = weeksData.reduce((sum, w) => sum + w.totalExpense, 0);
+              const weeklyAverage = Math.round(totalExpenses / weeksData.length);
+
+              return (
+                <div className="space-y-4.5 mt-4 flex-1 flex flex-col justify-between">
+                  {/* Progress Rows */}
+                  <div className="space-y-3">
+                    {weeksData.map(w => {
+                      const isHighest = w.totalExpense === highestWeek.totalExpense && w.totalExpense > 0;
+                      const isLowest = w.totalExpense === lowestWeek.totalExpense && w.totalExpense > 0;
+
+                      let barColor = 'bg-primary'; // purple default
+                      if (isHighest) barColor = 'bg-red-500 dark:bg-red-500/80';
+                      else if (isLowest) barColor = 'bg-green-500 dark:bg-green-500/80';
+
+                      const pct = maxWeeklyExpense > 0 ? (w.totalExpense / maxWeeklyExpense) * 100 : 0;
+
+                      return (
+                        <div key={w.weekNum} className="group relative space-y-1 cursor-pointer">
+                          <div className="flex justify-between text-xs font-semibold">
+                            <span className="text-slate-700 dark:text-slate-300">Week {w.weekNum}</span>
+                            <span className="text-slate-900 dark:text-white font-extrabold font-mono">
+                              ₹{w.totalExpense.toLocaleString('en-IN')}
+                            </span>
+                          </div>
+
+                          <div className="h-3 bg-slate-100 dark:bg-slate-800/60 rounded-full overflow-hidden">
+                            <div 
+                              className={`h-full rounded-full transition-all duration-500 ${barColor}`} 
+                              style={{ width: `${Math.max(pct, 2)}%` }} 
+                            />
+                          </div>
+
+                          {/* Hover Tooltip Popup */}
+                          <div className="absolute z-50 hidden group-hover:block bg-slate-900 border border-slate-800 p-4 rounded-xl text-left text-white shadow-2xl min-w-[220px] left-1/2 transform -translate-x-1/2 bottom-full mb-2 pointer-events-none transition-all duration-200">
+                            <div className="border-b border-slate-800 pb-1.5 mb-1.5">
+                              <p className="font-extrabold text-white">Week {w.weekNum}</p>
+                              <p className="text-[10px] text-slate-400 font-bold">{w.rangeLabel}</p>
+                            </div>
+                            <div className="space-y-1 font-semibold text-[10px] text-slate-350">
+                              <div className="flex justify-between">
+                                <span>Total Expense:</span>
+                                <span className="font-bold text-white">₹{w.totalExpense.toLocaleString('en-IN')}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Transactions:</span>
+                                <span className="font-bold text-white">{w.transactionCount}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Top Category:</span>
+                                <span className="font-bold text-purple-400">{w.topCategory}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Largest Expense:</span>
+                                <span className="font-bold text-red-400">₹{w.largestTxAmount.toLocaleString('en-IN')}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Summary Block */}
+                  <div className="border-t border-slate-100 dark:border-slate-800/80 pt-3 text-xs font-semibold space-y-2 bg-slate-50/50 dark:bg-slate-900/10 p-3 rounded-xl">
+                    <div className="flex justify-between items-center text-[11px]">
+                      <span className="text-slate-500 font-bold uppercase">Highest Spending Week</span>
+                      <span className="text-red-400 font-extrabold">Week {highestWeek.weekNum} ({formatIndianRupee(highestWeek.totalExpense)})</span>
+                    </div>
+                    <div className="flex justify-between items-center text-[11px] border-t border-slate-200/20 pt-1.5">
+                      <span className="text-slate-500 font-bold uppercase">Lowest Spending Week</span>
+                      <span className="text-green-400 font-extrabold">Week {lowestWeek.weekNum} ({formatIndianRupee(lowestWeek.totalExpense)})</span>
+                    </div>
+                    <div className="flex justify-between items-center text-[11px] border-t border-slate-200/20 pt-1.5">
+                      <span className="text-slate-500 font-bold uppercase">Weekly Average</span>
+                      <span className="text-white font-extrabold font-mono">{formatIndianRupee(weeklyAverage)}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        )}
+      </div>
 
       {/* INTERACTIVE RECENT ACTIVITY WITH GLOBAL SEARCH */}
       {widgets.recentTransactions && (
