@@ -647,14 +647,19 @@ export default function Dashboard() {
 
       // Sparkline (last 6 months totals)
       const sparklineData = last6MonthsPrefixes.map(prefix => {
-        const total = catTx
-          .filter(t => t.date.startsWith(prefix))
-          .reduce((sum, t) => sum + t.amount, 0);
+        const matchingTx = catTx.filter(t => t.date.startsWith(prefix));
+        const total = matchingTx.reduce((sum, t) => sum + t.amount, 0);
         
         const dObj = new Date(prefix + '-02'); // avoid timezone rollover
+        const monthName = dObj.toLocaleString('default', { month: 'short' });
+        const year = dObj.getFullYear();
+        
         return {
-          month: dObj.toLocaleString('default', { month: 'short' }),
-          amount: total
+          month: monthName,
+          amount: total,
+          txCount: matchingTx.length,
+          categoryName: cat.name,
+          dateLabel: `01 ${monthName} ${year}`
         };
       });
 
@@ -1759,7 +1764,7 @@ export default function Dashboard() {
                       <AreaChart data={selectedInsight.sparklineData} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
                         <XAxis dataKey="month" stroke="#64748b" fontSize={9} tickLine={false} axisLine={false} />
                         <YAxis stroke="#64748b" fontSize={9} tickLine={false} axisLine={false} tickFormatter={v => `₹${v}`} />
-                        <Tooltip content={<StandardChartTooltip />} />
+                        <Tooltip content={<InsightSparklineTooltip />} />
                         <Area type="monotone" dataKey="amount" stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.1} />
                       </AreaChart>
                     </ResponsiveContainer>
@@ -2154,6 +2159,29 @@ function MonthOverMonthComparisonWidget({ data, navigate }: { data: any; navigat
     </div>
   );
 }
+
+// Custom tooltip component for Financial Insights sparklines
+const InsightSparklineTooltip = ({ active, payload }: any) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    const formattedAmount = data.amount === 0 ? '₹0' : formatIndianRupee(data.amount || 0);
+    const count = data.txCount || 0;
+    const countText = count === 0 ? 'No Transactions' : `${count} ${count === 1 ? 'Transaction' : 'Transactions'}`;
+    
+    return (
+      <div className="bg-slate-950/95 border border-slate-900 rounded-xl p-3 shadow-xl text-left text-xs font-semibold text-slate-350 w-44 space-y-1.5 border-slate-800">
+        <p className="text-slate-400 font-mono text-[10px]">{data.dateLabel}</p>
+        <div className="border-t border-slate-900/60 my-1"></div>
+        <p className="text-white font-black text-sm font-mono">{formattedAmount}</p>
+        <p className="text-purple-400 font-extrabold text-[10px]">{countText}</p>
+        <p className="text-slate-500 font-black text-[9px] uppercase tracking-wider truncate" title={data.categoryName}>
+          {data.categoryName}
+        </p>
+      </div>
+    );
+  }
+  return null;
+};
 
 // Reusable standard tooltip component for Dashboard charts
 const StandardChartTooltip = ({ active, payload, label }: any) => {
@@ -2869,7 +2897,7 @@ function InsightCard({ item, index, getCategoryIcon }: InsightCardProps) {
                 return null;
               }}
             />
-            <Tooltip content={<StandardChartTooltip />} />
+            <Tooltip content={<InsightSparklineTooltip />} />
           </AreaChart>
         </ResponsiveContainer>
       </div>
