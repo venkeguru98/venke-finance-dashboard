@@ -875,7 +875,7 @@ export default function Dashboard() {
 
     const weeks = weekRanges.map(range => {
       const txs = monthlyExpenses.filter((t: any) => {
-        const day = Number(t.date.split('-')[2]);
+        const day = Number(t.date.slice(8, 10));
         return day >= range.start && day <= range.end;
       });
 
