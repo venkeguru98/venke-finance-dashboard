@@ -876,12 +876,36 @@ router.post('/system/restore', async (req, res) => {
   }
 });
 
-router.get('/system/db-export', (req, res) => {
-  const dbFilePath = path.resolve(__dirname, '../../../database.sqlite');
-  if (fs.existsSync(dbFilePath)) {
-    res.download(dbFilePath, 'venke-finance-backup.sqlite');
-  } else {
-    res.status(404).json({ error: 'SQLite database not available in cloud mode.' });
+router.get('/system/db-export', async (req, res) => {
+  try {
+    const dbFilePath = path.resolve(__dirname, '../../../database.sqlite');
+    if (fs.existsSync(dbFilePath)) {
+      return res.download(dbFilePath, 'venke-finance-backup.sqlite');
+    }
+
+    // Cloud PostgreSQL Mode: Query all financial tables and output as a JSON download
+    const tables = [
+      'users', 'categories', 'recurring_rules', 'transactions', 
+      'savings_investments', 'budgets', 'goals', 'notifications', 
+      'debts_loans', 'deposits', 'chit_funds', 'lic_policies', 
+      'gold_investments', 'debt_settlements', 'lic_premiums', 
+      'chit_payments', 'gold_transactions'
+    ];
+
+    const backupData: any = {};
+    for (const table of tables) {
+      try {
+        backupData[table] = await query(`SELECT * FROM ${table}`);
+      } catch (_) {
+        // Table may not exist or not initialized
+      }
+    }
+
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', 'attachment; filename=venke-finance-cloud-backup.json');
+    res.send(JSON.stringify(backupData, null, 2));
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
 });
 

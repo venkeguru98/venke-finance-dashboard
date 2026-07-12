@@ -132,8 +132,8 @@ export default function Settings() {
       await axios.post(`${API}/system/backup`);
       alert('Backup database snapshot created successfully!');
       fetchSystemStatus();
-    } catch (_) {
-      alert('Failed to trigger database backup.');
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to trigger database backup.');
     }
   };
 
@@ -152,7 +152,8 @@ export default function Settings() {
   };
 
   const handleExportDB = () => {
-    window.open(`${API}/system/db-export`, '_blank');
+    const token = localStorage.getItem('token') || '';
+    window.open(`${API}/system/db-export?token=${encodeURIComponent(token)}`, '_blank');
   };
 
   const userCategories = categories.filter(c => c.user_id !== null);
