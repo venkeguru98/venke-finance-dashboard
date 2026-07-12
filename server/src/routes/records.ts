@@ -1121,9 +1121,9 @@ router.post('/lic/:id/import', async (req: Request, res: Response) => {
   try {
     let count = 0;
     for (const tx of transactions) {
-      const dateObj = new Date(tx.date);
-      const month = dateObj.getMonth() + 1;
-      const year = dateObj.getFullYear();
+      const parts = tx.date.split('-');
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10);
       await execute(
         `INSERT INTO lic_premium_history (policy_id, month, year, amount_paid, paid_date, status, remarks) 
          VALUES (?, ?, ?, ?, ?, 'Paid', ?)`,
@@ -1143,9 +1143,9 @@ router.post('/gold/:id/import', async (req: Request, res: Response) => {
   try {
     let count = 0;
     for (const tx of transactions) {
-      const dateObj = new Date(tx.date);
-      const month = dateObj.getMonth() + 1;
-      const year = dateObj.getFullYear();
+      const parts = tx.date.split('-');
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10);
       await execute(
         `INSERT INTO digital_gold_transactions (gold_id, month, year, amount, remarks) 
          VALUES (?, ?, ?, ?, ?)`,
@@ -1165,9 +1165,9 @@ router.post('/chits/:id/import', async (req: Request, res: Response) => {
   try {
     let count = 0;
     for (const tx of transactions) {
-      const dateObj = new Date(tx.date);
-      const month = dateObj.getMonth() + 1;
-      const year = dateObj.getFullYear();
+      const parts = tx.date.split('-');
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10);
       
       const existing = await get(
         `SELECT id FROM chit_payments WHERE chit_id = ? AND month = ? AND year = ?`,

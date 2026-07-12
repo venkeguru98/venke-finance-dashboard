@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import { X, Upload, Download, CheckCircle, AlertTriangle } from 'lucide-react';
 import Button from '../ui/Button';
+import { parseCsvDate } from '../../utils/date';
 
 
 interface CsvImportModalProps {
@@ -100,10 +101,10 @@ export default function CsvImportModal({ isOpen, onClose, onSuccess, importUrl, 
       let error = '';
 
       // 1. Validate Date
-      const dateParsed = new Date(dateStr);
-      if (!dateStr || isNaN(dateParsed.getTime())) {
+      const parsedDate = parseCsvDate(dateStr);
+      if (!parsedDate) {
         isValid = false;
-        error = 'Invalid date format (use YYYY-MM-DD).';
+        error = 'Invalid date format (supported: DD/MM/YYYY, YYYY-MM-DD).';
       }
 
       // 2. Validate Description
@@ -143,7 +144,7 @@ export default function CsvImportModal({ isOpen, onClose, onSuccess, importUrl, 
 
       rows.push({
         rowNum,
-        date: dateStr,
+        date: parsedDate || dateStr,
         description: descStr,
         amount,
         type,
