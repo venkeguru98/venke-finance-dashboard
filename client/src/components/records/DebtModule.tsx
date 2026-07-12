@@ -782,37 +782,44 @@ export default function DebtModule({ onBack }: DebtModuleProps) {
               {editingSettlement ? 'Edit Settlement' : editingTx ? 'Edit Debt Record' : 'Log New Record'}
             </h3>
 
-            <div className="grid grid-cols-3 gap-2 p-1 bg-slate-900 border border-slate-850 rounded-xl">
-              <button
-                type="button"
-                disabled={!!editingTx || !!editingSettlement}
-                onClick={() => setTxForm(f => ({ ...f, type: 'Borrowed' }))}
-                className={`py-2 text-[10px] font-black uppercase tracking-wider rounded-lg transition-colors ${
-                  txForm.type === 'Borrowed' ? 'bg-red-500/20 text-red-400 border border-red-500/10' : 'text-slate-400 hover:text-white'
-                } disabled:opacity-50`}
-              >
-                Borrowed
-              </button>
-              <button
-                type="button"
-                disabled={!!editingTx || !!editingSettlement}
-                onClick={() => setTxForm(f => ({ ...f, type: 'Lent' }))}
-                className={`py-2 text-[10px] font-black uppercase tracking-wider rounded-lg transition-colors ${
-                  txForm.type === 'Lent' ? 'bg-green-500/20 text-green-400 border border-green-500/10' : 'text-slate-400 hover:text-white'
-                } disabled:opacity-50`}
-              >
-                Lent
-              </button>
-              <button
-                type="button"
-                disabled={!!editingTx || !!editingSettlement}
-                onClick={() => setTxForm(f => ({ ...f, type: 'Settlement' }))}
-                className={`py-2 text-[10px] font-black uppercase tracking-wider rounded-lg transition-colors ${
-                  txForm.type === 'Settlement' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/10' : 'text-slate-400 hover:text-white'
-                } disabled:opacity-50`}
-              >
-                Settlement
-              </button>
+            <div className="space-y-1.5">
+              <div className="grid grid-cols-3 gap-2 p-1 bg-slate-900 border border-slate-850 rounded-xl">
+                <button
+                  type="button"
+                  disabled={!!editingTx || !!editingSettlement}
+                  onClick={() => setTxForm(f => ({ ...f, type: 'Borrowed' }))}
+                  className={`py-2 text-[10px] font-black uppercase tracking-wider rounded-lg transition-colors ${
+                    txForm.type === 'Borrowed' ? 'bg-red-500/20 text-red-400 border border-red-500/10' : 'text-slate-400 hover:text-white'
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                  Borrowed
+                </button>
+                <button
+                  type="button"
+                  disabled={!!editingTx || !!editingSettlement}
+                  onClick={() => setTxForm(f => ({ ...f, type: 'Lent' }))}
+                  className={`py-2 text-[10px] font-black uppercase tracking-wider rounded-lg transition-colors ${
+                    txForm.type === 'Lent' ? 'bg-green-500/20 text-green-400 border border-green-500/10' : 'text-slate-400 hover:text-white'
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                  Lent
+                </button>
+                <button
+                  type="button"
+                  disabled={!!editingTx || !!editingSettlement}
+                  onClick={() => setTxForm(f => ({ ...f, type: 'Settlement' }))}
+                  className={`py-2 text-[10px] font-black uppercase tracking-wider rounded-lg transition-colors ${
+                    txForm.type === 'Settlement' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/10' : 'text-slate-400 hover:text-white'
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                  Settlement
+                </button>
+              </div>
+              {(editingTx || editingSettlement) && (
+                <p className="text-[9px] text-slate-500 text-center font-semibold mt-1">
+                  Transaction type cannot be changed after creation.
+                </p>
+              )}
             </div>
 
             {txForm.type === 'Settlement' && (
