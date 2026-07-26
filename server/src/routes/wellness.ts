@@ -123,12 +123,14 @@ router.get('/dashboard', async (req: Request, res: Response) => {
     let carbsTotal = 0;
     let fatTotal = 0;
 
-    meals.forEach(m => {
+    for (const m of meals) {
+      const items = await query(`SELECT * FROM wellness_meal_items WHERE meal_id = ?`, [m.id]);
+      m.items = items;
       caloriesConsumed += Number(m.total_calories || 0);
       proteinTotal += Number(m.protein_g || 0);
       carbsTotal += Number(m.carbs_g || 0);
       fatTotal += Number(m.fat_g || 0);
-    });
+    }
 
     const exercises = await query(
       `SELECT * FROM wellness_exercise WHERE user_id = ? AND CAST(date AS TEXT) = ?`,
@@ -545,6 +547,46 @@ router.get('/analytics', async (req: Request, res: Response) => {
       totalExercisesLogged: exercises.length,
       recentDailyTotals: Object.entries(dateMap).map(([d, c]) => ({ date: d, calories: c }))
     });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete Meal
+router.delete('/meals/:id', async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const mealId = req.params.id;
+
+  try {
+    await execute(`DELETE FROM wellness_meal_items WHERE meal_id = ?`, [mealId]);
+    await execute(`DELETE FROM wellness_meals WHERE id = ? AND user_id = ?`, [mealId, userId]);
+    res.json({ message: 'Meal deleted' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete Exercise
+router.delete('/exercise/:id', async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const exId = req.params.id;
+
+  try {
+    await execute(`DELETE FROM wellness_exercise WHERE id = ? AND user_id = ?`, [exId, userId]);
+    res.json({ message: 'Exercise deleted' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete Water Log
+router.delete('/water/:id', async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const wId = req.params.id;
+
+  try {
+    await execute(`DELETE FROM wellness_water_logs WHERE id = ? AND user_id = ?`, [wId, userId]);
+    res.json({ message: 'Water log deleted' });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
