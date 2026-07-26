@@ -677,4 +677,276 @@ router.delete('/events/:id', async (req: Request, res: Response) => {
   }
 });
 
+// ==========================================
+// 8. UNIFIED COMMAND CENTER ACTIVITIES API
+// ==========================================
+router.get('/activities', async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const { month, date, type, search } = req.query;
+
+  try {
+    const activities: any[] = [];
+
+    // 1. Fetch Tasks
+    let taskSql = `SELECT * FROM personal_tasks WHERE user_id = ?`;
+    const taskParams: any[] = [userId];
+    if (month) {
+      taskSql += ` AND date LIKE ?`;
+      taskParams.push(`${month}%`);
+    } else if (date) {
+      taskSql += ` AND date = ?`;
+      taskParams.push(date);
+    }
+    const tasks = await query(taskSql, taskParams);
+    tasks.forEach(t => {
+      activities.push({
+        id: `task-${t.id}`,
+        original_id: t.id,
+        activity_type: t.category === 'Meetings' ? 'event' : 'task',
+        title: t.title,
+        description: t.description,
+        date: t.date,
+        start_time: t.start_time || '09:00',
+        end_time: t.end_time || '10:00',
+        category: t.category || 'Personal',
+        priority: t.priority || 'medium',
+        status: t.status || 'pending',
+        notes: t.notes || '',
+        source_table: 'personal_tasks',
+        color: t.category === 'Meetings' ? 'cyan' : (t.priority === 'high' || t.priority === 'critical' ? 'magenta' : 'peach')
+      });
+    });
+
+    // 2. Fetch Events
+    let evSql = `SELECT * FROM personal_events WHERE user_id = ?`;
+    const evParams: any[] = [userId];
+    if (month) {
+      evSql += ` AND event_date LIKE ?`;
+      evParams.push(`${month}%`);
+    } else if (date) {
+      evSql += ` AND event_date = ?`;
+      evParams.push(date);
+    }
+    const events = await query(evSql, evParams);
+    events.forEach(e => {
+      activities.push({
+        id: `event-${e.id}`,
+        original_id: e.id,
+        activity_type: 'event',
+        title: e.title,
+        description: e.description,
+        date: e.event_date,
+        start_time: e.start_time || '10:00',
+        end_time: e.end_time || '11:00',
+        category: e.category || 'Personal',
+        priority: 'medium',
+        status: 'pending',
+        source_table: 'personal_events',
+        color: 'purple'
+      });
+    });
+
+    // 3. Fetch Habits
+    const habits = await query(`SELECT * FROM personal_habits WHERE user_id = ?`, [userId]);
+    const todayStr = formatDateStr(new Date());
+    for (const h of habits) {
+      const completions = await query(`SELECT completed_date FROM habit_completions WHERE habit_id = ?`, [h.id]);
+      const compDates = completions.map(c => c.completed_date);
+      activities.push({
+        id: `habit-${h.id}`,
+        original_id: h.id,
+        activity_type: 'habit',
+        title: h.name,
+        description: h.description,
+        date: todayStr,
+        start_time: '08:00',
+        end_time: '08:30',
+        category: h.category || 'Health',
+        priority: 'medium',
+        status: compDates.includes(todayStr) ? 'completed' : 'pending',
+        streak: h.streak || 0,
+        source_table: 'personal_habits',
+        color: 'cyan'
+      });
+    }
+
+    // 4. Fetch Reminders
+    let remSql = `SELECT * FROM personal_reminders WHERE user_id = ?`;
+    const remParams: any[] = [userId];
+    if (month) {
+      remSql += ` AND reminder_date LIKE ?`;
+      remParams.push(`${month}%`);
+    } else if (date) {
+      remSql += ` AND reminder_date = ?`;
+      remParams.push(date);
+    }
+    const reminders = await query(remSql, remParams);
+    reminders.forEach(r => {
+      activities.push({
+        id: `reminder-${r.id}`,
+        original_id: r.id,
+        activity_type: 'reminder',
+        title: r.title,
+        description: r.description,
+        date: r.reminder_date,
+        start_time: r.reminder_time || '09:00',
+        end_time: '09:15',
+        category: 'Important',
+        priority: 'high',
+        status: 'pending',
+        source_table: 'personal_reminders',
+        color: 'magenta'
+      });
+    });
+
+    // Filter by type if provided
+    let resultActivities = activities;
+    if (type && type !== 'all') {
+      resultActivities = resultActivities.filter(a => a.activity_type === type);
+    }
+
+    // Filter by search string if provided
+    if (search && typeof search === 'string' && search.trim()) {
+      const q = search.toLowerCase();
+      resultActivities = resultActivities.filter(a => 
+        (a.title || '').toLowerCase().includes(q) || 
+        (a.description || '').toLowerCase().includes(q) ||
+        (a.category || '').toLowerCase().includes(q)
+      );
+    }
+
+    res.json(resultActivities);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Universal Activity Creation Endpoint
+router.post('/activities', async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const { 
+    activity_type, title, description, date, start_time, end_time, 
+    category, priority, repeat_frequency, notes 
+  } = req.body;
+
+  if (!title || !date) return res.status(400).json({ error: 'Title and date required.' });
+
+  try {
+    if (activity_type === 'event' || activity_type === 'personal') {
+      const result = await execute(
+        `INSERT INTO personal_events (user_id, title, description, event_date, start_time, end_time, category, color)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [userId, title, description || '', date, start_time || '10:00', end_time || '11:00', category || 'Personal', '#14b8a6']
+      );
+      return res.status(201).json({ id: result.lastID, message: 'Event created' });
+    } else if (activity_type === 'habit') {
+      const result = await execute(
+        `INSERT INTO personal_habits (user_id, name, description, category, frequency, color, start_date)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [userId, title, description || '', category || 'Health', repeat_frequency || 'daily', '#14b8a6', date]
+      );
+      return res.status(201).json({ id: result.lastID, message: 'Habit created' });
+    } else if (activity_type === 'reminder') {
+      const result = await execute(
+        `INSERT INTO personal_reminders (user_id, title, description, reminder_date, reminder_time, repeat_frequency)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [userId, title, description || '', date, start_time || '09:00', repeat_frequency || 'none']
+      );
+      return res.status(201).json({ id: result.lastID, message: 'Reminder created' });
+    } else {
+      // Default: TASK, DEADLINE, MILESTONE
+      const result = await execute(
+        `INSERT INTO personal_tasks (user_id, title, description, date, start_time, end_time, priority, category, notes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [userId, title, description || '', date, start_time || '09:00', end_time || '10:00', priority || 'medium', category || 'Personal', notes || '']
+      );
+      return res.status(201).json({ id: result.lastID, message: 'Task created' });
+    }
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update Activity Status or Date/Time
+router.patch('/activities/:type/:id', async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const { type, id } = req.params;
+  const { status, date, start_time, end_time } = req.body;
+
+  try {
+    if (type === 'personal_tasks' || type === 'task') {
+      if (status !== undefined) {
+        await execute(`UPDATE personal_tasks SET status = ? WHERE id = ? AND user_id = ?`, [status, id, userId]);
+      }
+      if (date) {
+        await execute(`UPDATE personal_tasks SET date = ? WHERE id = ? AND user_id = ?`, [date, id, userId]);
+      }
+      if (start_time) {
+        await execute(`UPDATE personal_tasks SET start_time = ?, end_time = ? WHERE id = ? AND user_id = ?`, [start_time, end_time || null, id, userId]);
+      }
+    } else if (type === 'personal_events' || type === 'event') {
+      if (date) {
+        await execute(`UPDATE personal_events SET event_date = ? WHERE id = ? AND user_id = ?`, [date, id, userId]);
+      }
+      if (start_time) {
+        await execute(`UPDATE personal_events SET start_time = ?, end_time = ? WHERE id = ? AND user_id = ?`, [start_time, end_time || null, id, userId]);
+      }
+    } else if (type === 'personal_habits' || type === 'habit') {
+      const todayStr = formatDateStr(new Date());
+      const existing = await get(`SELECT id FROM habit_completions WHERE user_id = ? AND habit_id = ? AND completed_date = ?`, [userId, id, todayStr]);
+      if (existing) {
+        await execute(`DELETE FROM habit_completions WHERE id = ?`, [existing.id]);
+      } else {
+        await execute(`INSERT INTO habit_completions (user_id, habit_id, completed_date) VALUES (?, ?, ?)`, [userId, id, todayStr]);
+      }
+    } else if (type === 'personal_reminders' || type === 'reminder') {
+      if (date) {
+        await execute(`UPDATE personal_reminders SET reminder_date = ? WHERE id = ? AND user_id = ?`, [date, id, userId]);
+      }
+    }
+    res.json({ message: 'Activity updated' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete Activity
+router.delete('/activities/:type/:id', async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const { type, id } = req.params;
+
+  try {
+    if (type === 'personal_tasks' || type === 'task') {
+      await execute(`DELETE FROM personal_tasks WHERE id = ? AND user_id = ?`, [id, userId]);
+    } else if (type === 'personal_events' || type === 'event') {
+      await execute(`DELETE FROM personal_events WHERE id = ? AND user_id = ?`, [id, userId]);
+    } else if (type === 'personal_habits' || type === 'habit') {
+      await execute(`DELETE FROM personal_habits WHERE id = ? AND user_id = ?`, [id, userId]);
+      await execute(`DELETE FROM habit_completions WHERE habit_id = ? AND user_id = ?`, [id, userId]);
+    } else if (type === 'personal_reminders' || type === 'reminder') {
+      await execute(`DELETE FROM personal_reminders WHERE id = ? AND user_id = ?`, [id, userId]);
+    }
+    res.json({ message: 'Activity deleted' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Reschedule All Overdue Items to Today
+router.post('/overdue/reschedule-all', async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const todayStr = formatDateStr(new Date());
+
+  try {
+    await execute(
+      `UPDATE personal_tasks SET date = ? WHERE user_id = ? AND date < ? AND status NOT IN ('completed', 'cancelled')`,
+      [todayStr, userId, todayStr]
+    );
+    res.json({ message: 'All overdue items rescheduled to today' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;
+
