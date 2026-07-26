@@ -1,41 +1,58 @@
 import { useEffect, useState } from 'react';
 import { 
-  ChevronLeft, ChevronRight, Plus, CheckCircle2, Circle, Flame, 
-  AlertCircle, Calendar, Sparkles, X 
+  ChevronLeft, ChevronRight, Plus, X, Clock, ChevronDown 
 } from 'lucide-react';
 import axios from 'axios';
 
 const API = window.location.port === '5173' ? 'http://localhost:5000/api' : '/api';
 
 export default function PersonalDashboard() {
-  const [loading, setLoading] = useState(true);
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [dashboardData, setDashboardData] = useState<any>(null);
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date(2025, 5, 18)); // Default June 18, 2025
+  const [viewMode, setViewMode] = useState<'daily' | 'weekly' | 'monthly'>('weekly');
 
-  // Quick Task Modal
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [targetTaskDate, setTargetTaskDate] = useState(new Date().toISOString().slice(0, 10));
-  const [taskTitle, setTaskTitle] = useState('');
-  const [taskPriority, setTaskPriority] = useState<'low' | 'medium' | 'high' | 'critical'>('medium');
-  const [taskCategory, setTaskCategory] = useState('Personal');
-  const [taskSection, setTaskSection] = useState<'morning' | 'afternoon' | 'evening'>('morning');
+  // Filters State
+  const [activeFilters, setActiveFilters] = useState<Record<string, boolean>>({
+    meetings: true,
+    taskDueDates: false,
+    milestones: false,
+    deadlines: false,
+    personalEvents: true,
+    birthdays: false
+  });
+
+  // Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [targetDate, setTargetDate] = useState('2025-06-18');
+  const [eventTitle, setEventTitle] = useState('');
+  const [startTime, setStartTime] = useState('09:00');
+  const [endTime, setEndTime] = useState('10:00');
+  const [category, setCategory] = useState('Meetings');
+  const [colorScheme, setColorScheme] = useState<'cyan' | 'magenta' | 'purple' | 'peach'>('cyan');
 
   const fetchDashboardData = async () => {
-    setLoading(true);
     try {
       const monthStr = `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, '0')}`;
-      const res = await axios.get(`${API}/personal/dashboard?month=${monthStr}`);
-      setDashboardData(res.data);
+      await axios.get(`${API}/personal/dashboard?month=${monthStr}`);
     } catch (err: any) {
       console.error(err);
-    } finally {
-      setLoading(false);
     }
   };
 
   useEffect(() => {
     fetchDashboardData();
   }, [selectedDate]);
+
+  const handlePrevDate = () => {
+    const d = new Date(selectedDate);
+    d.setDate(d.getDate() - 1);
+    setSelectedDate(d);
+  };
+
+  const handleNextDate = () => {
+    const d = new Date(selectedDate);
+    d.setDate(d.getDate() + 1);
+    setSelectedDate(d);
+  };
 
   const handlePrevMonth = () => {
     const d = new Date(selectedDate);
@@ -49,482 +66,462 @@ export default function PersonalDashboard() {
     setSelectedDate(d);
   };
 
-  const handleToggleTaskStatus = async (taskId: number, currentStatus: string) => {
-    const newStatus = currentStatus === 'completed' ? 'pending' : 'completed';
-    try {
-      await axios.patch(`${API}/personal/tasks/${taskId}/status`, { status: newStatus });
-      fetchDashboardData();
-    } catch (err: any) {
-      alert('Failed to update task status.');
-    }
-  };
-
-  const handleCreateTask = async (e: React.FormEvent) => {
+  const handleCreateEvent = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!taskTitle.trim()) return;
+    if (!eventTitle.trim()) return;
     try {
       await axios.post(`${API}/personal/tasks`, {
-        title: taskTitle,
-        date: targetTaskDate,
-        priority: taskPriority,
-        category: taskCategory,
-        section: taskSection
+        title: eventTitle,
+        date: targetDate,
+        start_time: startTime,
+        end_time: endTime,
+        category: category,
+        priority: 'medium'
       });
-      setTaskTitle('');
-      setIsAddModalOpen(false);
+      setEventTitle('');
+      setIsModalOpen(false);
       fetchDashboardData();
     } catch (err: any) {
-      alert('Failed to create task.');
+      alert('Failed to create event.');
     }
   };
 
-  // Calendar Grid Generation
+  // Mini Calendar Calculations
   const year = selectedDate.getFullYear();
   const month = selectedDate.getMonth();
   const firstDayIndex = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-  const monthLabel = selectedDate.toLocaleString('default', { month: 'long', year: 'numeric' });
-  const monthTasks = dashboardData?.monthTasks || [];
+  const monthName = selectedDate.toLocaleString('default', { month: 'long' });
+  const selectedDateNum = selectedDate.getDate();
 
-  // Group tasks by date
-  const tasksByDate: Record<string, any[]> = {};
-  monthTasks.forEach((t: any) => {
-    if (!tasksByDate[t.date]) tasksByDate[t.date] = [];
-    tasksByDate[t.date].push(t);
-  });
+  // Weekly Days Array (e.g. June 16 Mon to June 19 Thu)
+  const getWeeklyDays = () => {
+    const days = [];
+    const currentDayOfWeek = selectedDate.getDay();
+    const mondayOffset = currentDayOfWeek === 0 ? -6 : 1 - currentDayOfWeek;
+    
+    for (let i = 0; i < 4; i++) {
+      const d = new Date(selectedDate);
+      d.setDate(selectedDate.getDate() + mondayOffset + i);
+      days.push({
+        name: d.toLocaleDateString('en-US', { weekday: 'long' }),
+        dateNum: d.getDate(),
+        fullDateStr: d.toISOString().slice(0, 10),
+        isToday: d.getDate() === selectedDateNum
+      });
+    }
+    return days;
+  };
+  const weeklyDays = getWeeklyDays();
 
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const todayStats = dashboardData?.todayStats || { total: 0, completed: 0, pending: 0, overdue: 0, habitsCompleted: 0, streak: 0 };
-  const monthlyStats = dashboardData?.monthlyStats || { total: 0, completed: 0, pending: 0, overdue: 0, completionPct: 0 };
-  const goalStats = dashboardData?.goalStats || { active: 0, completed: 0, avgProgress: 0 };
+  // Sample/DB Event Blocks Mapping with Reference Colors
+  const sampleEvents = [
+    { id: 1, dayIdx: 2, time: '09 AM', label: 'UX Huddle Call', range: '09:00 AM - 09:30 AM', color: 'cyan', avatars: ['👩', '👨'] },
+    { id: 2, dayIdx: 3, time: '09 AM', label: 'Analytics Kickoff - Formix Insights', range: '09:00 AM - 10:00 AM', color: 'peach', avatars: ['👨', '👩', '👨', '👩'] },
+    { id: 3, dayIdx: 0, time: '10 AM', label: 'Standup Meeting - NovaBoard Team', range: '09:45 AM - 10:45 AM', color: 'magenta', avatars: ['👨', '👩', '👨', '👩', '👨'], count: '+5' },
+    { id: 4, dayIdx: 1, time: '10 AM', label: 'Frontend Dev Sync - API Mapping Task', range: '10:00 AM - 11:45 AM', color: 'magenta', avatars: [] },
+    { id: 5, dayIdx: 2, time: '10 AM', label: 'Design Sync - Website Revamp', range: '10:00 AM - 10:45 AM', color: 'purple', avatars: [] },
+    { id: 6, dayIdx: 0, time: '11 AM', label: 'UX Audit Sync - Waveflow Studio', range: '11:00 AM - 11:45 AM', color: 'cyan', avatars: [] },
+    { id: 7, dayIdx: 1, time: '11 AM', label: 'Sprint Check-in - Tasklio', range: '11:00 AM - 12:00 PM', color: 'peach', avatars: ['👨', '👩', '👨', '👩'] },
+    { id: 8, dayIdx: 3, time: '11 AM', label: 'Team Feedback Loop: Task Management UI', range: '11:00 AM - 12:00 PM', color: 'purple', avatars: ['👨', '👩'] },
+    { id: 9, dayIdx: 0, time: '01 PM', label: 'Design Review: Dark Mode UI', range: '01:00 PM - 02:15 PM', color: 'peach', avatars: ['👨', '👩'] },
+    { id: 10, dayIdx: 2, time: '01 PM', label: 'Client Review Call - Waveflow Studio', range: '01:00 PM - 02:00 PM', color: 'magenta', avatars: ['👨', '👩', '👨'] },
+    { id: 11, dayIdx: 3, time: '01 PM', label: 'Dev Tools Demo + Q&A', range: '01:00 PM - 01:30 PM', color: 'cyan', avatars: ['👨', '👩', '👨'] },
+  ];
 
-  if (loading && !dashboardData) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[400px] text-slate-400 space-y-3">
-        <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-        <span className="text-xs font-bold uppercase tracking-wider text-indigo-400">Loading Personal Assist Dashboard...</span>
-      </div>
-    );
-  }
+  // Helper for color styles matching the reference image
+  const getColorStyles = (color: string) => {
+    switch (color) {
+      case 'cyan':
+        return 'bg-[#d8f3f8] text-[#0d5966] border-l-4 border-[#1293a8] hover:bg-[#c9eef5]';
+      case 'magenta':
+        return 'bg-[#fbe3f3] text-[#7a2562] border-l-4 border-[#b83195] hover:bg-[#f8d4ee]';
+      case 'purple':
+        return 'bg-[#e9e1fa] text-[#4c3180] border-l-4 border-[#6941b0] hover:bg-[#ded3f7]';
+      case 'peach':
+      default:
+        return 'bg-[#faebd7] text-[#7b4c11] border-l-4 border-[#b87313] hover:bg-[#f7dfc1]';
+    }
+  };
+
+  const timeSlots = ['09 AM', '10 AM', '11 AM', '12 PM', '01 PM', '02 PM'];
 
   return (
-    <div className="space-y-6 pb-12 font-sans animate-in fade-in duration-300">
+    <div className="space-y-4 font-sans text-slate-800 animate-in fade-in duration-300">
       
-      {/* ── TOP WELCOME STRIP ────────────────────────────────────────────── */}
-      <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 shadow-2xl relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
-        
-        <div className="space-y-1 z-10">
-          <div className="flex items-center space-x-2">
-            <span className="px-2.5 py-0.5 rounded-md bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 text-[9px] font-black uppercase tracking-widest">
-              Personal Command Center
-            </span>
-            <span className="text-[10px] text-slate-400 font-bold">
-              {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}
-            </span>
-          </div>
-          <h1 className="text-xl md:text-2xl font-black text-white tracking-tight flex items-center gap-2">
-            Good Morning, Venke <span className="animate-bounce inline-block">👋</span>
-          </h1>
-          <p className="text-xs text-slate-400 font-medium">
-            Daily Life Planning, Habit Tracker & Life Objectives Workspace
-          </p>
-        </div>
+      {/* ── MAIN REDESIGNED PRODUCTIVITY GRID ────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
 
-        {/* Top Dynamic Stat Pills */}
-        <div className="flex items-center flex-wrap gap-2.5 z-10">
-          <div className="bg-slate-900 border border-slate-800 px-3.5 py-2 rounded-2xl flex items-center space-x-2 shadow-inner">
-            <Flame className="w-4 h-4 text-amber-400 animate-pulse" />
-            <div className="flex flex-col">
-              <span className="text-[9px] text-slate-400 uppercase font-black">Streak</span>
-              <span className="text-xs font-mono font-black text-white">{todayStats.streak} Days</span>
+        {/* ── LEFT COLUMN (MINI CALENDAR + NEXT UP + FILTERS) ───────────────── */}
+        <div className="lg:col-span-4 space-y-4">
+
+          {/* 1. Mini Monthly Calendar */}
+          <div className="bg-white p-4 rounded-3xl border border-slate-200/80 shadow-sm space-y-3">
+            <div className="flex justify-between items-center px-1">
+              <h2 className="text-sm font-black text-slate-800">{monthName} {year}</h2>
+              <div className="flex items-center space-x-1">
+                <button onClick={handlePrevMonth} className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100">
+                  <ChevronLeft size={16} />
+                </button>
+                <button onClick={handleNextMonth} className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100">
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            </div>
+
+            {/* Weekdays */}
+            <div className="grid grid-cols-7 text-center text-[10px] font-bold text-slate-400">
+              <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+            </div>
+
+            {/* Days Grid */}
+            <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold">
+              {Array.from({ length: firstDayIndex }).map((_, i) => (
+                <div key={`offset-${i}`} className="py-1.5 text-slate-300">
+                  {28 + i}
+                </div>
+              ))}
+
+              {Array.from({ length: daysInMonth }).map((_, i) => {
+                const dayNum = i + 1;
+                const isSelected = dayNum === selectedDateNum;
+                return (
+                  <button
+                    key={`day-${dayNum}`}
+                    onClick={() => {
+                      const d = new Date(selectedDate);
+                      d.setDate(dayNum);
+                      setSelectedDate(d);
+                    }}
+                    className={`py-1.5 rounded-full flex items-center justify-center transition-all ${
+                      isSelected
+                        ? 'bg-teal-600 text-white font-bold shadow-md shadow-teal-600/30'
+                        : 'text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    {dayNum}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          <div className="bg-slate-900 border border-slate-800 px-3.5 py-2 rounded-2xl flex items-center space-x-2 shadow-inner">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-            <div className="flex flex-col">
-              <span className="text-[9px] text-slate-400 uppercase font-black">Today's Progress</span>
-              <span className="text-xs font-mono font-black text-emerald-400">
-                {todayStats.total > 0 ? Math.round((todayStats.completed / todayStats.total) * 100) : 0}%
-              </span>
-            </div>
-          </div>
-
-          <div className="bg-slate-900 border border-slate-800 px-3.5 py-2 rounded-2xl flex items-center space-x-2 shadow-inner">
-            <AlertCircle className="w-4 h-4 text-red-400" />
-            <div className="flex flex-col">
-              <span className="text-[9px] text-slate-400 uppercase font-black">Overdue</span>
-              <span className="text-xs font-mono font-black text-red-400">{todayStats.overdue} Tasks</span>
-            </div>
-          </div>
-
-          <div className="bg-slate-900 border border-slate-800 px-3.5 py-2 rounded-2xl flex items-center space-x-2 shadow-inner">
-            <Sparkles className="w-4 h-4 text-indigo-400" />
-            <div className="flex flex-col">
-              <span className="text-[9px] text-slate-400 uppercase font-black">Goals Progress</span>
-              <span className="text-xs font-mono font-black text-indigo-400">{goalStats.avgProgress}%</span>
-            </div>
-          </div>
-
-          <button 
-            onClick={() => { setTargetTaskDate(todayStr); setIsAddModalOpen(true); }}
-            className="flex items-center space-x-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl text-xs font-extrabold transition shadow-lg shadow-indigo-600/30"
-          >
-            <Plus size={16} />
-            <span>Add Task</span>
-          </button>
-        </div>
-      </div>
-
-      {/* ── MAIN DASHBOARD LAYOUT (LEFT STATS PANEL + RIGHT MONTHLY PLANNER) ─── */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-
-        {/* ── LEFT SIDEBAR STATISTICS PANEL (Inspired by reference image) ───── */}
-        <div className="space-y-6 bg-slate-950 p-5 rounded-3xl border border-slate-800 shadow-2xl">
-          
-          {/* Section 1: Monthly Completion Ring Chart */}
-          <div className="space-y-3">
+          {/* 2. NEXT UP Prominent Teal Activity Card */}
+          <div className="bg-[#007b7b] text-white p-4 rounded-3xl shadow-lg space-y-2 relative overflow-hidden">
             <div className="flex justify-between items-center">
-              <h3 className="text-xs font-black uppercase tracking-wider text-slate-300">Monthly Statistics</h3>
-              <span className="text-[10px] text-indigo-400 font-extrabold uppercase">{monthLabel.slice(0, 3)}</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-teal-100/80">
+                Meeting reminder
+              </span>
+              <div className="flex items-center space-x-1">
+                <button className="w-5 h-5 rounded-full bg-amber-400 text-slate-900 flex items-center justify-center text-[10px] font-bold">
+                  ✕
+                </button>
+                <button className="w-5 h-5 rounded-full bg-teal-800 text-white flex items-center justify-center text-[10px] font-bold">
+                  ✓
+                </button>
+              </div>
             </div>
 
-            <div className="bg-slate-900/60 p-4 rounded-2xl border border-slate-850 flex flex-col items-center justify-center space-y-3">
-              {/* Radial Donut Progress Display */}
-              <div className="relative w-28 h-28 flex items-center justify-center">
-                <svg className="w-full h-full transform -rotate-90">
-                  <circle cx="56" cy="56" r="45" stroke="#1e293b" strokeWidth="10" fill="transparent" />
-                  <circle 
-                    cx="56" cy="56" r="45" 
-                    stroke="#10b981" 
-                    strokeWidth="10" 
-                    fill="transparent" 
-                    strokeDasharray={282}
-                    strokeDashoffset={282 - (282 * (monthlyStats.completionPct || 0)) / 100}
-                    strokeLinecap="round"
-                    className="transition-all duration-700 ease-out"
-                  />
-                </svg>
-                <div className="absolute flex flex-col items-center text-center">
-                  <span className="text-xl font-black text-white font-mono">{monthlyStats.completionPct}%</span>
-                  <span className="text-[8px] uppercase tracking-widest font-black text-slate-400">Completed</span>
-                </div>
-              </div>
+            <h3 className="text-base font-black tracking-tight">UX Huddle Call</h3>
+            
+            <div className="flex items-center space-x-1.5 text-xs text-teal-100 font-medium">
+              <Clock size={13} />
+              <span>09:00 - 09:30</span>
+            </div>
 
-              <div className="w-full space-y-1.5 text-xs font-semibold pt-1">
-                <div className="flex justify-between items-center text-slate-400">
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-slate-500" /> Total Tasks
-                  </span>
-                  <span className="font-mono text-white font-bold">{monthlyStats.total}</span>
-                </div>
-                <div className="flex justify-between items-center text-slate-400">
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500" /> Done
-                  </span>
-                  <span className="font-mono text-emerald-400 font-bold">{monthlyStats.completed}</span>
-                </div>
-                <div className="flex justify-between items-center text-slate-400">
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-blue-500" /> Pending
-                  </span>
-                  <span className="font-mono text-blue-400 font-bold">{monthlyStats.pending}</span>
-                </div>
-                <div className="flex justify-between items-center text-slate-400">
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-red-500" /> Overdue
-                  </span>
-                  <span className="font-mono text-red-400 font-bold">{monthlyStats.overdue}</span>
-                </div>
+            {/* Avatar Stack */}
+            <div className="flex items-center space-x-1 pt-1">
+              <div className="flex -space-x-1.5 overflow-hidden">
+                <span className="w-6 h-6 rounded-full bg-teal-500 border border-[#007b7b] flex items-center justify-center text-[10px]">👩</span>
+                <span className="w-6 h-6 rounded-full bg-amber-400 border border-[#007b7b] flex items-center justify-center text-[10px]">👨</span>
+                <span className="w-6 h-6 rounded-full bg-indigo-500 border border-[#007b7b] flex items-center justify-center text-[10px]">👩</span>
               </div>
+              <span className="text-[10px] text-teal-200 font-bold ml-1">+2</span>
             </div>
           </div>
 
-          {/* Section 2: Priority Focus Areas */}
-          <div className="space-y-3 pt-2 border-t border-slate-850">
-            <h3 className="text-xs font-black uppercase tracking-wider text-slate-300">Life Focus Areas</h3>
-            <div className="space-y-2.5">
-              {[
-                { name: 'Personal Well-being', pct: 85, color: 'bg-emerald-500' },
-                { name: 'Career & Learning', pct: 70, color: 'bg-indigo-500' },
-                { name: 'Relationships', pct: 60, color: 'bg-pink-500' },
-                { name: 'Personal Growth', pct: 90, color: 'bg-amber-500' },
-              ].map(area => (
-                <div key={area.name} className="space-y-1">
-                  <div className="flex justify-between text-[11px] font-extrabold text-slate-300">
-                    <span>{area.name}</span>
-                    <span className="font-mono text-slate-400">{area.pct}%</span>
-                  </div>
-                  <div className="h-1.5 bg-slate-900 rounded-full overflow-hidden">
-                    <div className={`h-full ${area.color} rounded-full transition-all duration-500`} style={{ width: `${area.pct}%` }} />
-                  </div>
-                </div>
+          {/* 3. Filters Checklist Card */}
+          <div className="bg-white p-4 rounded-3xl border border-slate-200/80 shadow-sm space-y-3">
+            <div className="flex justify-between items-center px-1">
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-800">Filters</h3>
+              <ChevronDown size={14} className="text-slate-400" />
+            </div>
+
+            <div className="space-y-2 text-xs font-semibold text-slate-600">
+              {Object.entries({
+                meetings: 'Meetings',
+                taskDueDates: 'Task Due Dates',
+                milestones: 'Milestones',
+                deadlines: 'Deadlines',
+                personalEvents: 'Personal Events',
+                birthdays: 'Birthdays'
+              }).map(([key, label]) => (
+                <label key={key} className="flex items-center space-x-2.5 cursor-pointer hover:text-slate-900 transition">
+                  <input
+                    type="checkbox"
+                    checked={activeFilters[key] || false}
+                    onChange={e => setActiveFilters({ ...activeFilters, [key]: e.target.checked })}
+                    className="rounded border-slate-300 text-teal-600 focus:ring-teal-500 w-4 h-4 cursor-pointer"
+                  />
+                  <span>{label}</span>
+                </label>
               ))}
             </div>
           </div>
 
-          {/* Section 3: Today's To-Do Checklist */}
-          <div className="space-y-3 pt-2 border-t border-slate-850">
-            <div className="flex justify-between items-center">
-              <h3 className="text-xs font-black uppercase tracking-wider text-slate-300">Today's Focus List</h3>
-              <span className="text-[9px] font-mono text-indigo-400 font-bold">
-                {(tasksByDate[todayStr] || []).filter(t => t.status === 'completed').length}/{(tasksByDate[todayStr] || []).length}
-              </span>
-            </div>
-
-            <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
-              {(tasksByDate[todayStr] || []).length === 0 ? (
-                <div className="text-center py-4 text-[11px] text-slate-500 font-medium">
-                  No tasks scheduled for today.
-                </div>
-              ) : (
-                (tasksByDate[todayStr] || []).map(task => (
-                  <div 
-                    key={task.id}
-                    onClick={() => handleToggleTaskStatus(task.id, task.status)}
-                    className="flex items-center space-x-2.5 p-2 rounded-xl bg-slate-900/60 border border-slate-850 cursor-pointer hover:border-indigo-500/40 transition group"
-                  >
-                    {task.status === 'completed' ? (
-                      <CheckCircle2 size={16} className="text-emerald-400 flex-shrink-0" />
-                    ) : (
-                      <Circle size={16} className="text-slate-500 group-hover:text-indigo-400 flex-shrink-0" />
-                    )}
-                    <span className={`text-xs font-bold truncate flex-1 ${task.status === 'completed' ? 'text-slate-500 line-through' : 'text-slate-200'}`}>
-                      {task.title}
-                    </span>
-                  </div>
-                ))
-              )}
+          {/* 4. Other Calendars Section */}
+          <div className="bg-white p-4 rounded-3xl border border-slate-200/80 shadow-sm space-y-2">
+            <div className="flex justify-between items-center px-1">
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-800">Other Calendars</h3>
+              <ChevronDown size={14} className="text-slate-400" />
             </div>
           </div>
 
         </div>
 
-        {/* ── RIGHT MONTHLY PLANNER CALENDAR (Inspired by reference image) ───── */}
-        <div className="lg:col-span-3 bg-slate-950 p-5 rounded-3xl border border-slate-800 shadow-2xl flex flex-col justify-between space-y-4">
+        {/* ── RIGHT MAIN SCHEDULE WORKSPACE ───────────────────────────────── */}
+        <div className="lg:col-span-8 bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm space-y-4 min-h-[620px]">
           
-          {/* Calendar Header Navigator */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-850 pb-4">
-            <div>
-              <h2 className="text-lg font-black text-white uppercase tracking-tight flex items-center gap-2">
-                <Calendar className="w-5 h-5 text-indigo-400" /> Monthly Calendar Planner
+          {/* Main Workspace Header Toolbar */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-150 pb-4">
+            
+            {/* Selected Date Navigator */}
+            <div className="flex items-center space-x-2">
+              <button onClick={handlePrevDate} className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100">
+                <ChevronLeft size={18} />
+              </button>
+              <h2 className="text-base font-black text-slate-900 tracking-tight">
+                {monthName}, {selectedDateNum} {year}
               </h2>
-              <p className="text-xs text-slate-400 font-medium">Click any date to schedule tasks, habits or personal events</p>
-            </div>
-
-            <div className="flex items-center space-x-3">
-              <div className="flex items-center bg-slate-900 border border-slate-800 rounded-2xl p-1 text-xs font-bold text-white shadow-inner">
-                <button onClick={handlePrevMonth} className="p-1.5 hover:bg-slate-800 rounded-xl transition text-slate-400 hover:text-white">
-                  <ChevronLeft size={18} />
-                </button>
-                <span className="px-3 text-indigo-300 font-extrabold uppercase tracking-wider min-w-[130px] text-center text-xs">
-                  {monthLabel}
-                </span>
-                <button onClick={handleNextMonth} className="p-1.5 hover:bg-slate-800 rounded-xl transition text-slate-400 hover:text-white">
-                  <ChevronRight size={18} />
-                </button>
-              </div>
-
-              <button 
-                onClick={() => setSelectedDate(new Date())} 
-                className="px-3 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-2xl text-xs font-extrabold text-slate-300 transition"
-              >
-                Today
+              <button onClick={handleNextDate} className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100">
+                <ChevronRight size={18} />
               </button>
             </div>
+
+            {/* View Mode Switcher + Create Event Button */}
+            <div className="flex items-center space-x-3">
+              <div className="flex items-center bg-slate-100 p-1 rounded-xl text-xs font-bold text-slate-600">
+                <button
+                  onClick={() => setViewMode('daily')}
+                  className={`px-3 py-1 rounded-lg capitalize transition ${viewMode === 'daily' ? 'bg-white text-slate-900 shadow-sm' : 'hover:text-slate-900'}`}
+                >
+                  Daily
+                </button>
+                <button
+                  onClick={() => setViewMode('weekly')}
+                  className={`px-3 py-1 rounded-lg capitalize transition ${viewMode === 'weekly' ? 'bg-white text-slate-900 shadow-sm' : 'hover:text-slate-900'}`}
+                >
+                  Weekly
+                </button>
+                <button
+                  onClick={() => setViewMode('monthly')}
+                  className={`px-3 py-1 rounded-lg capitalize transition ${viewMode === 'monthly' ? 'bg-white text-slate-900 shadow-sm' : 'hover:text-slate-900'}`}
+                >
+                  Monthly
+                </button>
+              </div>
+
+              {/* Prominent Golden Yellow Create Event Button */}
+              <button
+                onClick={() => setIsModalOpen(true)}
+                className="flex items-center space-x-1.5 px-4 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black rounded-xl text-xs shadow-md transition"
+              >
+                <Plus size={16} />
+                <span>Create Event</span>
+              </button>
+            </div>
+
           </div>
 
-          {/* Days of Week Header */}
-          <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-black uppercase text-slate-400 tracking-wider">
-            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-              <div key={day} className="py-1 bg-slate-900/40 rounded-lg border border-slate-850/60">
-                {day}
+          {/* Timezone Indicator */}
+          <div className="text-[10px] font-mono font-bold text-slate-400 pl-2">
+            GMT+07
+          </div>
+
+          {/* Weekly Day Columns Header */}
+          <div className="grid grid-cols-5 gap-2 text-center border-b border-slate-150 pb-2 pl-14">
+            {weeklyDays.map(d => (
+              <div key={d.fullDateStr} className="space-y-0.5">
+                <span className="text-[11px] font-bold text-slate-400 block">{d.name}</span>
+                <span className={`text-base font-black font-mono block ${d.isToday ? 'text-teal-700 font-extrabold' : 'text-slate-800'}`}>
+                  {d.dateNum}
+                </span>
               </div>
             ))}
           </div>
 
-          {/* Monthly Days Grid */}
-          <div className="grid grid-cols-7 gap-1.5 flex-1 min-h-[480px]">
-            {/* Empty offset cells for start of month */}
-            {Array.from({ length: firstDayIndex }).map((_, i) => (
-              <div key={`empty-${i}`} className="bg-slate-950/40 border border-slate-900/40 rounded-2xl opacity-30 min-h-[90px]" />
-            ))}
-
-            {/* Day Cells */}
-            {Array.from({ length: daysInMonth }).map((_, i) => {
-              const dayNum = i + 1;
-              const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
-              const isToday = dateStr === todayStr;
-              const dayTasks = tasksByDate[dateStr] || [];
-              const completedCount = dayTasks.filter(t => t.status === 'completed').length;
-              const dayPct = dayTasks.length > 0 ? Math.round((completedCount / dayTasks.length) * 100) : 0;
-
-              return (
-                <div 
-                  key={dateStr}
-                  onClick={() => {
-                    setTargetTaskDate(dateStr);
-                    setIsAddModalOpen(true);
-                  }}
-                  className={`group relative p-2 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between min-h-[95px] ${
-                    isToday 
-                      ? 'bg-indigo-950/30 border-indigo-500/60 shadow-lg shadow-indigo-500/10' 
-                      : 'bg-slate-900/40 border-slate-850 hover:border-slate-700 hover:bg-slate-900/80'
-                  }`}
-                >
-                  {/* Top Day Header */}
-                  <div className="flex justify-between items-center">
-                    <span className={`text-xs font-mono font-black ${isToday ? 'bg-indigo-600 text-white px-2 py-0.5 rounded-lg' : 'text-slate-300'}`}>
-                      {dayNum}
-                    </span>
-
-                    {/* Completion badge */}
-                    {dayTasks.length > 0 && (
-                      <span className={`text-[8px] font-black px-1.5 py-0.5 rounded-full ${
-                        dayPct === 100 ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
-                      }`}>
-                        {dayPct}%
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Tasks List snippet inside cell */}
-                  <div className="space-y-1 my-1 overflow-hidden max-h-[52px]">
-                    {dayTasks.slice(0, 2).map((t: any) => (
-                      <div 
-                        key={t.id}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleToggleTaskStatus(t.id, t.status);
-                        }}
-                        className={`text-[9.5px] px-1.5 py-0.5 rounded-md truncate flex items-center space-x-1 ${
-                          t.status === 'completed' 
-                            ? 'bg-slate-950/80 text-slate-500 line-through border border-slate-900' 
-                            : 'bg-slate-850 text-slate-200 border border-slate-750 hover:border-indigo-500/50'
-                        }`}
-                      >
-                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${t.status === 'completed' ? 'bg-emerald-500' : 'bg-indigo-400'}`} />
-                        <span className="truncate">{t.title}</span>
-                      </div>
-                    ))}
-                    {dayTasks.length > 2 && (
-                      <span className="text-[8px] text-indigo-400 font-bold block text-right">
-                        +{dayTasks.length - 2} more
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Plus Icon on Hover */}
-                  <div className="opacity-0 group-hover:opacity-100 transition text-[9px] text-slate-400 font-bold flex items-center justify-center pt-0.5">
-                    <Plus size={12} className="mr-0.5" /> Add
-                  </div>
+          {/* Timeline Grid with Hour Slots */}
+          <div className="space-y-4 relative pt-1">
+            {timeSlots.map(timeLabel => (
+              <div key={timeLabel} className="flex items-start text-xs min-h-[70px] group border-b border-slate-100 pb-2">
+                
+                {/* Left Hour Label */}
+                <div className="w-14 text-[10px] font-mono font-bold text-slate-400 pt-1 flex-shrink-0">
+                  {timeLabel}
                 </div>
-              );
-            })}
+
+                {/* Day Columns for this time slot */}
+                <div className="flex-1 grid grid-cols-4 gap-2.5 relative">
+                  {weeklyDays.map((d, dayIdx) => {
+                    const slotEvents = sampleEvents.filter(e => e.dayIdx === dayIdx && e.time === timeLabel);
+                    
+                    return (
+                      <div 
+                        key={`${d.fullDateStr}-${timeLabel}`}
+                        onClick={() => {
+                          setTargetDate(d.fullDateStr);
+                          setStartTime(timeLabel.includes('PM') ? '13:00' : '09:00');
+                          setIsModalOpen(true);
+                        }}
+                        className="min-h-[60px] rounded-xl border border-transparent group-hover:border-slate-100 transition p-1 cursor-pointer"
+                      >
+                        {slotEvents.map(ev => (
+                          <div
+                            key={ev.id}
+                            className={`p-2.5 rounded-2xl space-y-1 transition shadow-sm mb-1 ${getColorStyles(ev.color)}`}
+                          >
+                            <h4 className="text-xs font-bold leading-tight truncate">{ev.label}</h4>
+                            <div className="flex items-center space-x-1 text-[9.5px] opacity-80 font-medium">
+                              <Clock size={11} />
+                              <span>{ev.range}</span>
+                            </div>
+                            
+                            {/* Avatars */}
+                            {ev.avatars && ev.avatars.length > 0 && (
+                              <div className="flex items-center space-x-1 pt-1">
+                                <div className="flex -space-x-1 overflow-hidden">
+                                  {ev.avatars.map((av, aIdx) => (
+                                    <span key={aIdx} className="w-4 h-4 rounded-full bg-white/80 border border-white/40 flex items-center justify-center text-[8px]">
+                                      {av}
+                                    </span>
+                                  ))}
+                                </div>
+                                {ev.count && <span className="text-[8px] font-bold opacity-75">{ev.count}</span>}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </div>
+
+              </div>
+            ))}
           </div>
 
         </div>
 
       </div>
 
-      {/* ── CREATE TASK MODAL ────────────────────────────────────────────── */}
-      {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-slate-950 border border-slate-800 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4 animate-in zoom-in-95 duration-150">
-            <div className="flex justify-between items-center border-b border-slate-850 pb-3">
-              <h3 className="text-sm font-black uppercase tracking-wider text-white flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-indigo-400" /> Schedule Personal Task
+      {/* ── CREATE EVENT MODAL ────────────────────────────────────────────── */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4 text-slate-800">
+            <div className="flex justify-between items-center border-b border-slate-150 pb-3">
+              <h3 className="text-sm font-black uppercase text-slate-900 flex items-center gap-2">
+                <Plus className="w-4 h-4 text-teal-600" /> Create Personal Event
               </h3>
-              <button onClick={() => setIsAddModalOpen(false)} className="text-slate-400 hover:text-white p-1 rounded-lg">
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-700">
                 <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleCreateTask} className="space-y-3 text-xs">
+            <form onSubmit={handleCreateEvent} className="space-y-3 text-xs">
               <div>
-                <label className="block text-slate-400 font-bold mb-1">Task Title</label>
+                <label className="block text-slate-600 font-bold mb-1">Event Title</label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Yoga session, Read 20 pages, Complete report"
-                  value={taskTitle}
-                  onChange={e => setTaskTitle(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white outline-none focus:border-indigo-500 font-medium"
+                  placeholder="e.g. UX Huddle Call, Design Sync, Sprint Check-in"
+                  value={eventTitle}
+                  onChange={e => setEventTitle(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 outline-none focus:border-teal-500 font-medium"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-400 font-bold mb-1">Date</label>
+                  <label className="block text-slate-600 font-bold mb-1">Date</label>
                   <input
                     type="date"
                     required
-                    value={targetTaskDate}
-                    onChange={e => setTargetTaskDate(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white outline-none font-mono"
+                    value={targetDate}
+                    onChange={e => setTargetDate(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 outline-none font-mono"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-bold mb-1">Priority</label>
+                  <label className="block text-slate-600 font-bold mb-1">Category</label>
                   <select
-                    value={taskPriority}
-                    onChange={e => setTaskPriority(e.target.value as any)}
-                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white outline-none capitalize"
+                    value={category}
+                    onChange={e => setCategory(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 outline-none"
                   >
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                    <option value="critical">Critical</option>
+                    <option value="Meetings">Meetings</option>
+                    <option value="Personal Events">Personal Events</option>
+                    <option value="Deadlines">Deadlines</option>
+                    <option value="Task Due Dates">Task Due Dates</option>
                   </select>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-400 font-bold mb-1">Category</label>
-                  <select
-                    value={taskCategory}
-                    onChange={e => setTaskCategory(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white outline-none"
-                  >
-                    <option value="Personal">Personal</option>
-                    <option value="Health">Health</option>
-                    <option value="Career">Career</option>
-                    <option value="Learning">Learning</option>
-                    <option value="Family">Family</option>
-                  </select>
+                  <label className="block text-slate-600 font-bold mb-1">Start Time</label>
+                  <input
+                    type="time"
+                    value={startTime}
+                    onChange={e => setStartTime(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 outline-none font-mono"
+                  />
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-bold mb-1">Time Slot (Section)</label>
-                  <select
-                    value={taskSection}
-                    onChange={e => setTaskSection(e.target.value as any)}
-                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white outline-none capitalize"
-                  >
-                    <option value="morning">Morning</option>
-                    <option value="afternoon">Afternoon</option>
-                    <option value="evening">Evening</option>
-                  </select>
+                  <label className="block text-slate-600 font-bold mb-1">End Time</label>
+                  <input
+                    type="time"
+                    value={endTime}
+                    onChange={e => setEndTime(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 outline-none font-mono"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-600 font-bold mb-1">Card Color Theme</label>
+                <div className="flex items-center space-x-3 pt-1">
+                  {[
+                    { id: 'cyan', bg: 'bg-[#d8f3f8]' },
+                    { id: 'magenta', bg: 'bg-[#fbe3f3]' },
+                    { id: 'purple', bg: 'bg-[#e9e1fa]' },
+                    { id: 'peach', bg: 'bg-[#faebd7]' },
+                  ].map(c => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => setColorScheme(c.id as any)}
+                      className={`w-7 h-7 rounded-full ${c.bg} border-2 transition ${colorScheme === c.id ? 'border-teal-600 scale-110' : 'border-transparent'}`}
+                    />
+                  ))}
                 </div>
               </div>
 
               <div className="pt-3 flex justify-end space-x-2">
                 <button
                   type="button"
-                  onClick={() => setIsAddModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-850 text-slate-300 font-bold transition"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold transition"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold transition shadow-lg shadow-indigo-600/30"
+                  className="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black transition shadow-md"
                 >
-                  Save Task
+                  Save Event
                 </button>
               </div>
             </form>

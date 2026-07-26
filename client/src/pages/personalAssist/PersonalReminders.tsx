@@ -59,24 +59,24 @@ export default function PersonalReminders() {
   };
 
   return (
-    <div className="space-y-6 pb-12 font-sans animate-in fade-in duration-300">
+    <div className="space-y-6 pb-12 font-sans text-slate-800 animate-in fade-in duration-300">
       
       {/* Header */}
-      <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center space-x-2">
-            <Bell className="w-5 h-5 text-indigo-400" />
-            <span className="text-[10px] font-black uppercase text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-0.5 rounded-full">
+            <Bell className="w-5 h-5 text-teal-600" />
+            <span className="text-[10px] font-black uppercase text-teal-800 bg-teal-100 border border-teal-200 px-2.5 py-0.5 rounded-full">
               Reminders Timeline
             </span>
           </div>
-          <h1 className="text-xl md:text-2xl font-black text-white tracking-tight mt-1">Personal Reminders</h1>
-          <p className="text-xs text-slate-400 font-medium">Never miss important tasks, health checkups, or life milestones</p>
+          <h1 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight mt-1">Personal Reminders</h1>
+          <p className="text-xs text-slate-500 font-medium">Never miss important tasks, health checkups, or life milestones</p>
         </div>
 
         <button 
           onClick={() => setIsModalOpen(true)}
-          className="flex items-center space-x-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl text-xs font-extrabold transition shadow-lg shadow-indigo-600/30 self-start md:self-auto"
+          className="flex items-center space-x-1.5 px-4 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black rounded-2xl text-xs shadow-md transition self-start md:self-auto"
         >
           <Plus size={16} />
           <span>New Reminder</span>
@@ -86,37 +86,37 @@ export default function PersonalReminders() {
       {/* Reminders List */}
       <div className="space-y-3">
         {loading ? (
-          <div className="text-center py-12 text-slate-500 text-xs font-bold">
+          <div className="text-center py-12 text-slate-400 text-xs font-bold">
             Loading reminders...
           </div>
         ) : reminders.length === 0 ? (
-          <div className="bg-slate-950 p-12 rounded-3xl border border-slate-800 text-center space-y-3">
-            <Bell className="w-10 h-10 text-slate-600 mx-auto" />
-            <h3 className="text-sm font-bold text-white">No active reminders</h3>
+          <div className="bg-white p-12 rounded-3xl border border-slate-200/80 text-center space-y-3 shadow-sm">
+            <Bell className="w-10 h-10 text-slate-300 mx-auto" />
+            <h3 className="text-sm font-bold text-slate-800">No active reminders</h3>
             <p className="text-xs text-slate-500 max-w-sm mx-auto">Set reminders for upcoming events or daily habits.</p>
-            <button onClick={() => setIsModalOpen(true)} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold">
+            <button onClick={() => setIsModalOpen(true)} className="px-4 py-2 bg-amber-400 text-slate-950 font-black rounded-xl text-xs shadow-sm">
               + Set Reminder
             </button>
           </div>
         ) : (
           reminders.map(r => (
-            <div key={r.id} className="bg-slate-950 p-4 rounded-2xl border border-slate-800 shadow-xl flex items-center justify-between gap-4">
+            <div key={r.id} className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between gap-4">
               <div className="flex items-center space-x-3">
-                <div className="p-3 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 rounded-2xl flex-shrink-0">
+                <div className="p-3 bg-teal-50 border border-teal-200 text-teal-700 rounded-2xl flex-shrink-0">
                   <Bell size={18} />
                 </div>
                 <div>
-                  <h3 className="text-xs font-bold text-white">{r.title}</h3>
-                  {r.description && <p className="text-xs text-slate-400">{r.description}</p>}
-                  <div className="flex items-center space-x-3 text-[10px] text-slate-500 font-mono mt-0.5">
+                  <h3 className="text-xs font-bold text-slate-900">{r.title}</h3>
+                  {r.description && <p className="text-xs text-slate-500">{r.description}</p>}
+                  <div className="flex items-center space-x-3 text-[10px] text-slate-400 font-mono mt-0.5">
                     <span className="flex items-center gap-1"><Calendar size={12} /> {r.reminder_date}</span>
                     {r.reminder_time && <span className="flex items-center gap-1"><Clock size={12} /> {r.reminder_time}</span>}
-                    <span className="capitalize text-indigo-300">Repeat: {r.repeat_frequency}</span>
+                    <span className="capitalize text-teal-700 font-bold">Repeat: {r.repeat_frequency}</span>
                   </div>
                 </div>
               </div>
 
-              <button onClick={() => handleDeleteReminder(r.id)} className="text-slate-500 hover:text-red-400 p-1.5">
+              <button onClick={() => handleDeleteReminder(r.id)} className="text-slate-400 hover:text-red-600 p-1.5">
                 <Trash2 size={16} />
               </button>
             </div>
@@ -126,68 +126,68 @@ export default function PersonalReminders() {
 
       {/* Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-slate-950 border border-slate-800 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4">
-            <div className="flex justify-between items-center border-b border-slate-850 pb-3">
-              <h3 className="text-sm font-black uppercase text-white">Create Personal Reminder</h3>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-white">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4 text-slate-800">
+            <div className="flex justify-between items-center border-b border-slate-150 pb-3">
+              <h3 className="text-sm font-black uppercase text-slate-900">Create Personal Reminder</h3>
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-700">
                 <X size={18} />
               </button>
             </div>
 
             <form onSubmit={handleCreateReminder} className="space-y-3 text-xs">
               <div>
-                <label className="block text-slate-400 font-bold mb-1">Reminder Title</label>
+                <label className="block text-slate-600 font-bold mb-1">Reminder Title</label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Doctor appointment, Car service, Pay renewal"
+                  placeholder="e.g. Doctor appointment, Car service"
                   value={title}
                   onChange={e => setTitle(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white outline-none"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-slate-400 font-bold mb-1">Description</label>
+                <label className="block text-slate-600 font-bold mb-1">Description</label>
                 <textarea
                   rows={2}
                   placeholder="Notes..."
                   value={description}
                   onChange={e => setDescription(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white outline-none"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 outline-none"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-400 font-bold mb-1">Date</label>
+                  <label className="block text-slate-600 font-bold mb-1">Date</label>
                   <input
                     type="date"
                     required
                     value={reminderDate}
                     onChange={e => setReminderDate(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white outline-none font-mono"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 outline-none font-mono"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-bold mb-1">Time</label>
+                  <label className="block text-slate-600 font-bold mb-1">Time</label>
                   <input
                     type="time"
                     value={reminderTime}
                     onChange={e => setReminderTime(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white outline-none font-mono"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 outline-none font-mono"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-slate-400 font-bold mb-1">Repeat Frequency</label>
+                <label className="block text-slate-600 font-bold mb-1">Repeat Frequency</label>
                 <select
                   value={repeatFrequency}
                   onChange={e => setRepeatFrequency(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white capitalize"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 capitalize"
                 >
                   <option value="none">Does Not Repeat</option>
                   <option value="daily">Daily</option>
@@ -201,13 +201,13 @@ export default function PersonalReminders() {
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-900 text-slate-300 font-bold"
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl bg-indigo-600 text-white font-extrabold"
+                  className="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black shadow-md"
                 >
                   Save Reminder
                 </button>

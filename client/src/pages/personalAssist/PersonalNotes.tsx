@@ -108,24 +108,24 @@ export default function PersonalNotes() {
   });
 
   return (
-    <div className="space-y-6 pb-12 font-sans animate-in fade-in duration-300">
+    <div className="space-y-6 pb-12 font-sans text-slate-800 animate-in fade-in duration-300">
       
       {/* Header */}
-      <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center space-x-2">
-            <StickyNote className="w-5 h-5 text-indigo-400" />
-            <span className="text-[10px] font-black uppercase text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-0.5 rounded-full">
+            <StickyNote className="w-5 h-5 text-teal-600" />
+            <span className="text-[10px] font-black uppercase text-teal-800 bg-teal-100 border border-teal-200 px-2.5 py-0.5 rounded-full">
               Personal Notes
             </span>
           </div>
-          <h1 className="text-xl md:text-2xl font-black text-white tracking-tight mt-1">Life Notes & Ideas</h1>
-          <p className="text-xs text-slate-400 font-medium">Keep quick thoughts, reference notes & journal entries stored safely in database</p>
+          <h1 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight mt-1">Life Notes & Ideas</h1>
+          <p className="text-xs text-slate-500 font-medium">Keep quick thoughts, reference notes & journal entries stored safely</p>
         </div>
 
         <button 
           onClick={handleOpenNew}
-          className="flex items-center space-x-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl text-xs font-extrabold transition shadow-lg shadow-indigo-600/30 self-start md:self-auto"
+          className="flex items-center space-x-1.5 px-4 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black rounded-2xl text-xs shadow-md transition self-start md:self-auto"
         >
           <Plus size={16} />
           <span>New Note</span>
@@ -133,29 +133,29 @@ export default function PersonalNotes() {
       </div>
 
       {/* Search */}
-      <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 shadow-xl flex items-center bg-slate-900 px-3 py-2 text-xs">
+      <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex items-center bg-slate-50 px-3 py-2 text-xs">
         <Search className="w-4 h-4 text-slate-400 mr-2 flex-shrink-0" />
         <input
           type="text"
           placeholder="Search notes by title, content or tags..."
           value={search}
           onChange={e => setSearch(e.target.value)}
-          className="bg-transparent border-none outline-none text-white text-xs w-full placeholder:text-slate-500"
+          className="bg-transparent border-none outline-none text-slate-800 text-xs w-full placeholder:text-slate-400"
         />
       </div>
 
       {/* Notes Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {loading ? (
-          <div className="col-span-full text-center py-12 text-slate-500 text-xs font-bold">
+          <div className="col-span-full text-center py-12 text-slate-400 text-xs font-bold">
             Loading notes...
           </div>
         ) : filteredNotes.length === 0 ? (
-          <div className="col-span-full bg-slate-950 p-12 rounded-3xl border border-slate-800 text-center space-y-3">
-            <StickyNote className="w-10 h-10 text-slate-600 mx-auto" />
-            <h3 className="text-sm font-bold text-white">No notes found</h3>
+          <div className="col-span-full bg-white p-12 rounded-3xl border border-slate-200/80 text-center space-y-3 shadow-sm">
+            <StickyNote className="w-10 h-10 text-slate-300 mx-auto" />
+            <h3 className="text-sm font-bold text-slate-800">No notes found</h3>
             <p className="text-xs text-slate-500 max-w-sm mx-auto">Create notes to store ideas, meeting summaries, or personal thoughts.</p>
-            <button onClick={handleOpenNew} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold">
+            <button onClick={handleOpenNew} className="px-4 py-2 bg-amber-400 text-slate-950 font-black rounded-xl text-xs shadow-sm">
               + New Note
             </button>
           </div>
@@ -163,45 +163,45 @@ export default function PersonalNotes() {
           filteredNotes.map(n => (
             <div 
               key={n.id} 
-              className={`bg-slate-950 p-5 rounded-3xl border shadow-2xl flex flex-col justify-between space-y-3 relative group transition ${
-                n.is_pinned === 1 ? 'border-indigo-500/50 bg-indigo-950/10' : 'border-slate-800 hover:border-slate-700'
+              className={`bg-white p-5 rounded-3xl border shadow-sm flex flex-col justify-between space-y-3 relative group transition ${
+                n.is_pinned === 1 ? 'border-teal-400 bg-teal-50/20' : 'border-slate-200/80 hover:border-teal-300'
               }`}
             >
               <div className="space-y-2">
                 <div className="flex items-start justify-between">
-                  <span className="text-[9px] font-black uppercase text-indigo-400 bg-indigo-500/20 px-2 py-0.5 rounded border border-indigo-500/30">
+                  <span className="text-[9px] font-black uppercase text-teal-800 bg-teal-100 border border-teal-200 px-2 py-0.5 rounded">
                     {n.category || 'General'}
                   </span>
 
                   <button 
                     onClick={() => handleTogglePin(n)}
-                    className={`p-1.5 rounded-lg transition ${n.is_pinned === 1 ? 'text-amber-400 bg-amber-400/10' : 'text-slate-500 hover:text-white'}`}
+                    className={`p-1.5 rounded-lg transition ${n.is_pinned === 1 ? 'text-amber-500 bg-amber-100' : 'text-slate-400 hover:text-slate-700'}`}
                     title={n.is_pinned ? 'Unpin' : 'Pin note'}
                   >
-                    <Pin size={14} className={n.is_pinned ? 'fill-amber-400' : ''} />
+                    <Pin size={14} className={n.is_pinned ? 'fill-amber-500' : ''} />
                   </button>
                 </div>
 
-                <h3 className="text-sm font-black text-white">{n.title}</h3>
-                <p className="text-xs text-slate-300 leading-relaxed whitespace-pre-wrap">{n.content}</p>
+                <h3 className="text-sm font-black text-slate-900">{n.title}</h3>
+                <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-wrap">{n.content}</p>
               </div>
 
-              <div className="space-y-2 pt-2 border-t border-slate-850">
+              <div className="space-y-2 pt-2 border-t border-slate-150">
                 {n.tags && (
-                  <div className="flex items-center space-x-1 text-[10px] text-indigo-300 font-mono">
+                  <div className="flex items-center space-x-1 text-[10px] text-teal-700 font-mono">
                     <Tag size={12} />
                     <span>{n.tags}</span>
                   </div>
                 )}
 
-                <div className="flex justify-between items-center text-[10px] text-slate-500">
+                <div className="flex justify-between items-center text-[10px] text-slate-400">
                   <span>{new Date(n.created_at || Date.now()).toLocaleDateString()}</span>
                   
                   <div className="flex items-center space-x-2">
-                    <button onClick={() => handleOpenEdit(n)} className="text-slate-400 hover:text-white p-1">
+                    <button onClick={() => handleOpenEdit(n)} className="text-slate-400 hover:text-slate-700 p-1">
                       <Edit3 size={14} />
                     </button>
-                    <button onClick={() => handleDeleteNote(n.id)} className="text-slate-400 hover:text-red-400 p-1">
+                    <button onClick={() => handleDeleteNote(n.id)} className="text-slate-400 hover:text-red-600 p-1">
                       <Trash2 size={14} />
                     </button>
                   </div>
@@ -215,49 +215,49 @@ export default function PersonalNotes() {
 
       {/* Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-slate-950 border border-slate-800 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4">
-            <div className="flex justify-between items-center border-b border-slate-850 pb-3">
-              <h3 className="text-sm font-black uppercase text-white">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4 text-slate-800">
+            <div className="flex justify-between items-center border-b border-slate-150 pb-3">
+              <h3 className="text-sm font-black uppercase text-slate-900">
                 {editId ? 'Edit Note' : 'Create Personal Note'}
               </h3>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-white">
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-700">
                 <X size={18} />
               </button>
             </div>
 
             <form onSubmit={handleSaveNote} className="space-y-3 text-xs">
               <div>
-                <label className="block text-slate-400 font-bold mb-1">Title</label>
+                <label className="block text-slate-600 font-bold mb-1">Title</label>
                 <input
                   type="text"
                   required
                   placeholder="Note title..."
                   value={title}
                   onChange={e => setTitle(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white outline-none"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-slate-400 font-bold mb-1">Content</label>
+                <label className="block text-slate-600 font-bold mb-1">Content</label>
                 <textarea
                   rows={5}
                   required
                   placeholder="Write your thoughts..."
                   value={content}
                   onChange={e => setContent(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white outline-none"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 outline-none"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-400 font-bold mb-1">Category</label>
+                  <label className="block text-slate-600 font-bold mb-1">Category</label>
                   <select
                     value={category}
                     onChange={e => setCategory(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900"
                   >
                     <option value="General">General</option>
                     <option value="Ideas">Ideas & Brainstorm</option>
@@ -267,13 +267,13 @@ export default function PersonalNotes() {
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-bold mb-1">Tags (Comma separated)</label>
+                  <label className="block text-slate-600 font-bold mb-1">Tags</label>
                   <input
                     type="text"
-                    placeholder="e.g. react, health, book"
+                    placeholder="e.g. react, health"
                     value={tags}
                     onChange={e => setTags(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white outline-none"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 outline-none"
                   />
                 </div>
               </div>
@@ -284,22 +284,22 @@ export default function PersonalNotes() {
                   id="pinCheck"
                   checked={isPinned}
                   onChange={e => setIsPinned(e.target.checked)}
-                  className="rounded bg-slate-900 border-slate-800"
+                  className="rounded border-slate-300 text-teal-600 focus:ring-teal-500"
                 />
-                <label htmlFor="pinCheck" className="text-slate-300 font-bold cursor-pointer">Pin to top of notes</label>
+                <label htmlFor="pinCheck" className="text-slate-700 font-bold cursor-pointer">Pin to top</label>
               </div>
 
               <div className="pt-3 flex justify-end space-x-2">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-900 text-slate-300 font-bold"
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl bg-indigo-600 text-white font-extrabold"
+                  className="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black shadow-md"
                 >
                   Save Note
                 </button>
