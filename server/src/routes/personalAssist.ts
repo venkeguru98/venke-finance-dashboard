@@ -686,8 +686,9 @@ router.get('/activities', async (req: Request, res: Response) => {
 
   try {
     const activities: any[] = [];
+    const todayStr = formatDateStr(new Date());
 
-    // 1. Fetch Tasks
+    // 1. Fetch Tasks (Fixed Color: Pink)
     let taskSql = `SELECT * FROM personal_tasks WHERE user_id = ?`;
     const taskParams: any[] = [userId];
     if (month) {
@@ -702,7 +703,7 @@ router.get('/activities', async (req: Request, res: Response) => {
       activities.push({
         id: `task-${t.id}`,
         original_id: t.id,
-        activity_type: t.category === 'Meetings' ? 'event' : 'task',
+        activity_type: t.category === 'Meetings' ? 'event' : (t.priority === 'critical' ? 'deadline' : 'task'),
         title: t.title,
         description: t.description,
         date: t.date,
@@ -713,11 +714,11 @@ router.get('/activities', async (req: Request, res: Response) => {
         status: t.status || 'pending',
         notes: t.notes || '',
         source_table: 'personal_tasks',
-        color: t.category === 'Meetings' ? 'cyan' : (t.priority === 'high' || t.priority === 'critical' ? 'magenta' : 'peach')
+        color: t.priority === 'critical' ? 'red' : (t.category === 'Meetings' ? 'cyan' : 'pink')
       });
     });
 
-    // 2. Fetch Events
+    // 2. Fetch Events (Fixed Color: Cyan)
     let evSql = `SELECT * FROM personal_events WHERE user_id = ?`;
     const evParams: any[] = [userId];
     if (month) {
@@ -742,13 +743,12 @@ router.get('/activities', async (req: Request, res: Response) => {
         priority: 'medium',
         status: 'pending',
         source_table: 'personal_events',
-        color: 'purple'
+        color: 'cyan'
       });
     });
 
-    // 3. Fetch Habits
+    // 3. Fetch Habits (Fixed Color: Purple)
     const habits = await query(`SELECT * FROM personal_habits WHERE user_id = ?`, [userId]);
-    const todayStr = formatDateStr(new Date());
     for (const h of habits) {
       const completions = await query(`SELECT completed_date FROM habit_completions WHERE habit_id = ?`, [h.id]);
       const compDates = completions.map(c => c.completed_date);
@@ -766,11 +766,11 @@ router.get('/activities', async (req: Request, res: Response) => {
         status: compDates.includes(todayStr) ? 'completed' : 'pending',
         streak: h.streak || 0,
         source_table: 'personal_habits',
-        color: 'cyan'
+        color: 'purple'
       });
     }
 
-    // 4. Fetch Reminders
+    // 4. Fetch Reminders (Fixed Color: Yellow)
     let remSql = `SELECT * FROM personal_reminders WHERE user_id = ?`;
     const remParams: any[] = [userId];
     if (month) {
@@ -795,7 +795,33 @@ router.get('/activities', async (req: Request, res: Response) => {
         priority: 'high',
         status: 'pending',
         source_table: 'personal_reminders',
-        color: 'magenta'
+        color: 'yellow'
+      });
+    });
+
+    // 5. Fetch Goal Milestones (Fixed Color: Violet)
+    const milestones = await query(
+      `SELECT m.*, g.title as goal_title, g.category as goal_category 
+       FROM goal_milestones m 
+       JOIN personal_goals g ON m.goal_id = g.id 
+       WHERE g.user_id = ?`,
+      [userId]
+    );
+    milestones.forEach(m => {
+      activities.push({
+        id: `milestone-${m.id}`,
+        original_id: m.id,
+        activity_type: 'milestone',
+        title: `${m.goal_title}: ${m.title}`,
+        description: `Goal Milestone for ${m.goal_title}`,
+        date: m.target_date || todayStr,
+        start_time: '14:00',
+        end_time: '15:00',
+        category: m.goal_category || 'Career',
+        priority: 'high',
+        status: m.is_completed === 1 ? 'completed' : 'pending',
+        source_table: 'goal_milestones',
+        color: 'violet'
       });
     });
 
@@ -843,7 +869,7 @@ router.post('/activities', async (req: Request, res: Response) => {
       const result = await execute(
         `INSERT INTO personal_habits (user_id, name, description, category, frequency, color, start_date)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [userId, title, description || '', category || 'Health', repeat_frequency || 'daily', '#14b8a6', date]
+        [userId, title, description || '', category || 'Health', repeat_frequency || 'daily', '#a855f7', date]
       );
       return res.status(201).json({ id: result.lastID, message: 'Habit created' });
     } else if (activity_type === 'reminder') {
@@ -867,7 +893,7 @@ router.post('/activities', async (req: Request, res: Response) => {
   }
 });
 
-// Update Activity Status or Date/Time
+// Update Activity Status or Date/Time (Bi-directional Sync)
 router.patch('/activities/:type/:id', async (req: Request, res: Response) => {
   const userId = req.user!.id;
   const { type, id } = req.params;
@@ -903,6 +929,20 @@ router.patch('/activities/:type/:id', async (req: Request, res: Response) => {
       if (date) {
         await execute(`UPDATE personal_reminders SET reminder_date = ? WHERE id = ? AND user_id = ?`, [date, id, userId]);
       }
+    } else if (type === 'goal_milestones' || type === 'milestone') {
+      const isComp = status === 'completed' ? 1 : 0;
+      await execute(`UPDATE goal_milestones SET is_completed = ? WHERE id = ?`, [isComp, id]);
+      
+      // Recalculate parent Goal Progress
+      const milestone = await get(`SELECT goal_id FROM goal_milestones WHERE id = ?`, [id]);
+      if (milestone) {
+        const allMs = await query(`SELECT is_completed FROM goal_milestones WHERE goal_id = ?`, [milestone.goal_id]);
+        if (allMs.length > 0) {
+          const compMs = allMs.filter(m => m.is_completed === 1).length;
+          const newPct = Math.round((compMs / allMs.length) * 100);
+          await execute(`UPDATE personal_goals SET progress_pct = ? WHERE id = ?`, [newPct, milestone.goal_id]);
+        }
+      }
     }
     res.json({ message: 'Activity updated' });
   } catch (err: any) {
@@ -925,6 +965,8 @@ router.delete('/activities/:type/:id', async (req: Request, res: Response) => {
       await execute(`DELETE FROM habit_completions WHERE habit_id = ? AND user_id = ?`, [id, userId]);
     } else if (type === 'personal_reminders' || type === 'reminder') {
       await execute(`DELETE FROM personal_reminders WHERE id = ? AND user_id = ?`, [id, userId]);
+    } else if (type === 'goal_milestones' || type === 'milestone') {
+      await execute(`DELETE FROM goal_milestones WHERE id = ?`, [id]);
     }
     res.json({ message: 'Activity deleted' });
   } catch (err: any) {
@@ -949,4 +991,5 @@ router.post('/overdue/reschedule-all', async (req: Request, res: Response) => {
 });
 
 export default router;
+
 
