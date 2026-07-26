@@ -388,6 +388,163 @@ export const initializeDatabase = async () => {
       // Ignore errors if debts_loans table is missing or doesn't exist
     }
 
+    // Apply Schema Migrations for Venke Assist Wellness Module
+    try {
+      if (isPg && pgPool) {
+        await pgPool.query(`
+          CREATE TABLE IF NOT EXISTS wellness_profiles (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+            age INTEGER DEFAULT 30,
+            sex VARCHAR(20) DEFAULT 'Male',
+            height_cm REAL DEFAULT 170,
+            weight_kg REAL DEFAULT 70,
+            activity_level VARCHAR(50) DEFAULT 'Moderately Active',
+            goal VARCHAR(50) DEFAULT 'Maintain Weight',
+            daily_calorie_target INTEGER DEFAULT 2000,
+            daily_water_target_ml INTEGER DEFAULT 2500,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+        await pgPool.query(`
+          CREATE TABLE IF NOT EXISTS wellness_meals (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            meal_type VARCHAR(50) NOT NULL,
+            date DATE NOT NULL,
+            time VARCHAR(20),
+            total_calories REAL DEFAULT 0,
+            protein_g REAL DEFAULT 0,
+            carbs_g REAL DEFAULT 0,
+            fat_g REAL DEFAULT 0,
+            notes TEXT,
+            ai_estimated INTEGER DEFAULT 0,
+            user_confirmed INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+        await pgPool.query(`
+          CREATE TABLE IF NOT EXISTS wellness_meal_items (
+            id SERIAL PRIMARY KEY,
+            meal_id INTEGER NOT NULL REFERENCES wellness_meals(id) ON DELETE CASCADE,
+            food_name VARCHAR(255) NOT NULL,
+            quantity REAL DEFAULT 1,
+            unit VARCHAR(50) DEFAULT 'serving',
+            calories REAL DEFAULT 0,
+            protein_g REAL DEFAULT 0,
+            carbs_g REAL DEFAULT 0,
+            fat_g REAL DEFAULT 0,
+            confidence VARCHAR(20) DEFAULT 'High',
+            ai_estimated INTEGER DEFAULT 0
+          )
+        `);
+        await pgPool.query(`
+          CREATE TABLE IF NOT EXISTS wellness_exercise (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            activity_type VARCHAR(100) NOT NULL,
+            date DATE NOT NULL,
+            start_time VARCHAR(20),
+            duration_mins INTEGER NOT NULL,
+            intensity VARCHAR(50) DEFAULT 'Moderate',
+            calories_burned REAL DEFAULT 0,
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+        await pgPool.query(`
+          CREATE TABLE IF NOT EXISTS wellness_water_logs (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            date DATE NOT NULL,
+            amount_ml INTEGER NOT NULL,
+            logged_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+      } else {
+        await execute(`
+          CREATE TABLE IF NOT EXISTS wellness_profiles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL UNIQUE,
+            age INTEGER DEFAULT 30,
+            sex TEXT DEFAULT 'Male',
+            height_cm REAL DEFAULT 170,
+            weight_kg REAL DEFAULT 70,
+            activity_level TEXT DEFAULT 'Moderately Active',
+            goal TEXT DEFAULT 'Maintain Weight',
+            daily_calorie_target INTEGER DEFAULT 2000,
+            daily_water_target_ml INTEGER DEFAULT 2500,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+          )
+        `);
+        await execute(`
+          CREATE TABLE IF NOT EXISTS wellness_meals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            meal_type TEXT NOT NULL,
+            date DATE NOT NULL,
+            time TEXT,
+            total_calories REAL DEFAULT 0,
+            protein_g REAL DEFAULT 0,
+            carbs_g REAL DEFAULT 0,
+            fat_g REAL DEFAULT 0,
+            notes TEXT,
+            ai_estimated INTEGER DEFAULT 0,
+            user_confirmed INTEGER DEFAULT 1,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+          )
+        `);
+        await execute(`
+          CREATE TABLE IF NOT EXISTS wellness_meal_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            meal_id INTEGER NOT NULL,
+            food_name TEXT NOT NULL,
+            quantity REAL DEFAULT 1,
+            unit TEXT DEFAULT 'serving',
+            calories REAL DEFAULT 0,
+            protein_g REAL DEFAULT 0,
+            carbs_g REAL DEFAULT 0,
+            fat_g REAL DEFAULT 0,
+            confidence TEXT DEFAULT 'High',
+            ai_estimated INTEGER DEFAULT 0,
+            FOREIGN KEY(meal_id) REFERENCES wellness_meals(id) ON DELETE CASCADE
+          )
+        `);
+        await execute(`
+          CREATE TABLE IF NOT EXISTS wellness_exercise (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            activity_type TEXT NOT NULL,
+            date DATE NOT NULL,
+            start_time TEXT,
+            duration_mins INTEGER NOT NULL,
+            intensity TEXT DEFAULT 'Moderate',
+            calories_burned REAL DEFAULT 0,
+            notes TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+          )
+        `);
+        await execute(`
+          CREATE TABLE IF NOT EXISTS wellness_water_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            date DATE NOT NULL,
+            amount_ml INTEGER NOT NULL,
+            logged_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+          )
+        `);
+      }
+      console.log('Wellness database tables verified/created.');
+    } catch (wErr) {
+      console.error('Migration failed for wellness tables:', wErr);
+    }
+
   } catch (error) {
     console.error('Failed to initialize database schema', error);
   }

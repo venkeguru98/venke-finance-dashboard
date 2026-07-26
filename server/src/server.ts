@@ -13,6 +13,7 @@ import recurringRoutes from './routes/recurring';
 import telegramRoutes from './routes/telegram';
 import recordsRoutes from './routes/records';
 import personalAssistRoutes from './routes/personalAssist';
+import wellnessRoutes from './routes/wellness';
 
 dotenv.config();
 
@@ -158,6 +159,7 @@ const startServer = async () => {
   app.use('/api/recurring-rules', recurringRoutes);
   app.use('/api/records', recordsRoutes);
   app.use('/api/personal', personalAssistRoutes);
+  app.use('/api/wellness', wellnessRoutes);
   app.use('/api', apiRoutes);
 
   // ─── Static Uploads (local fallback) ─────────────────────────────────────

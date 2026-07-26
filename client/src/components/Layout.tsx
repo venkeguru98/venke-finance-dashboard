@@ -3,7 +3,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, ReceiptText, Upload, Settings, Bell, Search, UserCircle, 
   Wallet, Target, LineChart, CalendarDays, PieChart, Menu, X, CalendarRange,
-  Sparkles, ChevronDown, CheckSquare, Flame, StickyNote, Sun
+  Sparkles, ChevronDown, CheckSquare, Flame, StickyNote, Sun, Apple
 } from 'lucide-react';
 
 export default function Layout({ children, onLogout }: { children: ReactNode; onLogout?: () => void }) {
@@ -35,6 +35,7 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
     { to: '/personal-assist/tasks', icon: <CheckSquare size={20} />, label: 'Tasks' },
     { to: '/personal-assist/habits', icon: <Flame size={20} />, label: 'Habits' },
     { to: '/personal-assist/goals', icon: <Target size={20} />, label: 'Goals' },
+    { to: '/personal-assist/wellness', icon: <Apple size={20} />, label: 'Wellness' },
     { to: '/personal-assist/notes', icon: <StickyNote size={20} />, label: 'Notes' },
     { to: '/personal-assist/reminders', icon: <Bell size={20} />, label: 'Reminders' },
     { to: '/personal-assist/analytics', icon: <LineChart size={20} />, label: 'Analytics' },

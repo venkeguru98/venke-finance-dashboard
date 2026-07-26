@@ -22,6 +22,7 @@ import PersonalCalendar from './pages/personalAssist/PersonalCalendar';
 import PersonalTasks from './pages/personalAssist/PersonalTasks';
 import HabitTracker from './pages/personalAssist/HabitTracker';
 import PersonalGoals from './pages/personalAssist/PersonalGoals';
+import Wellness from './pages/personalAssist/Wellness';
 import PersonalNotes from './pages/personalAssist/PersonalNotes';
 import PersonalReminders from './pages/personalAssist/PersonalReminders';
 import PersonalAnalytics from './pages/personalAssist/PersonalAnalytics';
@@ -127,6 +128,7 @@ function App() {
           <Route path="/personal-assist/tasks" element={<PersonalTasks />} />
           <Route path="/personal-assist/habits" element={<HabitTracker />} />
           <Route path="/personal-assist/goals" element={<PersonalGoals />} />
+          <Route path="/personal-assist/wellness" element={<Wellness />} />
           <Route path="/personal-assist/notes" element={<PersonalNotes />} />
           <Route path="/personal-assist/reminders" element={<PersonalReminders />} />
           <Route path="/personal-assist/analytics" element={<PersonalAnalytics />} />
