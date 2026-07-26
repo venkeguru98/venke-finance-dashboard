@@ -142,7 +142,7 @@ router.get('/tasks', async (req: Request, res: Response) => {
       sql += ` AND date = ?`;
       params.push(date);
     } else if (month) {
-      sql += ` AND date LIKE ?`;
+      sql += ` AND CAST(date AS TEXT) LIKE ?`;
       params.push(`${month}%`);
     }
 
@@ -635,7 +635,7 @@ router.get('/events', async (req: Request, res: Response) => {
     let sql = `SELECT * FROM personal_events WHERE user_id = ?`;
     const params: any[] = [userId];
     if (month) {
-      sql += ` AND event_date LIKE ?`;
+      sql += ` AND CAST(event_date AS TEXT) LIKE ?`;
       params.push(`${month}%`);
     }
     sql += ` ORDER BY event_date ASC, start_time ASC`;
@@ -692,7 +692,7 @@ router.get('/activities', async (req: Request, res: Response) => {
     let taskSql = `SELECT * FROM personal_tasks WHERE user_id = ?`;
     const taskParams: any[] = [userId];
     if (month) {
-      taskSql += ` AND date LIKE ?`;
+      taskSql += ` AND CAST(date AS TEXT) LIKE ?`;
       taskParams.push(`${month}%`);
     } else if (date) {
       taskSql += ` AND date = ?`;
@@ -722,7 +722,7 @@ router.get('/activities', async (req: Request, res: Response) => {
     let evSql = `SELECT * FROM personal_events WHERE user_id = ?`;
     const evParams: any[] = [userId];
     if (month) {
-      evSql += ` AND event_date LIKE ?`;
+      evSql += ` AND CAST(event_date AS TEXT) LIKE ?`;
       evParams.push(`${month}%`);
     } else if (date) {
       evSql += ` AND event_date = ?`;
@@ -774,7 +774,7 @@ router.get('/activities', async (req: Request, res: Response) => {
     let remSql = `SELECT * FROM personal_reminders WHERE user_id = ?`;
     const remParams: any[] = [userId];
     if (month) {
-      remSql += ` AND reminder_date LIKE ?`;
+      remSql += ` AND CAST(reminder_date AS TEXT) LIKE ?`;
       remParams.push(`${month}%`);
     } else if (date) {
       remSql += ` AND reminder_date = ?`;
