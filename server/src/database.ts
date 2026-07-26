@@ -157,7 +157,9 @@ export const initializeDatabase = async () => {
         'savings_investments', 'notifications', 'debts', 'deposits', 'transfers',
         'chit_funds', 'notes', 'documents', 'ledger_entries',
         'lic_policies', 'lic_premium_history', 'digital_gold', 'digital_gold_transactions',
-        'chit_payments', 'savings_accounts', 'savings_transactions', 'mutual_funds', 'mutual_fund_transactions'
+        'chit_payments', 'savings_accounts', 'savings_transactions', 'mutual_funds', 'mutual_fund_transactions',
+        'personal_tasks', 'personal_habits', 'habit_completions', 'personal_goals', 'goal_milestones',
+        'personal_notes', 'personal_reminders', 'personal_events'
       ];
       for (const table of tables) {
         try {

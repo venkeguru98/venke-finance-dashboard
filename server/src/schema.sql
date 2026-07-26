@@ -331,3 +331,135 @@ CREATE TABLE IF NOT EXISTS savings_transactions (
     FOREIGN KEY(account_id) REFERENCES savings_accounts(id) ON DELETE CASCADE,
     FOREIGN KEY(transfer_account_id) REFERENCES savings_accounts(id) ON DELETE SET NULL
 );
+
+-- Personal Assist Tasks Table
+CREATE TABLE IF NOT EXISTS personal_tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    date DATE NOT NULL,
+    start_time TEXT,
+    end_time TEXT,
+    priority TEXT CHECK(priority IN ('low', 'medium', 'high', 'critical')) DEFAULT 'medium',
+    category TEXT DEFAULT 'Personal',
+    status TEXT CHECK(status IN ('pending', 'in_progress', 'completed', 'cancelled')) DEFAULT 'pending',
+    section TEXT CHECK(section IN ('morning', 'afternoon', 'evening')) DEFAULT 'morning',
+    notes TEXT,
+    is_recurring INTEGER DEFAULT 0,
+    recurrence_rule TEXT,
+    reminder_at DATETIME,
+    completed_at DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Personal Assist Habits Table
+CREATE TABLE IF NOT EXISTS personal_habits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT,
+    category TEXT DEFAULT 'Health',
+    frequency TEXT DEFAULT 'daily',
+    target_days_per_week INTEGER DEFAULT 7,
+    color TEXT DEFAULT '#3B82F6',
+    icon TEXT DEFAULT 'CheckCircle',
+    start_date DATE NOT NULL,
+    reminder_time TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Habit Completions Table
+CREATE TABLE IF NOT EXISTS habit_completions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    habit_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    completed_date DATE NOT NULL,
+    notes TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(habit_id) REFERENCES personal_habits(id) ON DELETE CASCADE,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Personal Goals Table
+CREATE TABLE IF NOT EXISTS personal_goals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    category TEXT DEFAULT 'Personal',
+    start_date DATE NOT NULL,
+    target_date DATE NOT NULL,
+    progress_pct REAL DEFAULT 0,
+    status TEXT CHECK(status IN ('not_started', 'in_progress', 'completed', 'archived')) DEFAULT 'in_progress',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Goal Milestones Table
+CREATE TABLE IF NOT EXISTS goal_milestones (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    goal_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    target_date DATE,
+    is_completed INTEGER DEFAULT 0,
+    completed_at DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(goal_id) REFERENCES personal_goals(id) ON DELETE CASCADE,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Personal Notes Table
+CREATE TABLE IF NOT EXISTS personal_notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    content TEXT,
+    category TEXT DEFAULT 'General',
+    tags TEXT,
+    is_pinned INTEGER DEFAULT 0,
+    color TEXT DEFAULT '#1e293b',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Personal Reminders Table
+CREATE TABLE IF NOT EXISTS personal_reminders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    entity_type TEXT,
+    entity_id INTEGER,
+    reminder_date DATE NOT NULL,
+    reminder_time TEXT,
+    repeat_frequency TEXT DEFAULT 'none',
+    is_active INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Personal Events Table
+CREATE TABLE IF NOT EXISTS personal_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    event_date DATE NOT NULL,
+    start_time TEXT,
+    end_time TEXT,
+    location TEXT,
+    category TEXT DEFAULT 'Personal',
+    color TEXT DEFAULT '#8B5CF6',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
