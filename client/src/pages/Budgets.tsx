@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { 
   Plus, Pencil, Trash2, CheckCircle2, FileSpreadsheet,
-  Shield, Sparkles, PieChart as PieChartIcon, Target
+  Shield, Sparkles, PieChart as PieChartIcon, Target, Search
 } from 'lucide-react';
 import axios from 'axios';
 import Button from '../components/ui/Button';
@@ -11,6 +11,7 @@ type Budget = {
   category_id: number;
   category_name: string;
   category_color: string;
+  category_type?: string;
   limit_amount: number;
   spent: number;
   month: number;
@@ -30,6 +31,14 @@ type Budget = {
 
 type Category = { id: number; name: string; color: string; type: string };
 type Goal = { id: number; name: string; target_amount: number; current_saved: number };
+
+type SalaryAllocItem = {
+  category_id: number;
+  category_name: string;
+  category_group: string;
+  amount: number;
+  percentage: number;
+};
 
 const API = window.location.port === '5173' ? 'http://localhost:5000/api' : '/api';
 
@@ -57,6 +66,30 @@ const PRIORITY_BADGES = {
   avoid:     { label: 'Avoid / Reduce', color: 'bg-rose-500/10 text-rose-400 border-rose-500/20' },
 };
 
+// Helper: Group categories into unified master sections
+export const getCategoryGroup = (cat: Category): 'Expenses' | 'Savings' | 'Investments' | 'Debt' | 'Insurance' => {
+  const type = (cat.type || '').toLowerCase();
+  const name = (cat.name || '').toLowerCase();
+
+  if (type === 'debt' || name.includes('loan') || name.includes('debt') || name.includes('credit card') || name.includes('borrow')) {
+    return 'Debt';
+  }
+
+  if (type === 'insurance' || name.includes('lic') || name.includes('insurance') || name.includes('policy')) {
+    return 'Insurance';
+  }
+
+  if (type === 'investment' || name.includes('sip') || name.includes('gold') || name.includes('mutual') || name.includes('stock') || name.includes('ppf') || name.includes('nps')) {
+    return 'Investments';
+  }
+
+  if (type === 'savings' || name.includes('fund') || name.includes('reserve') || name.includes('saving') || name.includes('deposit') || name.includes('advance')) {
+    return 'Savings';
+  }
+
+  return 'Expenses';
+};
+
 export default function Budgets() {
   const now = new Date();
   
@@ -64,7 +97,7 @@ export default function Budgets() {
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
   const [activeTab, setActiveTab] = useState<'overview' | 'salary' | 'forecast' | 'ai'>('overview');
-  const [filterCategory, setFilterCategory] = useState('all');
+  const [filterCategoryGroup, setFilterCategoryGroup] = useState<string>('all');
   const [filterPriority, setFilterPriority] = useState('all');
 
   // Data States
@@ -82,18 +115,12 @@ export default function Budgets() {
   const [errorMessage, setErrorMessage] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Salary Allocation Form State
-  const [salaryAllocForm, setSalaryAllocForm] = useState({
-    income_amount: '105000',
-    chit: '25000',
-    lic: '2430',
-    mutual_funds: '5000',
-    gold: '1000',
-    essential_expenses: '30000',
-    debt_repayment: '15000',
-    emergency_reserve: '5000',
-    house_fund: '21570'
-  });
+  // Search state inside Configure Budget Modal
+  const [categorySearchQuery, setCategorySearchQuery] = useState('');
+
+  // Dynamic Salary Allocation State
+  const [salaryIncome, setSalaryIncome] = useState<number>(74000);
+  const [salaryAllocations, setSalaryAllocations] = useState<SalaryAllocItem[]>([]);
 
   // Budget Add/Edit Form State
   const [formData, setFormData] = useState({
@@ -124,17 +151,70 @@ export default function Budgets() {
         axios.get(`${API}/categories`)
       ]);
 
+      const allCats: Category[] = catRes.data.filter((c: Category) => c.type !== 'income');
+      setCategories(allCats);
       setBudgets(budgetsRes.data);
       setPlannerSummary(summaryRes.data);
-      if (salaryRes.data && salaryRes.data.allocation_json) {
-        setSalaryAllocForm({
-          income_amount: String(salaryRes.data.income_amount || 105000),
-          ...salaryRes.data.allocation_json
-        });
-      }
       setAiRecs(recsRes.data || []);
       setGoals(goalsRes.data || []);
-      setCategories(catRes.data.filter((c: Category) => c.type === 'expense'));
+
+      // Load & parse dynamic salary allocations (supporting legacy JSON structures gracefully)
+      if (salaryRes.data) {
+        const inc = Number(salaryRes.data.income_amount || 74000);
+        setSalaryIncome(inc);
+
+        let items: SalaryAllocItem[] = [];
+        const rawAlloc = salaryRes.data.allocation_json;
+
+        if (Array.isArray(rawAlloc)) {
+          items = rawAlloc;
+        } else if (rawAlloc && typeof rawAlloc === 'object') {
+          // Parse legacy object structure into category-driven list
+          const keyMap: Record<string, string> = {
+            chit: 'Chit Contribution',
+            lic: 'LIC Premium',
+            mutual_funds: 'Mutual Funds SIP',
+            gold: 'Digital Gold',
+            essential_expenses: 'Essential Expenses',
+            debt_repayment: 'Debt Repayment',
+            emergency_reserve: 'Emergency Reserve',
+            house_fund: 'Bangalore House Fund'
+          };
+
+          items = Object.entries(rawAlloc).map(([k, v]) => {
+            const displayName = keyMap[k] || k;
+            const matchCat = allCats.find(c => c.name.toLowerCase() === displayName.toLowerCase());
+            const catId = matchCat ? matchCat.id : 0;
+            const amt = Number(v) || 0;
+            const grp = matchCat ? getCategoryGroup(matchCat) : 'Savings';
+            return {
+              category_id: catId,
+              category_name: matchCat ? matchCat.name : displayName,
+              category_group: grp,
+              amount: amt,
+              percentage: inc > 0 ? parseFloat(((amt / inc) * 100).toFixed(1)) : 0
+            };
+          }).filter(item => item.amount > 0 || item.category_id > 0);
+        }
+
+        // If no allocations saved yet, set helpful default category allocations
+        if (items.length === 0 && allCats.length > 0) {
+          const defaultCatNames = ['Food', 'Bills', 'Debt Repayment', 'LIC Premium', 'Mutual Funds SIP', 'Emergency Reserve', 'Bangalore House Fund'];
+          items = defaultCatNames.map(name => {
+            const matchCat = allCats.find(c => c.name.toLowerCase().includes(name.toLowerCase()));
+            if (!matchCat) return null;
+            return {
+              category_id: matchCat.id,
+              category_name: matchCat.name,
+              category_group: getCategoryGroup(matchCat),
+              amount: 5000,
+              percentage: inc > 0 ? parseFloat(((5000 / inc) * 100).toFixed(1)) : 0
+            };
+          }).filter(Boolean) as SalaryAllocItem[];
+        }
+
+        setSalaryAllocations(items);
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -146,9 +226,31 @@ export default function Budgets() {
     fetchBudgetsAndData();
   }, [selectedMonth, selectedYear]);
 
+  // Group categories into Expenses, Savings, Investments, Debt, Insurance
+  const groupedCategories = useMemo(() => {
+    const groups: Record<string, Category[]> = {
+      Expenses: [],
+      Savings: [],
+      Investments: [],
+      Debt: [],
+      Insurance: []
+    };
+
+    categories.forEach(c => {
+      if (categorySearchQuery.trim()) {
+        if (!c.name.toLowerCase().includes(categorySearchQuery.toLowerCase())) return;
+      }
+      const grp = getCategoryGroup(c);
+      groups[grp].push(c);
+    });
+
+    return groups;
+  }, [categories, categorySearchQuery]);
+
   const openAdd = () => {
     setEditingId(null);
     setErrorMessage('');
+    setCategorySearchQuery('');
     setFormData({
       category_id: '',
       limit_amount: '',
@@ -165,6 +267,7 @@ export default function Budgets() {
   const openEdit = (b: Budget) => {
     setEditingId(b.id);
     setErrorMessage('');
+    setCategorySearchQuery('');
     setFormData({
       category_id: String(b.category_id),
       limit_amount: String(b.limit_amount),
@@ -229,32 +332,88 @@ export default function Budgets() {
     }
   };
 
+  // Dynamic Salary Allocation Handlers
+  const handleAddSalaryAllocItem = (catId: number) => {
+    const matchCat = categories.find(c => c.id === catId);
+    if (!matchCat) return;
+    if (salaryAllocations.some(a => a.category_id === catId)) {
+      showToast(`${matchCat.name} is already in your allocation plan.`);
+      return;
+    }
+
+    const defaultAmt = 5000;
+    const pct = salaryIncome > 0 ? parseFloat(((defaultAmt / salaryIncome) * 100).toFixed(1)) : 0;
+    const newItem: SalaryAllocItem = {
+      category_id: matchCat.id,
+      category_name: matchCat.name,
+      category_group: getCategoryGroup(matchCat),
+      amount: defaultAmt,
+      percentage: pct
+    };
+
+    setSalaryAllocations(prev => [...prev, newItem]);
+  };
+
+  const handleUpdateSalaryAllocAmount = (catId: number, newAmt: number) => {
+    const validAmt = Math.max(0, newAmt);
+    setSalaryAllocations(prev => prev.map(item => {
+      if (item.category_id === catId) {
+        const pct = salaryIncome > 0 ? parseFloat(((validAmt / salaryIncome) * 100).toFixed(1)) : 0;
+        return { ...item, amount: validAmt, percentage: pct };
+      }
+      return item;
+    }));
+  };
+
+  const handleRemoveSalaryAllocItem = (catId: number) => {
+    setSalaryAllocations(prev => prev.filter(item => item.category_id !== catId));
+  };
+
   const handleSaveSalaryAllocation = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const incomeAmt = Number(salaryAllocForm.income_amount || 0);
-      const allocJson = {
-        chit: salaryAllocForm.chit,
-        lic: salaryAllocForm.lic,
-        mutual_funds: salaryAllocForm.mutual_funds,
-        gold: salaryAllocForm.gold,
-        essential_expenses: salaryAllocForm.essential_expenses,
-        debt_repayment: salaryAllocForm.debt_repayment,
-        emergency_reserve: salaryAllocForm.emergency_reserve,
-        house_fund: salaryAllocForm.house_fund
-      };
-
       await axios.post(`${API}/budgets/salary-allocation`, {
         month: selectedMonth,
         year: selectedYear,
-        income_amount: incomeAmt,
-        allocation_json: allocJson
+        income_amount: salaryIncome,
+        allocation_json: salaryAllocations
       });
 
-      showToast('Salary allocation plan saved successfully!');
+      showToast('Dynamic Salary Allocation Plan saved successfully!');
       fetchBudgetsAndData();
     } catch (err) {
       showToast('Error saving salary allocation plan');
+    }
+  };
+
+  // Convert Salary Allocation Item into a Budget Limit with 1-click
+  const handleConvertAllocToBudget = async (item: SalaryAllocItem) => {
+    try {
+      const existingB = budgets.find(b => b.category_id === item.category_id);
+      if (existingB) {
+        await axios.put(`${API}/budgets/${existingB.id}`, {
+          limit_amount: item.amount,
+          rollover_enabled: existingB.rollover_enabled,
+          rollover_amount: existingB.rollover_amount,
+          linked_goal_id: existingB.linked_goal_id,
+          priority: existingB.priority
+        });
+        showToast(`Updated budget limit for ${item.category_name} to ₹${item.amount.toLocaleString('en-IN')}`);
+      } else {
+        await axios.post(`${API}/budgets`, {
+          category_id: item.category_id,
+          limit_amount: item.amount,
+          month: selectedMonth,
+          year: selectedYear,
+          rollover_enabled: 0,
+          rollover_amount: 0,
+          priority: item.category_group === 'Expenses' ? 'essential' : 'important'
+        });
+        showToast(`Configured budget limit for ${item.category_name} to ₹${item.amount.toLocaleString('en-IN')}`);
+      }
+      fetchBudgetsAndData();
+    } catch (err) {
+      showToast('Error creating budget from allocation');
     }
   };
 
@@ -277,19 +436,24 @@ export default function Budgets() {
   };
 
   const exportBudgetCSV = () => {
-    const headers = ['Category', 'Base Limit', 'Rollover', 'Effective Limit', 'Spent', 'Remaining', 'Status', 'Forecast End', 'Linked Goal', 'Priority'];
-    const rows = budgets.map(b => [
-      b.category_name,
-      b.limit_amount,
-      b.rollover_amount || 0,
-      b.effectiveLimit || b.limit_amount,
-      b.spent,
-      b.remaining,
-      (b.spent > (b.effectiveLimit || b.limit_amount)) ? 'Over Budget' : 'On Track',
-      b.forecastedEnd || 0,
-      b.linked_goal_name || 'None',
-      b.priority || 'essential'
-    ]);
+    const headers = ['Category', 'Type Group', 'Base Limit', 'Rollover', 'Effective Limit', 'Spent', 'Remaining', 'Status', 'Forecast End', 'Linked Goal', 'Priority'];
+    const rows = budgets.map(b => {
+      const matchCat = categories.find(c => c.id === b.category_id);
+      const grp = matchCat ? getCategoryGroup(matchCat) : 'Expenses';
+      return [
+        b.category_name,
+        grp,
+        b.limit_amount,
+        b.rollover_amount || 0,
+        b.effectiveLimit || b.limit_amount,
+        b.spent,
+        b.remaining,
+        (b.spent > (b.effectiveLimit || b.limit_amount)) ? 'Over Budget' : 'On Track',
+        b.forecastedEnd || 0,
+        b.linked_goal_name || 'None',
+        b.priority || 'essential'
+      ];
+    });
 
     const csvContent = [headers.join(','), ...rows.map(r => r.map(val => `"${val}"`).join(','))].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -302,9 +466,16 @@ export default function Budgets() {
     document.body.removeChild(link);
   };
 
+  // Salary allocation summary totals
+  const totalAllocatedAmount = salaryAllocations.reduce((sum, item) => sum + item.amount, 0);
+  const totalAllocatedPct = salaryIncome > 0 ? parseFloat(((totalAllocatedAmount / salaryIncome) * 100).toFixed(1)) : 0;
+  const remainingUnallocatedIncome = salaryIncome - totalAllocatedAmount;
+
   // Filtered Budgets List
   const filteredBudgets = budgets.filter(b => {
-    if (filterCategory !== 'all' && String(b.category_id) !== filterCategory) return false;
+    const matchCat = categories.find(c => c.id === b.category_id);
+    const grp = matchCat ? getCategoryGroup(matchCat) : 'Expenses';
+    if (filterCategoryGroup !== 'all' && grp !== filterCategoryGroup) return false;
     if (filterPriority !== 'all' && (b.priority || 'essential') !== filterPriority) return false;
     return true;
   });
@@ -327,7 +498,7 @@ export default function Budgets() {
           <h1 className="text-xl font-extrabold text-white flex items-center gap-2.5">
             <PieChartIcon className="w-6 h-6 text-purple-400" /> Advanced Budget Planner & Forecasting
           </h1>
-          <p className="text-xs text-slate-400 mt-0.5">Smart salary allocation, predictive month-end spend forecasting, rollover budgets, and AI recommendations.</p>
+          <p className="text-xs text-slate-400 mt-0.5">Unified category master synchronization, dynamic salary allocation, predictive spend forecasting, and AI recommendations.</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
@@ -374,7 +545,7 @@ export default function Budgets() {
             activeTab === 'salary' ? 'border-purple-500 text-purple-400' : 'border-transparent text-slate-400 hover:text-white'
           }`}
         >
-          💵 Salary Allocation Planner
+          💵 Dynamic Salary Allocation Planner
         </button>
         <button
           onClick={() => setActiveTab('forecast')}
@@ -485,13 +656,18 @@ export default function Budgets() {
                   </h2>
 
                   <div className="flex items-center space-x-2">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase">Category Group:</span>
                     <select
-                      value={filterCategory}
-                      onChange={e => setFilterCategory(e.target.value)}
+                      value={filterCategoryGroup}
+                      onChange={e => setFilterCategoryGroup(e.target.value)}
                       className="bg-slate-950 border border-slate-850 text-xs font-bold text-slate-300 rounded-xl px-2.5 py-1.5 focus:outline-none"
                     >
-                      <option value="all">All Categories</option>
-                      {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      <option value="all">All Category Groups</option>
+                      <option value="Expenses">🍽 Expenses</option>
+                      <option value="Savings">💰 Savings</option>
+                      <option value="Investments">📈 Investments</option>
+                      <option value="Debt">💳 Debt</option>
+                      <option value="Insurance">🛡 Insurance</option>
                     </select>
 
                     <select
@@ -536,6 +712,8 @@ export default function Budgets() {
                       }
 
                       const priBadge = PRIORITY_BADGES[b.priority || 'essential'];
+                      const matchCat = categories.find(c => c.id === b.category_id);
+                      const grp = matchCat ? getCategoryGroup(matchCat) : 'Expenses';
 
                       return (
                         <div
@@ -549,6 +727,9 @@ export default function Budgets() {
                                 <h3 className="font-extrabold text-white text-sm">{b.category_name}</h3>
                               </div>
                               <div className="mt-1 flex items-center space-x-1.5 flex-wrap gap-1">
+                                <span className="px-2 py-0.5 rounded text-[8px] font-black uppercase border bg-slate-900 text-slate-300 border-slate-800">
+                                  {grp}
+                                </span>
                                 <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase border ${priBadge.color}`}>
                                   {priBadge.label}
                                 </span>
@@ -624,105 +805,134 @@ export default function Budgets() {
             </div>
           )}
 
-          {/* TAB 2: SALARY ALLOCATION PLANNER */}
+          {/* TAB 2: DYNAMIC SALARY ALLOCATION PLANNER */}
           {activeTab === 'salary' && (
             <div className="space-y-6">
               <div className="bg-slate-950/40 border border-slate-850 p-6 rounded-3xl space-y-6">
-                <div className="border-b border-slate-900 pb-3">
-                  <h2 className="text-sm font-black text-white flex items-center gap-2">
-                    💵 Monthly Salary Allocation Plan ({selectedMonthLabel} {selectedYear})
-                  </h2>
-                  <p className="text-xs text-slate-400 mt-0.5">Plan your income allocations across fixed commitments, investments, savings, essential expenses, and emergency reserves before spending.</p>
+                <div className="border-b border-slate-900 pb-3 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div>
+                    <h2 className="text-sm font-black text-white flex items-center gap-2">
+                      💵 Dynamic Salary Allocation Planner ({selectedMonthLabel} {selectedYear})
+                    </h2>
+                    <p className="text-xs text-slate-400 mt-0.5">Category-driven salary allocation using your transaction category master list with real-time percentage calculations.</p>
+                  </div>
+
+                  {/* Add Allocation Category Selector */}
+                  <div className="flex items-center space-x-2">
+                    <select
+                      onChange={e => {
+                        if (e.target.value) {
+                          handleAddSalaryAllocItem(Number(e.target.value));
+                          e.target.value = '';
+                        }
+                      }}
+                      className="bg-slate-900 border border-slate-800 text-xs font-bold text-slate-200 rounded-xl px-3 py-2 focus:outline-none cursor-pointer"
+                    >
+                      <option value="">+ Add Category to Allocation</option>
+                      {categories.map(c => (
+                        <option key={c.id} value={c.id}>
+                          {c.name} ({getCategoryGroup(c)})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
-                <form onSubmit={handleSaveSalaryAllocation} className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="space-y-1">
-                      <label className="block text-[10px] text-slate-500 font-bold uppercase">Monthly Income (₹) *</label>
-                      <input
-                        type="number" required min="0"
-                        value={salaryAllocForm.income_amount}
-                        onChange={e => setSalaryAllocForm(f => ({ ...f, income_amount: e.target.value }))}
-                        className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white font-mono font-bold text-xs focus:ring-1 focus:ring-purple-500"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="block text-[10px] text-slate-500 font-bold uppercase">Chit Contribution (₹)</label>
-                      <input
-                        type="number" min="0"
-                        value={salaryAllocForm.chit}
-                        onChange={e => setSalaryAllocForm(f => ({ ...f, chit: e.target.value }))}
-                        className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white font-mono text-xs focus:ring-1 focus:ring-purple-500"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="block text-[10px] text-slate-500 font-bold uppercase">LIC Premium (₹)</label>
-                      <input
-                        type="number" min="0"
-                        value={salaryAllocForm.lic}
-                        onChange={e => setSalaryAllocForm(f => ({ ...f, lic: e.target.value }))}
-                        className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white font-mono text-xs focus:ring-1 focus:ring-purple-500"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="block text-[10px] text-slate-500 font-bold uppercase">Mutual Funds SIP (₹)</label>
-                      <input
-                        type="number" min="0"
-                        value={salaryAllocForm.mutual_funds}
-                        onChange={e => setSalaryAllocForm(f => ({ ...f, mutual_funds: e.target.value }))}
-                        className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white font-mono text-xs focus:ring-1 focus:ring-purple-500"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="block text-[10px] text-slate-500 font-bold uppercase">Digital Gold (₹)</label>
-                      <input
-                        type="number" min="0"
-                        value={salaryAllocForm.gold}
-                        onChange={e => setSalaryAllocForm(f => ({ ...f, gold: e.target.value }))}
-                        className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white font-mono text-xs focus:ring-1 focus:ring-purple-500"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="block text-[10px] text-slate-500 font-bold uppercase">Essential Expenses (₹)</label>
-                      <input
-                        type="number" min="0"
-                        value={salaryAllocForm.essential_expenses}
-                        onChange={e => setSalaryAllocForm(f => ({ ...f, essential_expenses: e.target.value }))}
-                        className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white font-mono text-xs focus:ring-1 focus:ring-purple-500"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="block text-[10px] text-slate-500 font-bold uppercase">Debt Repayment (₹)</label>
-                      <input
-                        type="number" min="0"
-                        value={salaryAllocForm.debt_repayment}
-                        onChange={e => setSalaryAllocForm(f => ({ ...f, debt_repayment: e.target.value }))}
-                        className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white font-mono text-xs focus:ring-1 focus:ring-purple-500"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="block text-[10px] text-slate-500 font-bold uppercase">Emergency Reserve (₹)</label>
-                      <input
-                        type="number" min="0"
-                        value={salaryAllocForm.emergency_reserve}
-                        onChange={e => setSalaryAllocForm(f => ({ ...f, emergency_reserve: e.target.value }))}
-                        className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white font-mono text-xs focus:ring-1 focus:ring-purple-500"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="block text-[10px] text-slate-500 font-bold uppercase">Bangalore House Fund (₹)</label>
-                      <input
-                        type="number" min="0"
-                        value={salaryAllocForm.house_fund}
-                        onChange={e => setSalaryAllocForm(f => ({ ...f, house_fund: e.target.value }))}
-                        className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white font-mono text-xs focus:ring-1 focus:ring-purple-500"
-                      />
-                    </div>
+                {/* LIVE SALARY SUMMARY BAR */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-slate-900/40 p-4 rounded-2xl border border-slate-850">
+                  <div className="space-y-1">
+                    <label className="block text-[10px] text-slate-500 font-bold uppercase">Monthly Income (₹)</label>
+                    <input
+                      type="number" min="0" required
+                      value={salaryIncome}
+                      onChange={e => setSalaryIncome(Number(e.target.value) || 0)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl py-1.5 px-3 text-white font-mono font-bold text-sm focus:ring-1 focus:ring-purple-500"
+                    />
                   </div>
+
+                  <div className="space-y-1">
+                    <p className="text-[10px] text-slate-500 font-bold uppercase">Allocated Total</p>
+                    <p className="text-sm font-black text-purple-400 font-mono">
+                      ₹{totalAllocatedAmount.toLocaleString('en-IN')} <span className="text-xs font-normal">({totalAllocatedPct}%)</span>
+                    </p>
+                  </div>
+
+                  <div className="space-y-1">
+                    <p className="text-[9px] text-slate-500 font-bold uppercase">Remaining Unallocated Income</p>
+                    <p className={`text-sm font-black font-mono ${remainingUnallocatedIncome >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      ₹{remainingUnallocatedIncome.toLocaleString('en-IN')}
+                    </p>
+                  </div>
+                </div>
+
+                {/* DYNAMIC SALARY ALLOCATION TABLE */}
+                <form onSubmit={handleSaveSalaryAllocation} className="space-y-6">
+                  {salaryAllocations.length === 0 ? (
+                    <p className="text-xs text-slate-500 italic p-6 text-center border border-dashed border-slate-850 rounded-2xl">
+                      No categories added to salary allocation yet. Select a category from the dropdown above to begin planning.
+                    </p>
+                  ) : (
+                    <div className="overflow-x-auto custom-scrollbar">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="border-b border-slate-900 text-[10px] text-slate-500 font-black uppercase tracking-wider">
+                            <th className="py-2.5 px-3">Category</th>
+                            <th className="py-2.5 px-3">Group</th>
+                            <th className="py-2.5 px-3 text-right">Allocation Amount (₹)</th>
+                            <th className="py-2.5 px-3 text-right">% of Income</th>
+                            <th className="py-2.5 px-3 text-center">Quick Action</th>
+                            <th className="py-2.5 px-3 text-center">Remove</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-900/60 font-semibold">
+                          {salaryAllocations.map(item => (
+                            <tr key={item.category_id} className="hover:bg-slate-900/30 transition">
+                              <td className="py-3 px-3 text-white font-extrabold">{item.category_name}</td>
+                              <td className="py-3 px-3">
+                                <span className="px-2 py-0.5 rounded text-[8px] font-black uppercase border bg-slate-900 text-slate-300 border-slate-800">
+                                  {item.category_group}
+                                </span>
+                              </td>
+                              <td className="py-3 px-3 text-right">
+                                <input
+                                  type="number" min="0" step="any" required
+                                  value={item.amount}
+                                  onChange={e => handleUpdateSalaryAllocAmount(item.category_id, Number(e.target.value))}
+                                  className="w-32 bg-slate-900 border border-slate-800 rounded-lg py-1 px-2 text-right text-white font-mono text-xs font-bold focus:ring-1 focus:ring-purple-500"
+                                />
+                              </td>
+                              <td className="py-3 px-3 text-right font-mono text-purple-400 font-extrabold">
+                                {item.percentage}%
+                              </td>
+                              <td className="py-3 px-3 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => handleConvertAllocToBudget(item)}
+                                  className="px-2.5 py-1 rounded-lg bg-purple-500/10 text-purple-400 border border-purple-500/20 hover:bg-purple-500/20 text-[10px] font-black transition"
+                                  title="Create or update budget limit for this category"
+                                >
+                                  Create Budget
+                                </button>
+                              </td>
+                              <td className="py-3 px-3 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveSalaryAllocItem(item.category_id)}
+                                  className="p-1 text-slate-500 hover:text-rose-400 transition"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
 
                   <div className="flex justify-end">
                     <Button type="submit" variant="primary" className="bg-purple-600 hover:bg-purple-700 text-xs px-6 py-2">
-                      Save Salary Allocation Plan
+                      Save Dynamic Salary Allocation Plan
                     </Button>
                   </div>
                 </form>
@@ -816,17 +1026,40 @@ export default function Budgets() {
               <p className="text-xs text-rose-400 font-semibold bg-rose-500/10 border border-rose-500/20 p-2 rounded-xl">{errorMessage}</p>
             )}
 
+            {/* Category Search Input */}
             <div className="space-y-1">
-              <label className="block text-[10px] text-slate-500 font-bold uppercase">Category *</label>
+              <label className="block text-[10px] text-slate-500 font-bold uppercase">Search & Select Category *</label>
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-3 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Filter category list..."
+                  value={categorySearchQuery}
+                  onChange={e => setCategorySearchQuery(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 pl-9 pr-3 text-white text-xs font-bold focus:ring-1 focus:ring-purple-500 mb-2"
+                />
+              </div>
+
               <select
                 disabled={!!editingId}
                 required
                 value={formData.category_id}
                 onChange={e => setFormData(f => ({ ...f, category_id: e.target.value }))}
-                className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white text-xs font-bold focus:ring-1 focus:ring-purple-500"
+                className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white text-xs font-bold focus:ring-1 focus:ring-purple-500 max-h-48"
               >
-                <option value="">-- Select Expense Category --</option>
-                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                <option value="">-- Select Category from Master List --</option>
+                {Object.entries(groupedCategories).map(([groupName, cats]) => {
+                  if (cats.length === 0) return null;
+                  return (
+                    <optgroup key={groupName} label={`-- ${groupName} --`}>
+                      {cats.map(c => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  );
+                })}
               </select>
             </div>
 

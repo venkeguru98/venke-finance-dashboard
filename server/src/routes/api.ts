@@ -305,10 +305,10 @@ router.get('/budgets', async (req, res) => {
     const currentMonthPrefix = `${year}-${String(month).padStart(2, '0')}%`;
 
     const budgets = await query(
-      `SELECT b.*, c.name as category_name, c.color as category_color, g.name as linked_goal_name,
+      `SELECT b.*, c.name as category_name, c.color as category_color, c.type as category_type, g.name as linked_goal_name,
          COALESCE((
            SELECT SUM(t.amount) FROM transactions t 
-           WHERE t.category_id = b.category_id AND t.user_id = ? AND t.type = 'expense' AND t.date LIKE ?
+           WHERE t.category_id = b.category_id AND t.user_id = ? AND t.type != 'income' AND t.date LIKE ?
          ), 0) as spent
        FROM budgets b
        JOIN categories c ON b.category_id = c.id
@@ -442,10 +442,10 @@ router.get('/budgets/planner-summary', async (req, res) => {
 
     // 2. Fetch all budgets
     const budgets = await query(
-      `SELECT b.*, c.name as category_name,
+      `SELECT b.*, c.name as category_name, c.type as category_type,
          COALESCE((
            SELECT SUM(t.amount) FROM transactions t 
-           WHERE t.category_id = b.category_id AND t.user_id = ? AND t.type = 'expense' AND t.date LIKE ?
+           WHERE t.category_id = b.category_id AND t.user_id = ? AND t.type != 'income' AND t.date LIKE ?
          ), 0) as spent
        FROM budgets b
        JOIN categories c ON b.category_id = c.id
