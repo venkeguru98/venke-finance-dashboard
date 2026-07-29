@@ -67,6 +67,7 @@ export default function Dashboard() {
 
   // UI States
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [lastUpdated, setLastUpdated] = useState(new Date().toLocaleTimeString());
   const [searchQuery, setSearchQuery] = useState('');
@@ -293,6 +294,8 @@ export default function Dashboard() {
   }, [now]);
 
   const fetchAll = async () => {
+    setIsRefreshing(true);
+    setTimeout(() => setIsRefreshing(false), 600);
     setLoading(true);
     setError('');
     try {
@@ -964,7 +967,7 @@ export default function Dashboard() {
   return (
     <div className="space-y-4.5 animate-in fade-in duration-300">
       {/* Personalized Greeting Header */}
-      <div className="flex justify-between items-center flex-wrap gap-3 bg-gradient-to-r from-primary/10 to-purple-500/10 py-3.5 px-5 rounded-2xl border border-primary/15 relative overflow-hidden">
+      <div className="flex justify-between items-center flex-wrap gap-3 animate-banner-shimmer bg-gradient-to-r from-primary/10 via-purple-500/15 to-indigo-500/10 py-3.5 px-5 rounded-2xl border border-primary/15 relative overflow-hidden transition-all duration-300">
         <div className="space-y-0.5 max-w-[72%]">
           <h1 className="text-xl font-extrabold text-slate-900 dark:text-white tracking-tight flex items-center gap-2 flex-wrap">
             {getGreeting()}
@@ -976,7 +979,7 @@ export default function Dashboard() {
               : `You spent ₹${Math.abs(totalsData.current.balance).toLocaleString('en-IN')} over your income this month. Keep an eye on budgets! ⚠️`}
           </p>
           <div className="text-[9px] text-slate-400 mt-1 font-medium flex items-center">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-500 mr-1.5 animate-pulse" />
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500 mr-1.5 animate-status-breath" />
             Last Updated: {lastUpdated}
           </div>
         </div>
@@ -984,13 +987,19 @@ export default function Dashboard() {
         <div className="flex items-center space-x-2 self-center">
           <button 
             onClick={() => setIsCustomizing(!isCustomizing)}
-            className="flex items-center space-x-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 transition"
+            className="flex items-center space-x-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900 transition-all duration-150 hover:-translate-y-0.5 active:scale-[0.97]"
           >
             <LayoutGrid className="w-3.5 h-3.5 text-slate-500" />
             <span>{isCustomizing ? 'Done' : 'Customize Widgets'}</span>
           </button>
-          <button onClick={fetchAll} className="p-2 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 transition">
-            <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
+          <button 
+            onClick={fetchAll} 
+            className={`p-2 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900 transition-all duration-150 hover:-translate-y-0.5 active:scale-[0.97] ${
+              isRefreshing ? 'opacity-80 ring-2 ring-primary/30' : ''
+            }`}
+            title="Refresh dashboard data"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-slate-500 ${isRefreshing ? 'animate-spin-once' : ''}`} />
           </button>
         </div>
       </div>
@@ -2478,7 +2487,7 @@ function SummaryCard({
 
   return (
     <div
-      className={`bg-white dark:bg-slate-950 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-xl hover:-translate-y-1 hover:border-primary/40 hover:ring-2 hover:ring-primary/10 transition-all duration-200 relative overflow-visible group ${accentClasses} ${onClick ? 'cursor-pointer' : ''}`}
+      className={`bg-white dark:bg-slate-950 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm dashboard-card-hover animate-fade-in-up hover:shadow-xl hover:border-primary/40 hover:ring-2 hover:ring-primary/10 transition-all duration-200 relative overflow-visible group ${accentClasses} ${onClick ? 'cursor-pointer' : ''}`}
       onClick={onClick}
     >
       {/* Decorative background circle inside wrapper to clip bounds correctly */}
@@ -3020,8 +3029,8 @@ function InsightCard({ item, index, getCategoryIcon }: InsightCardProps) {
 
   return (
     <div 
-      className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl w-[285px] h-[265px] flex-shrink-0 flex flex-col justify-between hover:-translate-y-1 hover:shadow-xl dark:hover:shadow-black/40 hover:border-primary/30 transition-all duration-200 ease-out cursor-grab active:cursor-grabbing animate-slide-up relative overflow-hidden hover:overflow-visible group select-none"
-      style={{ animationDelay: `${index * 100}ms` }}
+      className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl w-[285px] h-[265px] flex-shrink-0 flex flex-col justify-between dashboard-card-hover animate-fade-in-up hover:shadow-xl dark:hover:shadow-black/40 hover:border-primary/30 transition-all duration-200 ease-out cursor-grab active:cursor-grabbing relative overflow-hidden hover:overflow-visible group select-none"
+      style={{ animationDelay: `${index * 40}ms` }}
     >
       {/* Top row: Icon and Badge */}
       <div className="flex justify-between items-center w-full">

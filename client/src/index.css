@@ -35,3 +35,121 @@
     @apply transition-colors duration-200;
   }
 }
+
+/* Dashboard Micro-Animation Utilities */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes bannerShimmer {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes statusBreathing {
+  0%, 100% {
+    opacity: 0.8;
+    transform: scale(0.95);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+}
+
+@keyframes fabPulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+  }
+  50% {
+    transform: scale(1.02);
+    box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4);
+  }
+}
+
+@keyframes drawPath {
+  from {
+    stroke-dashoffset: 200;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes spinOnce {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Utility Classes */
+.animate-fade-in-up {
+  animation: fadeInUp 350ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-banner-shimmer {
+  background-size: 200% 200%;
+  animation: bannerShimmer 14s ease infinite;
+}
+
+.animate-status-breath {
+  animation: statusBreathing 2.5s ease-in-out infinite;
+}
+
+.animate-fab-pulse {
+  animation: fabPulse 7s ease-in-out infinite;
+}
+
+.animate-spin-once {
+  animation: spinOnce 600ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dashboard-card-hover {
+  transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1), 
+              border-color 200ms ease, 
+              box-shadow 200ms ease;
+}
+
+.dashboard-card-hover:hover {
+  transform: translateY(-4px) scale(1.01);
+}
+
+.sparkline-animate path {
+  stroke-dasharray: 200;
+  stroke-dashoffset: 200;
+  animation: drawPath 900ms ease-out forwards;
+}
+
+/* Reduced Motion Support */
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in-up,
+  .animate-banner-shimmer,
+  .animate-status-breath,
+  .animate-fab-pulse,
+  .animate-spin-once,
+  .sparkline-animate path {
+    animation: none !important;
+    transition: opacity 150ms ease !important;
+  }
+  .dashboard-card-hover:hover {
+    transform: none !important;
+  }
+}
