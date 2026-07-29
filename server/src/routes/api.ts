@@ -560,6 +560,49 @@ router.post('/budgets/salary-allocation', async (req, res) => {
   }
 });
 
+router.post('/budgets/salary-allocation/copy-prev', async (req, res) => {
+  const uid = req.user!.id;
+  const { target_month, target_year } = req.body;
+  try {
+    let prevMonth = target_month - 1;
+    let prevYear = target_year;
+    if (prevMonth < 1) {
+      prevMonth = 12;
+      prevYear -= 1;
+    }
+
+    const prevPlan = await query(
+      `SELECT * FROM salary_allocations WHERE user_id = ? AND month = ? AND year = ?`,
+      [uid, prevMonth, prevYear]
+    );
+
+    if (prevPlan.length === 0) {
+      return res.status(404).json({ error: `No salary allocation plan found for previous month (${prevMonth}/${prevYear}).` });
+    }
+
+    const existing = await query(
+      `SELECT id FROM salary_allocations WHERE user_id = ? AND month = ? AND year = ?`,
+      [uid, target_month, target_year]
+    );
+
+    if (existing.length > 0) {
+      await execute(
+        `UPDATE salary_allocations SET income_amount=?, allocation_json=? WHERE id=? AND user_id=?`,
+        [prevPlan[0].income_amount, prevPlan[0].allocation_json, existing[0].id, uid]
+      );
+    } else {
+      await execute(
+        `INSERT INTO salary_allocations (user_id, month, year, income_amount, allocation_json) VALUES (?, ?, ?, ?, ?)`,
+        [uid, target_month, target_year, prevPlan[0].income_amount, prevPlan[0].allocation_json]
+      );
+    }
+
+    res.json({ success: true, duplicated_from: `${prevMonth}/${prevYear}` });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.get('/budgets/ai-recommendations', async (req, res) => {
   const uid = req.user!.id;
   try {

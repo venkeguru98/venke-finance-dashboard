@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { 
   Plus, Pencil, Trash2, CheckCircle2, FileSpreadsheet,
-  Shield, Sparkles, PieChart as PieChartIcon, Target, Search
+  Shield, Sparkles, PieChart as PieChartIcon, Target, Search,
+  Zap, Copy, AlertTriangle, X
 } from 'lucide-react';
 import axios from 'axios';
 import Button from '../components/ui/Button';
@@ -66,7 +67,7 @@ const PRIORITY_BADGES = {
   avoid:     { label: 'Avoid / Reduce', color: 'bg-rose-500/10 text-rose-400 border-rose-500/20' },
 };
 
-// Helper: Group categories into unified master sections
+// Helper: Group categories accurately into unified master sections
 export const getCategoryGroup = (cat: Category): 'Expenses' | 'Savings' | 'Investments' | 'Debt' | 'Insurance' => {
   const type = (cat.type || '').toLowerCase();
   const name = (cat.name || '').toLowerCase();
@@ -110,6 +111,7 @@ export default function Budgets() {
 
   // Modals & Forms
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -121,6 +123,9 @@ export default function Budgets() {
   // Dynamic Salary Allocation State
   const [salaryIncome, setSalaryIncome] = useState<number>(74000);
   const [salaryAllocations, setSalaryAllocations] = useState<SalaryAllocItem[]>([]);
+  
+  // Batch Generate Budgets selection state
+  const [batchSelections, setBatchSelections] = useState<Record<number, boolean>>({});
 
   // Budget Add/Edit Form State
   const [formData, setFormData] = useState({
@@ -158,7 +163,7 @@ export default function Budgets() {
       setAiRecs(recsRes.data || []);
       setGoals(goalsRes.data || []);
 
-      // Load & parse dynamic salary allocations (supporting legacy JSON structures gracefully)
+      // Parse dynamic salary allocations
       if (salaryRes.data) {
         const inc = Number(salaryRes.data.income_amount || 74000);
         setSalaryIncome(inc);
@@ -169,7 +174,6 @@ export default function Budgets() {
         if (Array.isArray(rawAlloc)) {
           items = rawAlloc;
         } else if (rawAlloc && typeof rawAlloc === 'object') {
-          // Parse legacy object structure into category-driven list
           const keyMap: Record<string, string> = {
             chit: 'Chit Contribution',
             lic: 'LIC Premium',
@@ -197,7 +201,6 @@ export default function Budgets() {
           }).filter(item => item.amount > 0 || item.category_id > 0);
         }
 
-        // If no allocations saved yet, set helpful default category allocations
         if (items.length === 0 && allCats.length > 0) {
           const defaultCatNames = ['Food', 'Bills', 'Debt Repayment', 'LIC Premium', 'Mutual Funds SIP', 'Emergency Reserve', 'Bangalore House Fund'];
           items = defaultCatNames.map(name => {
@@ -214,6 +217,11 @@ export default function Budgets() {
         }
 
         setSalaryAllocations(items);
+
+        // Pre-select all allocation items for batch budget creation modal
+        const initBatchSel: Record<number, boolean> = {};
+        items.forEach(it => { if (it.category_id > 0) initBatchSel[it.category_id] = true; });
+        setBatchSelections(initBatchSel);
       }
     } catch (err) {
       console.error(err);
@@ -352,6 +360,7 @@ export default function Budgets() {
     };
 
     setSalaryAllocations(prev => [...prev, newItem]);
+    setBatchSelections(prev => ({ ...prev, [catId]: true }));
   };
 
   const handleUpdateSalaryAllocAmount = (catId: number, newAmt: number) => {
@@ -386,9 +395,26 @@ export default function Budgets() {
     }
   };
 
-  // Convert Salary Allocation Item into a Budget Limit with 1-click
-  const handleConvertAllocToBudget = async (item: SalaryAllocItem) => {
+  const handleDuplicatePrevMonthPlan = async () => {
     try {
+      const res = await axios.post(`${API}/budgets/salary-allocation/copy-prev`, {
+        target_month: selectedMonth,
+        target_year: selectedYear
+      });
+      showToast(`Duplicated allocation plan from ${res.data.duplicated_from}!`);
+      fetchBudgetsAndData();
+    } catch (err: any) {
+      showToast(err.response?.data?.error || 'No plan found for previous month to copy.');
+    }
+  };
+
+  // Convert Batch Selected Allocations to Category Budgets (Fix 6)
+  const handleBatchGenerateBudgets = async () => {
+    let createdCount = 0;
+    let updatedCount = 0;
+
+    for (const item of salaryAllocations) {
+      if (!batchSelections[item.category_id]) continue;
       const existingB = budgets.find(b => b.category_id === item.category_id);
       if (existingB) {
         await axios.put(`${API}/budgets/${existingB.id}`, {
@@ -398,7 +424,7 @@ export default function Budgets() {
           linked_goal_id: existingB.linked_goal_id,
           priority: existingB.priority
         });
-        showToast(`Updated budget limit for ${item.category_name} to ₹${item.amount.toLocaleString('en-IN')}`);
+        updatedCount++;
       } else {
         await axios.post(`${API}/budgets`, {
           category_id: item.category_id,
@@ -409,12 +435,13 @@ export default function Budgets() {
           rollover_amount: 0,
           priority: item.category_group === 'Expenses' ? 'essential' : 'important'
         });
-        showToast(`Configured budget limit for ${item.category_name} to ₹${item.amount.toLocaleString('en-IN')}`);
+        createdCount++;
       }
-      fetchBudgetsAndData();
-    } catch (err) {
-      showToast('Error creating budget from allocation');
     }
+
+    setIsBatchModalOpen(false);
+    showToast(`Batch Generated: ${createdCount} created, ${updatedCount} updated!`);
+    fetchBudgetsAndData();
   };
 
   const handleApplyAiRec = async (rec: any) => {
@@ -436,13 +463,15 @@ export default function Budgets() {
   };
 
   const exportBudgetCSV = () => {
-    const headers = ['Category', 'Type Group', 'Base Limit', 'Rollover', 'Effective Limit', 'Spent', 'Remaining', 'Status', 'Forecast End', 'Linked Goal', 'Priority'];
+    const headers = ['Category', 'Type Group', 'Planned Allocation', 'Base Limit', 'Rollover', 'Effective Limit', 'Spent', 'Remaining', 'Status', 'Forecast End', 'Linked Goal', 'Priority'];
     const rows = budgets.map(b => {
       const matchCat = categories.find(c => c.id === b.category_id);
       const grp = matchCat ? getCategoryGroup(matchCat) : 'Expenses';
+      const allocItem = salaryAllocations.find(a => a.category_id === b.category_id);
       return [
         b.category_name,
         grp,
+        allocItem ? allocItem.amount : 0,
         b.limit_amount,
         b.rollover_amount || 0,
         b.effectiveLimit || b.limit_amount,
@@ -470,6 +499,7 @@ export default function Budgets() {
   const totalAllocatedAmount = salaryAllocations.reduce((sum, item) => sum + item.amount, 0);
   const totalAllocatedPct = salaryIncome > 0 ? parseFloat(((totalAllocatedAmount / salaryIncome) * 100).toFixed(1)) : 0;
   const remainingUnallocatedIncome = salaryIncome - totalAllocatedAmount;
+  const isOverAllocated = remainingUnallocatedIncome < 0;
 
   // Filtered Budgets List
   const filteredBudgets = budgets.filter(b => {
@@ -537,7 +567,7 @@ export default function Budgets() {
             activeTab === 'overview' ? 'border-purple-500 text-purple-400' : 'border-transparent text-slate-400 hover:text-white'
           }`}
         >
-          📊 Overview & Category Budgets
+          📊 Overview & Category Budgets (Execution)
         </button>
         <button
           onClick={() => setActiveTab('salary')}
@@ -545,7 +575,7 @@ export default function Budgets() {
             activeTab === 'salary' ? 'border-purple-500 text-purple-400' : 'border-transparent text-slate-400 hover:text-white'
           }`}
         >
-          💵 Dynamic Salary Allocation Planner
+          💵 Dynamic Salary Allocation Planner (Planning)
         </button>
         <button
           onClick={() => setActiveTab('forecast')}
@@ -714,6 +744,7 @@ export default function Budgets() {
                       const priBadge = PRIORITY_BADGES[b.priority || 'essential'];
                       const matchCat = categories.find(c => c.id === b.category_id);
                       const grp = matchCat ? getCategoryGroup(matchCat) : 'Expenses';
+                      const allocItem = salaryAllocations.find(a => a.category_id === b.category_id);
 
                       return (
                         <div
@@ -756,17 +787,26 @@ export default function Budgets() {
                             </div>
                           </div>
 
-                          {/* Limit vs Spent Amount */}
-                          <div className="flex justify-between items-end">
+                          {/* Full Cycle Comparison: Allocation | Budget Limit | Spent | Remaining */}
+                          <div className="grid grid-cols-2 gap-2 bg-slate-900/40 p-2.5 rounded-2xl border border-slate-850/60 text-[10px]">
                             <div>
-                              <p className="text-[9px] text-slate-500 font-bold uppercase">Spent / Effective Limit</p>
-                              <p className="text-base font-black text-white font-mono mt-0.5">
-                                ₹{b.spent.toLocaleString('en-IN')} <span className="text-xs text-slate-400 font-semibold">/ ₹{effLimit.toLocaleString('en-IN')}</span>
+                              <span className="text-slate-500 font-bold uppercase">Salary Plan:</span>
+                              <p className="font-mono text-purple-400 font-black">₹{allocItem ? allocItem.amount.toLocaleString('en-IN') : '0'}</p>
+                            </div>
+                            <div>
+                              <span className="text-slate-500 font-bold uppercase">Budget Limit:</span>
+                              <p className="font-mono text-white font-black">₹{effLimit.toLocaleString('en-IN')}</p>
+                            </div>
+                            <div>
+                              <span className="text-slate-500 font-bold uppercase">Actual Spent:</span>
+                              <p className="font-mono text-rose-400 font-black">₹{b.spent.toLocaleString('en-IN')}</p>
+                            </div>
+                            <div>
+                              <span className="text-slate-500 font-bold uppercase">Remaining:</span>
+                              <p className={`font-mono font-black ${isOver ? 'text-rose-400' : 'text-emerald-400'}`}>
+                                ₹{(effLimit - b.spent).toLocaleString('en-IN')}
                               </p>
                             </div>
-                            <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase border ${statusBadge}`}>
-                              {statusText}
-                            </span>
                           </div>
 
                           {/* Progress Bar */}
@@ -781,10 +821,8 @@ export default function Budgets() {
                             </div>
                             <div className="flex justify-between text-[9px] text-slate-500 font-bold">
                               <span>{pct.toFixed(0)}% used</span>
-                              <span>
-                                {isOver
-                                  ? `Over by ₹${(b.spent - effLimit).toLocaleString('en-IN')}`
-                                  : `Remaining: ₹${(effLimit - b.spent).toLocaleString('en-IN')}`}
+                              <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase border ${statusBadge}`}>
+                                {statusText}
                               </span>
                             </div>
                           </div>
@@ -817,8 +855,15 @@ export default function Budgets() {
                     <p className="text-xs text-slate-400 mt-0.5">Category-driven salary allocation using your transaction category master list with real-time percentage calculations.</p>
                   </div>
 
-                  {/* Add Allocation Category Selector */}
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center space-x-2 flex-wrap gap-2">
+                    <Button onClick={handleDuplicatePrevMonthPlan} variant="ghost" className="border border-slate-800 text-slate-300 text-xs py-1.5 px-3">
+                      <Copy className="w-3.5 h-3.5 mr-1.5 text-blue-400" /> Duplicate Previous Month
+                    </Button>
+
+                    <Button onClick={() => setIsBatchModalOpen(true)} variant="primary" className="bg-purple-600 hover:bg-purple-700 text-xs py-1.5 px-3">
+                      <Zap className="w-3.5 h-3.5 mr-1.5 text-amber-300" /> Generate Budgets from Allocation
+                    </Button>
+
                     <select
                       onChange={e => {
                         if (e.target.value) {
@@ -826,7 +871,7 @@ export default function Budgets() {
                           e.target.value = '';
                         }
                       }}
-                      className="bg-slate-900 border border-slate-800 text-xs font-bold text-slate-200 rounded-xl px-3 py-2 focus:outline-none cursor-pointer"
+                      className="bg-slate-900 border border-slate-800 text-xs font-bold text-slate-200 rounded-xl px-3 py-1.5 focus:outline-none cursor-pointer"
                     >
                       <option value="">+ Add Category to Allocation</option>
                       {categories.map(c => (
@@ -838,7 +883,7 @@ export default function Budgets() {
                   </div>
                 </div>
 
-                {/* LIVE SALARY SUMMARY BAR */}
+                {/* LIVE SALARY SUMMARY BAR WITH OVER-ALLOCATED WARNING */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-slate-900/40 p-4 rounded-2xl border border-slate-850">
                   <div className="space-y-1">
                     <label className="block text-[10px] text-slate-500 font-bold uppercase">Monthly Income (₹)</label>
@@ -859,11 +904,19 @@ export default function Budgets() {
 
                   <div className="space-y-1">
                     <p className="text-[9px] text-slate-500 font-bold uppercase">Remaining Unallocated Income</p>
-                    <p className={`text-sm font-black font-mono ${remainingUnallocatedIncome >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    <p className={`text-sm font-black font-mono flex items-center gap-1.5 ${isOverAllocated ? 'text-rose-400' : 'text-emerald-400'}`}>
+                      {isOverAllocated && <AlertTriangle className="w-4 h-4 text-rose-500" />}
                       ₹{remainingUnallocatedIncome.toLocaleString('en-IN')}
                     </p>
                   </div>
                 </div>
+
+                {isOverAllocated && (
+                  <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-xl text-xs font-bold flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                    <span>Warning: Total allocated amount exceeds your monthly salary income by ₹{Math.abs(remainingUnallocatedIncome).toLocaleString('en-IN')}. Consider reducing allocation amounts.</span>
+                  </div>
+                )}
 
                 {/* DYNAMIC SALARY ALLOCATION TABLE */}
                 <form onSubmit={handleSaveSalaryAllocation} className="space-y-6">
@@ -880,7 +933,6 @@ export default function Budgets() {
                             <th className="py-2.5 px-3">Group</th>
                             <th className="py-2.5 px-3 text-right">Allocation Amount (₹)</th>
                             <th className="py-2.5 px-3 text-right">% of Income</th>
-                            <th className="py-2.5 px-3 text-center">Quick Action</th>
                             <th className="py-2.5 px-3 text-center">Remove</th>
                           </tr>
                         </thead>
@@ -907,16 +959,6 @@ export default function Budgets() {
                               <td className="py-3 px-3 text-center">
                                 <button
                                   type="button"
-                                  onClick={() => handleConvertAllocToBudget(item)}
-                                  className="px-2.5 py-1 rounded-lg bg-purple-500/10 text-purple-400 border border-purple-500/20 hover:bg-purple-500/20 text-[10px] font-black transition"
-                                  title="Create or update budget limit for this category"
-                                >
-                                  Create Budget
-                                </button>
-                              </td>
-                              <td className="py-3 px-3 text-center">
-                                <button
-                                  type="button"
                                   onClick={() => handleRemoveSalaryAllocItem(item.category_id)}
                                   className="p-1 text-slate-500 hover:text-rose-400 transition"
                                 >
@@ -930,7 +972,7 @@ export default function Budgets() {
                     </div>
                   )}
 
-                  <div className="flex justify-end">
+                  <div className="flex justify-end space-x-3">
                     <Button type="submit" variant="primary" className="bg-purple-600 hover:bg-purple-700 text-xs px-6 py-2">
                       Save Dynamic Salary Allocation Plan
                     </Button>
@@ -1011,6 +1053,66 @@ export default function Budgets() {
             </div>
           )}
         </>
+      )}
+
+      {/* GENERATE BUDGETS FROM ALLOCATION BATCH MODAL (Fix 6) */}
+      {isBatchModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsBatchModalOpen(false)} />
+          <div className="relative bg-slate-950 border border-slate-800 rounded-3xl p-6 shadow-2xl w-full max-w-lg space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-900 pb-3">
+              <h3 className="text-sm font-black text-white flex items-center gap-2 uppercase tracking-wider">
+                <Zap className="w-4 h-4 text-amber-400" /> Generate Category Budgets from Allocation Plan
+              </h3>
+              <button onClick={() => setIsBatchModalOpen(false)} className="text-slate-500 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-400">
+              Select which allocated categories to convert into active budget limits for {selectedMonthLabel} {selectedYear}:
+            </p>
+
+            <div className="max-h-64 overflow-y-auto space-y-2 custom-scrollbar p-1">
+              {salaryAllocations.map(item => {
+                const existingB = budgets.find(b => b.category_id === item.category_id);
+                return (
+                  <label
+                    key={item.category_id}
+                    className="flex items-center justify-between p-3 bg-slate-900/50 border border-slate-850 rounded-2xl cursor-pointer hover:border-purple-500/30 transition"
+                  >
+                    <div className="flex items-center space-x-3">
+                      <input
+                        type="checkbox"
+                        checked={!!batchSelections[item.category_id]}
+                        onChange={e => setBatchSelections(s => ({ ...s, [item.category_id]: e.target.checked }))}
+                        className="rounded text-purple-600 focus:ring-purple-500 w-4 h-4"
+                      />
+                      <div>
+                        <p className="text-xs font-extrabold text-white">{item.category_name}</p>
+                        <p className="text-[10px] text-slate-500">{item.category_group}</p>
+                      </div>
+                    </div>
+
+                    <div className="text-right">
+                      <p className="text-xs font-mono font-black text-purple-400">₹{item.amount.toLocaleString('en-IN')}</p>
+                      <p className="text-[9px] text-slate-500">
+                        {existingB ? `Update limit (current: ₹${existingB.limit_amount})` : 'Create new budget limit'}
+                      </p>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+
+            <div className="flex justify-end space-x-3 pt-2">
+              <Button onClick={() => setIsBatchModalOpen(false)} variant="ghost">Cancel</Button>
+              <Button onClick={handleBatchGenerateBudgets} variant="primary" className="bg-purple-600 hover:bg-purple-700 px-5 text-white">
+                Generate Selected Budgets
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* CONFIGURE BUDGET MODAL */}
