@@ -76,10 +76,15 @@ CREATE TABLE IF NOT EXISTS budgets (
     limit_amount REAL NOT NULL,
     month INTEGER NOT NULL,
     year INTEGER NOT NULL,
+    rollover_enabled INTEGER DEFAULT 0,
+    rollover_amount REAL DEFAULT 0,
+    linked_goal_id INTEGER NULL,
+    priority TEXT DEFAULT 'essential',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(user_id, category_id, month, year),
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY(category_id) REFERENCES categories(id) ON DELETE CASCADE
+    FOREIGN KEY(category_id) REFERENCES categories(id) ON DELETE CASCADE,
+    FOREIGN KEY(linked_goal_id) REFERENCES goals(id) ON DELETE SET NULL
 );
 
 -- Savings Goals Table

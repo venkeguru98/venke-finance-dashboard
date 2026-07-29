@@ -286,6 +286,78 @@ export const initializeDatabase = async () => {
       console.error('Migration failed for debt manager tables:', dbErr);
     }
 
+    // Apply Schema Migrations for Advanced Budget Planner
+    try {
+      if (isPg && pgPool) {
+        await pgPool.query(`ALTER TABLE budgets ADD COLUMN IF NOT EXISTS rollover_enabled INTEGER DEFAULT 0`);
+        await pgPool.query(`ALTER TABLE budgets ADD COLUMN IF NOT EXISTS rollover_amount REAL DEFAULT 0`);
+        await pgPool.query(`ALTER TABLE budgets ADD COLUMN IF NOT EXISTS linked_goal_id INTEGER REFERENCES goals(id) ON DELETE SET NULL`);
+        await pgPool.query(`ALTER TABLE budgets ADD COLUMN IF NOT EXISTS priority VARCHAR(50) DEFAULT 'essential'`);
+
+        await pgPool.query(`
+          CREATE TABLE IF NOT EXISTS salary_allocations (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            month INTEGER NOT NULL,
+            year INTEGER NOT NULL,
+            income_amount REAL NOT NULL DEFAULT 0,
+            allocation_json TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT salary_alloc_user_month_year UNIQUE(user_id, month, year)
+          )
+        `);
+
+        await pgPool.query(`
+          CREATE TABLE IF NOT EXISTS budget_goal_allocations (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            budget_id INTEGER NOT NULL REFERENCES budgets(id) ON DELETE CASCADE,
+            goal_id INTEGER NOT NULL REFERENCES goals(id) ON DELETE CASCADE,
+            suggested_amount REAL NOT NULL,
+            accepted INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+      } else {
+        try { await execute(`ALTER TABLE budgets ADD COLUMN rollover_enabled INTEGER DEFAULT 0`); } catch (e) {}
+        try { await execute(`ALTER TABLE budgets ADD COLUMN rollover_amount REAL DEFAULT 0`); } catch (e) {}
+        try { await execute(`ALTER TABLE budgets ADD COLUMN linked_goal_id INTEGER REFERENCES goals(id) ON DELETE SET NULL`); } catch (e) {}
+        try { await execute(`ALTER TABLE budgets ADD COLUMN priority TEXT DEFAULT 'essential'`); } catch (e) {}
+
+        await execute(`
+          CREATE TABLE IF NOT EXISTS salary_allocations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            month INTEGER NOT NULL,
+            year INTEGER NOT NULL,
+            income_amount REAL NOT NULL DEFAULT 0,
+            allocation_json TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, month, year),
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+          )
+        `);
+
+        await execute(`
+          CREATE TABLE IF NOT EXISTS budget_goal_allocations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            budget_id INTEGER NOT NULL,
+            goal_id INTEGER NOT NULL,
+            suggested_amount REAL NOT NULL,
+            accepted INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY(budget_id) REFERENCES budgets(id) ON DELETE CASCADE,
+            FOREIGN KEY(goal_id) REFERENCES goals(id) ON DELETE CASCADE
+          )
+        `);
+      }
+      console.log('Budget Planner database tables & migrations verified/created.');
+    } catch (budgetMigErr) {
+      console.error('Migration failed for budget planner tables:', budgetMigErr);
+    }
+
     // Create Mutual Funds tables
     try {
       if (isPg && pgPool) {

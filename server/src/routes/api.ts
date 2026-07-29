@@ -302,20 +302,58 @@ router.get('/budgets', async (req, res) => {
     const now = new Date();
     const month = req.query.month ? parseInt(req.query.month as string, 10) : (now.getMonth() + 1);
     const year = req.query.year ? parseInt(req.query.year as string, 10) : now.getFullYear();
-    const currentMonth = `${year}-${String(month).padStart(2, '0')}%`;
+    const currentMonthPrefix = `${year}-${String(month).padStart(2, '0')}%`;
 
     const budgets = await query(
-      `SELECT b.*, c.name as category_name, c.color as category_color,
+      `SELECT b.*, c.name as category_name, c.color as category_color, g.name as linked_goal_name,
          COALESCE((
            SELECT SUM(t.amount) FROM transactions t 
            WHERE t.category_id = b.category_id AND t.user_id = ? AND t.type = 'expense' AND t.date LIKE ?
          ), 0) as spent
        FROM budgets b
        JOIN categories c ON b.category_id = c.id
+       LEFT JOIN goals g ON b.linked_goal_id = g.id
        WHERE b.user_id = ? AND b.month = ? AND b.year = ?`,
-      [uid, currentMonth, uid, month, year]
+      [uid, currentMonthPrefix, uid, month, year]
     );
-    res.json(budgets);
+
+    // Calculate predictive month-end forecast per category
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const today = new Date();
+    let currentDay = daysInMonth;
+    if (year === today.getFullYear() && month === (today.getMonth() + 1)) {
+      currentDay = Math.max(1, today.getDate());
+    } else if (new Date(year, month - 1, 1).getTime() > today.getTime()) {
+      currentDay = 1;
+    }
+
+    const enriched = budgets.map((b: any) => {
+      const spent = b.spent || 0;
+      const baseLimit = b.limit_amount || 0;
+      const rollover = b.rollover_enabled ? (b.rollover_amount || 0) : 0;
+      const effectiveLimit = baseLimit + rollover;
+      const remaining = effectiveLimit - spent;
+      const pctUsed = effectiveLimit > 0 ? (spent / effectiveLimit) * 100 : 0;
+      
+      const dailyVelocity = spent / currentDay;
+      const forecastedEnd = Math.round(dailyVelocity * daysInMonth);
+      const isForecastOver = forecastedEnd > effectiveLimit;
+
+      return {
+        ...b,
+        rollover_enabled: b.rollover_enabled || 0,
+        rollover_amount: b.rollover_amount || 0,
+        priority: b.priority || 'essential',
+        effectiveLimit,
+        remaining,
+        pctUsed: parseFloat(pctUsed.toFixed(1)),
+        forecastedEnd,
+        isForecastOver,
+        daysLeft: Math.max(0, daysInMonth - currentDay)
+      };
+    });
+
+    res.json(enriched);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -323,7 +361,7 @@ router.get('/budgets', async (req, res) => {
 
 router.post('/budgets', async (req, res) => {
   const uid = req.user!.id;
-  const { category_id, limit_amount, month, year } = req.body;
+  const { category_id, limit_amount, month, year, rollover_enabled, rollover_amount, linked_goal_id, priority } = req.body;
   const now = new Date();
   const targetMonth = month ? parseInt(month, 10) : (now.getMonth() + 1);
   const targetYear = year ? parseInt(year, 10) : now.getFullYear();
@@ -334,9 +372,16 @@ router.post('/budgets', async (req, res) => {
       [uid, category_id, targetMonth, targetYear]
     );
     if (existing.length > 0) return res.status(400).json({ error: 'A budget for this category already exists this month.' });
+    
     const result = await execute(
-      'INSERT INTO budgets (user_id, category_id, limit_amount, month, year) VALUES (?, ?, ?, ?, ?)',
-      [uid, category_id, limit_amount, targetMonth, targetYear]
+      `INSERT INTO budgets 
+         (user_id, category_id, limit_amount, month, year, rollover_enabled, rollover_amount, linked_goal_id, priority) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        uid, category_id, limit_amount, targetMonth, targetYear,
+        rollover_enabled ? 1 : 0, rollover_amount || 0,
+        linked_goal_id || null, priority || 'essential'
+      ]
     );
     res.json({ success: true, id: result.lastID });
   } catch (error: any) {
@@ -345,10 +390,23 @@ router.post('/budgets', async (req, res) => {
 });
 
 router.put('/budgets/:id', async (req, res) => {
-  const { limit_amount } = req.body;
+  const { limit_amount, rollover_enabled, rollover_amount, linked_goal_id, priority } = req.body;
   if (!limit_amount || limit_amount <= 0) return res.status(400).json({ error: 'Budget limit must be greater than zero.' });
   try {
-    await execute('UPDATE budgets SET limit_amount=? WHERE id=? AND user_id=?', [limit_amount, req.params.id, req.user!.id]);
+    await execute(
+      `UPDATE budgets 
+       SET limit_amount=?, rollover_enabled=?, rollover_amount=?, linked_goal_id=?, priority=? 
+       WHERE id=? AND user_id=?`,
+      [
+        limit_amount,
+        rollover_enabled ? 1 : 0,
+        rollover_amount || 0,
+        linked_goal_id || null,
+        priority || 'essential',
+        req.params.id,
+        req.user!.id
+      ]
+    );
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -359,6 +417,207 @@ router.delete('/budgets/:id', async (req, res) => {
   try {
     await execute('DELETE FROM budgets WHERE id = ? AND user_id = ?', [req.params.id, req.user!.id]);
     res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════
+//  ADVANCED BUDGET PLANNER & FORECASTING APIs
+// ════════════════════════════════════════════════════════════════
+router.get('/budgets/planner-summary', async (req, res) => {
+  const uid = req.user!.id;
+  try {
+    const now = new Date();
+    const month = req.query.month ? parseInt(req.query.month as string, 10) : (now.getMonth() + 1);
+    const year = req.query.year ? parseInt(req.query.year as string, 10) : now.getFullYear();
+    const currentMonthPrefix = `${year}-${String(month).padStart(2, '0')}%`;
+
+    // 1. Total Income received
+    const incomeRes = await query(
+      `SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE user_id=? AND type='income' AND date LIKE ?`,
+      [uid, currentMonthPrefix]
+    );
+    const actualIncome = incomeRes[0]?.total || 0;
+
+    // 2. Fetch all budgets
+    const budgets = await query(
+      `SELECT b.*, c.name as category_name,
+         COALESCE((
+           SELECT SUM(t.amount) FROM transactions t 
+           WHERE t.category_id = b.category_id AND t.user_id = ? AND t.type = 'expense' AND t.date LIKE ?
+         ), 0) as spent
+       FROM budgets b
+       JOIN categories c ON b.category_id = c.id
+       WHERE b.user_id = ? AND b.month = ? AND b.year = ?`,
+      [uid, currentMonthPrefix, uid, month, year]
+    );
+
+    let plannedExpenses = 0;
+    let actualExpenses = 0;
+    let totalRollover = 0;
+    let overBudgetCount = 0;
+    let underBudgetSaved = 0;
+
+    const priorityBreakdown = { essential: 0, important: 0, optional: 0, avoid: 0 };
+
+    budgets.forEach((b: any) => {
+      const limit = b.limit_amount || 0;
+      const spent = b.spent || 0;
+      const rollover = b.rollover_enabled ? (b.rollover_amount || 0) : 0;
+      const effectiveLimit = limit + rollover;
+
+      plannedExpenses += limit;
+      actualExpenses += spent;
+      totalRollover += rollover;
+
+      if (spent > effectiveLimit) {
+        overBudgetCount++;
+      } else {
+        underBudgetSaved += (effectiveLimit - spent);
+      }
+
+      const pri = b.priority || 'essential';
+      if ((priorityBreakdown as any)[pri] !== undefined) {
+        (priorityBreakdown as any)[pri] += spent;
+      }
+    });
+
+    const budgetRemaining = Math.max(0, (plannedExpenses + totalRollover) - actualExpenses);
+
+    // Calculate Health Score (0 - 100)
+    let healthScore = 85;
+    if (budgets.length > 0) {
+      const overRatio = overBudgetCount / budgets.length;
+      healthScore -= Math.round(overRatio * 40);
+    }
+    if (actualIncome > 0) {
+      const spendIncomeRatio = actualExpenses / actualIncome;
+      if (spendIncomeRatio <= 0.6) healthScore += 15;
+      else if (spendIncomeRatio > 0.9) healthScore -= 20;
+    }
+    healthScore = Math.min(100, Math.max(10, healthScore));
+
+    res.json({
+      actualIncome,
+      plannedExpenses,
+      actualExpenses,
+      budgetRemaining,
+      budgetSaved: Math.round(underBudgetSaved),
+      totalRollover,
+      healthScore,
+      overBudgetCount,
+      totalBudgets: budgets.length,
+      priorityBreakdown
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/budgets/salary-allocation', async (req, res) => {
+  const uid = req.user!.id;
+  const month = req.query.month ? parseInt(req.query.month as string, 10) : (new Date().getMonth() + 1);
+  const year = req.query.year ? parseInt(req.query.year as string, 10) : new Date().getFullYear();
+  try {
+    const resList = await query(
+      `SELECT * FROM salary_allocations WHERE user_id = ? AND month = ? AND year = ?`,
+      [uid, month, year]
+    );
+    if (resList.length > 0) {
+      res.json({ ...resList[0], allocation_json: JSON.parse(resList[0].allocation_json) });
+    } else {
+      res.json({ month, year, income_amount: 0, allocation_json: null });
+    }
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/budgets/salary-allocation', async (req, res) => {
+  const uid = req.user!.id;
+  const { month, year, income_amount, allocation_json } = req.body;
+  try {
+    const jsonStr = JSON.stringify(allocation_json || {});
+    const existing = await query(
+      `SELECT id FROM salary_allocations WHERE user_id = ? AND month = ? AND year = ?`,
+      [uid, month, year]
+    );
+    if (existing.length > 0) {
+      await execute(
+        `UPDATE salary_allocations SET income_amount=?, allocation_json=? WHERE id=? AND user_id=?`,
+        [income_amount || 0, jsonStr, existing[0].id, uid]
+      );
+    } else {
+      await execute(
+        `INSERT INTO salary_allocations (user_id, month, year, income_amount, allocation_json) VALUES (?, ?, ?, ?, ?)`,
+        [uid, month, year, income_amount || 0, jsonStr]
+      );
+    }
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/budgets/ai-recommendations', async (req, res) => {
+  const uid = req.user!.id;
+  try {
+    // 6-month historical averages per category
+    const catAverages = await query(
+      `SELECT c.id as category_id, c.name as category_name, COALESCE(AVG(monthly_sum.total), 0) as avg_spent
+       FROM categories c
+       LEFT JOIN (
+         SELECT category_id, strftime('%Y-%m', date) as m_prefix, SUM(amount) as total
+         FROM transactions
+         WHERE user_id = ? AND type = 'expense'
+         GROUP BY category_id, m_prefix
+       ) monthly_sum ON c.id = monthly_sum.category_id
+       WHERE c.type = 'expense'
+       GROUP BY c.id, c.name`,
+      [uid]
+    );
+
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+
+    const currentBudgets = await query(
+      `SELECT * FROM budgets WHERE user_id = ? AND month = ? AND year = ?`,
+      [uid, currentMonth, currentYear]
+    );
+
+    const recommendations: any[] = [];
+    catAverages.forEach((cat: any) => {
+      const avgSpent = Math.round(cat.avg_spent || 0);
+      if (avgSpent === 0) return;
+      const b = currentBudgets.find((bg: any) => bg.category_id === cat.category_id);
+      if (b) {
+        const diff = b.limit_amount - avgSpent;
+        if (diff < -1000) {
+          recommendations.push({
+            category_name: cat.category_name,
+            current_limit: b.limit_amount,
+            avg_spent: avgSpent,
+            recommended_limit: Math.ceil((avgSpent + 500) / 500) * 500,
+            type: 'increase',
+            reason: `Your 6-month average spend in ${cat.category_name} is ₹${avgSpent.toLocaleString('en-IN')}, exceeding your limit of ₹${b.limit_amount.toLocaleString('en-IN')}. Increasing limit helps avoid overbudget stress.`
+          });
+        } else if (diff > 1500) {
+          recommendations.push({
+            category_name: cat.category_name,
+            current_limit: b.limit_amount,
+            avg_spent: avgSpent,
+            recommended_limit: Math.ceil((avgSpent + 500) / 500) * 500,
+            type: 'decrease',
+            potential_savings: diff,
+            reason: `You consistently spend an average of ₹${avgSpent.toLocaleString('en-IN')} in ${cat.category_name}. Reducing limit to ₹${(Math.ceil((avgSpent + 500) / 500) * 500).toLocaleString('en-IN')} can free ~₹${diff.toLocaleString('en-IN')}/mo for savings goals.`
+          });
+        }
+      }
+    });
+
+    res.json(recommendations.slice(0, 5));
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

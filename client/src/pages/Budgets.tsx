@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Plus, AlertTriangle, Pencil, Trash2, X, CheckCircle2, Info, FileSpreadsheet } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { 
+  Plus, Pencil, Trash2, CheckCircle2, FileSpreadsheet,
+  Shield, Sparkles, PieChart as PieChartIcon, Target
+} from 'lucide-react';
 import axios from 'axios';
 import Button from '../components/ui/Button';
 
@@ -13,9 +15,21 @@ type Budget = {
   spent: number;
   month: number;
   year: number;
+  rollover_enabled?: number;
+  rollover_amount?: number;
+  linked_goal_id?: number | null;
+  linked_goal_name?: string;
+  priority?: 'essential' | 'important' | 'optional' | 'avoid';
+  effectiveLimit?: number;
+  remaining?: number;
+  pctUsed?: number;
+  forecastedEnd?: number;
+  isForecastOver?: boolean;
+  daysLeft?: number;
 };
 
 type Category = { id: number; name: string; color: string; type: string };
+type Goal = { id: number; name: string; target_amount: number; current_saved: number };
 
 const API = window.location.port === '5173' ? 'http://localhost:5000/api' : '/api';
 
@@ -36,65 +50,101 @@ const MONTHS_LIST = [
 
 const YEARS_LIST = [2025, 2026, 2027, 2028];
 
+const PRIORITY_BADGES = {
+  essential: { label: 'Essential', color: 'bg-blue-500/10 text-blue-400 border-blue-500/20' },
+  important: { label: 'Important', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
+  optional:  { label: 'Optional', color: 'bg-amber-500/10 text-amber-400 border-amber-500/20' },
+  avoid:     { label: 'Avoid / Reduce', color: 'bg-rose-500/10 text-rose-400 border-rose-500/20' },
+};
+
 export default function Budgets() {
   const now = new Date();
-  // Filter States
+  
+  // Filter & Navigation States
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
+  const [activeTab, setActiveTab] = useState<'overview' | 'salary' | 'forecast' | 'ai'>('overview');
   const [filterCategory, setFilterCategory] = useState('all');
-  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterPriority, setFilterPriority] = useState('all');
 
+  // Data States
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const [plannerSummary, setPlannerSummary] = useState<any>(null);
+  const [aiRecs, setAiRecs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Modals & Forms
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Quick Log Expense State
-  const [isLogExpenseOpen, setIsLogExpenseOpen] = useState(false);
-  const [logCatId, setLogCatId] = useState<number | null>(null);
-  const [logCatName, setLogCatName] = useState('');
-  const [logExpenseData, setLogExpenseData] = useState({
-    amount: '',
-    date: new Date().toISOString().slice(0, 10),
-    notes: '',
-    payment_method: 'UPI'
+  // Salary Allocation Form State
+  const [salaryAllocForm, setSalaryAllocForm] = useState({
+    income_amount: '105000',
+    chit: '25000',
+    lic: '2430',
+    mutual_funds: '5000',
+    gold: '1000',
+    essential_expenses: '30000',
+    debt_repayment: '15000',
+    emergency_reserve: '5000',
+    house_fund: '21570'
   });
 
-  // Form State
+  // Budget Add/Edit Form State
   const [formData, setFormData] = useState({
     category_id: '',
     limit_amount: '',
-    month: now.getMonth() + 1,
-    year: now.getFullYear()
+    month: selectedMonth,
+    year: selectedYear,
+    rollover_enabled: false,
+    rollover_amount: '0',
+    linked_goal_id: '',
+    priority: 'essential'
   });
 
-  // Toast helper
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  const fetchBudgets = () => {
+  const fetchBudgetsAndData = async () => {
     setLoading(true);
-    axios.get(`${API}/budgets?month=${selectedMonth}&year=${selectedYear}`)
-      .then(res => setBudgets(res.data))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    try {
+      const [budgetsRes, summaryRes, salaryRes, recsRes, goalsRes, catRes] = await Promise.all([
+        axios.get(`${API}/budgets?month=${selectedMonth}&year=${selectedYear}`),
+        axios.get(`${API}/budgets/planner-summary?month=${selectedMonth}&year=${selectedYear}`),
+        axios.get(`${API}/budgets/salary-allocation?month=${selectedMonth}&year=${selectedYear}`),
+        axios.get(`${API}/budgets/ai-recommendations`),
+        axios.get(`${API}/goals`),
+        axios.get(`${API}/categories`)
+      ]);
+
+      setBudgets(budgetsRes.data);
+      setPlannerSummary(summaryRes.data);
+      if (salaryRes.data && salaryRes.data.allocation_json) {
+        setSalaryAllocForm({
+          income_amount: String(salaryRes.data.income_amount || 105000),
+          ...salaryRes.data.allocation_json
+        });
+      }
+      setAiRecs(recsRes.data || []);
+      setGoals(goalsRes.data || []);
+      setCategories(catRes.data.filter((c: Category) => c.type === 'expense'));
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
-    fetchBudgets();
+    fetchBudgetsAndData();
   }, [selectedMonth, selectedYear]);
-
-  useEffect(() => {
-    axios.get(`${API}/categories`)
-      .then(res => setCategories(res.data.filter((c: Category) => c.type === 'expense')))
-      .catch(() => {});
-  }, []);
 
   const openAdd = () => {
     setEditingId(null);
@@ -103,7 +153,11 @@ export default function Budgets() {
       category_id: '',
       limit_amount: '',
       month: selectedMonth,
-      year: selectedYear
+      year: selectedYear,
+      rollover_enabled: false,
+      rollover_amount: '0',
+      linked_goal_id: '',
+      priority: 'essential'
     });
     setIsModalOpen(true);
   };
@@ -115,17 +169,21 @@ export default function Budgets() {
       category_id: String(b.category_id),
       limit_amount: String(b.limit_amount),
       month: b.month,
-      year: b.year
+      year: b.year,
+      rollover_enabled: Boolean(b.rollover_enabled),
+      rollover_amount: String(b.rollover_amount || 0),
+      linked_goal_id: b.linked_goal_id ? String(b.linked_goal_id) : '',
+      priority: b.priority || 'essential'
     });
     setIsModalOpen(true);
   };
 
   const handleDelete = async (id: number) => {
-    if (!window.confirm('Delete this budget? Your transaction history won\'t be changed.')) return;
+    if (!window.confirm('Delete this budget entry? Existing transaction history will not be changed.')) return;
     try {
       await axios.delete(`${API}/budgets/${id}`);
-      setBudgets(prev => prev.filter(b => b.id !== id));
-      showToast('Budget deleted successfully');
+      fetchBudgetsAndData();
+      showToast('Budget entry deleted successfully');
     } catch (err) {
       showToast('Failed to delete budget');
     }
@@ -144,575 +202,705 @@ export default function Budgets() {
     }
 
     try {
+      const payload = {
+        category_id: Number(formData.category_id),
+        limit_amount: limit,
+        month: formData.month,
+        year: formData.year,
+        rollover_enabled: formData.rollover_enabled ? 1 : 0,
+        rollover_amount: Number(formData.rollover_amount || 0),
+        linked_goal_id: formData.linked_goal_id ? Number(formData.linked_goal_id) : null,
+        priority: formData.priority
+      };
+
       if (editingId) {
-        await axios.put(`${API}/budgets/${editingId}`, { limit_amount: limit });
-        showToast('Budget updated successfully');
+        await axios.put(`${API}/budgets/${editingId}`, payload);
+        showToast('Budget limit updated successfully');
       } else {
-        await axios.post(`${API}/budgets`, {
-          category_id: Number(formData.category_id),
-          limit_amount: limit,
-          month: Number(formData.month),
-          year: Number(formData.year)
-        });
-        showToast('Budget created successfully');
+        await axios.post(`${API}/budgets`, payload);
+        showToast('New budget configured successfully');
       }
-      fetchBudgets();
       setIsModalOpen(false);
+      fetchBudgetsAndData();
     } catch (err: any) {
-      setErrorMessage(err.response?.data?.error || 'Failed to save budget limit.');
+      setErrorMessage(err.response?.data?.error || 'Failed to save budget entry.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Submit Quick Expense
-  const handleLogExpenseSubmit = async (e: React.FormEvent) => {
+  const handleSaveSalaryAllocation = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!logExpenseData.amount || Number(logExpenseData.amount) <= 0) {
-      alert('Please enter a valid expense amount.');
-      return;
-    }
     try {
-      await axios.post(`${API}/transactions`, {
-        date: logExpenseData.date,
-        amount: Number(logExpenseData.amount),
-        type: 'expense',
-        category_id: logCatId,
-        payment_method: logExpenseData.payment_method,
-        notes: logExpenseData.notes || `${logCatName} Expense`
+      const incomeAmt = Number(salaryAllocForm.income_amount || 0);
+      const allocJson = {
+        chit: salaryAllocForm.chit,
+        lic: salaryAllocForm.lic,
+        mutual_funds: salaryAllocForm.mutual_funds,
+        gold: salaryAllocForm.gold,
+        essential_expenses: salaryAllocForm.essential_expenses,
+        debt_repayment: salaryAllocForm.debt_repayment,
+        emergency_reserve: salaryAllocForm.emergency_reserve,
+        house_fund: salaryAllocForm.house_fund
+      };
+
+      await axios.post(`${API}/budgets/salary-allocation`, {
+        month: selectedMonth,
+        year: selectedYear,
+        income_amount: incomeAmt,
+        allocation_json: allocJson
       });
-      showToast(`Logged expense of ₹${Number(logExpenseData.amount).toLocaleString('en-IN')} for ${logCatName}`);
-      setIsLogExpenseOpen(false);
-      fetchBudgets();
+
+      showToast('Salary allocation plan saved successfully!');
+      fetchBudgetsAndData();
     } catch (err) {
-      showToast('Failed to log expense.');
+      showToast('Error saving salary allocation plan');
     }
   };
 
-  const exportCSV = () => {
-    if (budgets.length === 0) {
-      showToast('No budgets to export');
-      return;
+  const handleApplyAiRec = async (rec: any) => {
+    const targetB = budgets.find(b => b.category_name === rec.category_name);
+    if (!targetB) return;
+    try {
+      await axios.put(`${API}/budgets/${targetB.id}`, {
+        limit_amount: rec.recommended_limit,
+        rollover_enabled: targetB.rollover_enabled,
+        rollover_amount: targetB.rollover_amount,
+        linked_goal_id: targetB.linked_goal_id,
+        priority: targetB.priority
+      });
+      showToast(`Updated ${rec.category_name} budget limit to ₹${rec.recommended_limit.toLocaleString('en-IN')}`);
+      fetchBudgetsAndData();
+    } catch (err) {
+      showToast('Failed to apply recommendation');
     }
-    const headers = ['Category', 'Limit Amount (₹)', 'Spent Amount (₹)', 'Remaining (₹)', 'Usage %', 'Status'];
-    const rows = budgets.map(b => {
-      const remaining = b.limit_amount - b.spent;
-      const pct = b.limit_amount > 0 ? (b.spent / b.limit_amount) * 100 : 0;
-      const status = pct >= 100 ? 'Over Budget' : pct >= 80 ? 'Near Limit' : 'Healthy';
-      return [b.category_name, b.limit_amount, b.spent, remaining, `${pct.toFixed(0)}%`, status];
-    });
-    const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
+  };
+
+  const exportBudgetCSV = () => {
+    const headers = ['Category', 'Base Limit', 'Rollover', 'Effective Limit', 'Spent', 'Remaining', 'Status', 'Forecast End', 'Linked Goal', 'Priority'];
+    const rows = budgets.map(b => [
+      b.category_name,
+      b.limit_amount,
+      b.rollover_amount || 0,
+      b.effectiveLimit || b.limit_amount,
+      b.spent,
+      b.remaining,
+      (b.spent > (b.effectiveLimit || b.limit_amount)) ? 'Over Budget' : 'On Track',
+      b.forecastedEnd || 0,
+      b.linked_goal_name || 'None',
+      b.priority || 'essential'
+    ]);
+
+    const csvContent = [headers.join(','), ...rows.map(r => r.map(val => `"${val}"`).join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `budgets-${selectedMonth}-${selectedYear}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast('Budgets CSV exported successfully');
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Budget_Planner_${selectedYear}_${selectedMonth}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
-  // Helper for progress bar color
-  const getProgressBarColor = (pct: number) => {
-    if (pct >= 100) return 'bg-red-500'; // 🔴 Red
-    if (pct >= 81) return 'bg-orange-500'; // 🟠 Orange
-    if (pct >= 51) return 'bg-blue-500'; // 🔵 Blue
-    return 'bg-green-500'; // 🟢 Green
-  };
-
-  // Helper for status text / badge
-  const getBudgetStatusInfo = (pct: number) => {
-    if (pct >= 100) return { text: 'Over Budget', color: 'text-red-500 border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/20', dot: 'bg-red-500' };
-    if (pct >= 80) return { text: 'Near Limit', color: 'text-orange-500 border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-950/20', dot: 'bg-orange-500' };
-    return { text: 'Healthy', color: 'text-green-500 border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/20', dot: 'bg-green-500' };
-  };
-
-  // Calculate estimated days left in month
-  const getDaysLeftInMonth = () => {
-    const totalDays = new Date(selectedYear, selectedMonth, 0).getDate();
-    const currentDay = now.getDate();
-    return selectedMonth === now.getMonth() + 1 && selectedYear === now.getFullYear()
-      ? Math.max(totalDays - currentDay, 0)
-      : null;
-  };
-
-  const daysLeft = getDaysLeftInMonth();
-
-  // Filters application
+  // Filtered Budgets List
   const filteredBudgets = budgets.filter(b => {
-    const matchCategory = filterCategory === 'all' || String(b.category_id) === filterCategory;
-    const pct = b.limit_amount > 0 ? (b.spent / b.limit_amount) * 100 : 0;
-    const status = pct >= 100 ? 'over' : pct >= 80 ? 'near' : 'healthy';
-    const matchStatus = filterStatus === 'all' || status === filterStatus;
-    return matchCategory && matchStatus;
+    if (filterCategory !== 'all' && String(b.category_id) !== filterCategory) return false;
+    if (filterPriority !== 'all' && (b.priority || 'essential') !== filterPriority) return false;
+    return true;
   });
 
-  // Totals calculations
-  const totalBudget = filteredBudgets.reduce((s, b) => s + b.limit_amount, 0);
-  const totalSpent = filteredBudgets.reduce((s, b) => s + b.spent, 0);
-  const totalRemaining = totalBudget - totalSpent;
-  const overallPct = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0;
-
-  // Chart Data format
-  const chartData = filteredBudgets.map(b => ({
-    name: b.category_name,
-    Limit: b.limit_amount,
-    Spent: b.spent
-  }));
-
-  // Smart suggestions logic
-  const getSmartSuggestions = () => {
-    const suggestions: string[] = [];
-    budgets.forEach(b => {
-      const pct = b.limit_amount > 0 ? (b.spent / b.limit_amount) * 100 : 0;
-      if (pct >= 105) {
-        suggestions.push(`You consistently exceed your ${b.category_name} budget by ₹${(b.spent - b.limit_amount).toLocaleString('en-IN')}. Consider increasing it next month.`);
-      } else if (pct > 0 && pct < 20) {
-        suggestions.push(`Your ${b.category_name} budget is highly underutilized (only ${pct.toFixed(0)}% spent). Consider reducing this limit to save more.`);
-      }
-    });
-    return suggestions;
-  };
-
-  const smartSuggestions = getSmartSuggestions();
+  const selectedMonthLabel = MONTHS_LIST.find(m => m.value === selectedMonth)?.label || '';
 
   return (
     <div className="space-y-6">
-      {/* Toast Alert Banner */}
+      {/* TOAST NOTIFICATION */}
       {toastMessage && (
-        <div className="fixed top-5 right-5 z-50 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 px-4 py-2.5 rounded-xl shadow-lg flex items-center space-x-2 animate-bounce">
-          <CheckCircle2 className="w-5 h-5 text-green-500" />
-          <span className="text-sm font-medium">{toastMessage}</span>
+        <div className="fixed top-5 right-5 z-50 bg-slate-900 border border-purple-500/40 text-white text-xs font-bold px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+          <span>{toastMessage}</span>
         </div>
       )}
 
-      {/* Header */}
-      <div className="flex justify-between items-center flex-wrap gap-4">
+      {/* HEADER SECTION */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-900 pb-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Budget Planner</h1>
-          <p className="text-slate-500 dark:text-slate-400">Configure monthly targets and view historical spending analyses.</p>
+          <h1 className="text-xl font-extrabold text-white flex items-center gap-2.5">
+            <PieChartIcon className="w-6 h-6 text-purple-400" /> Advanced Budget Planner & Forecasting
+          </h1>
+          <p className="text-xs text-slate-400 mt-0.5">Smart salary allocation, predictive month-end spend forecasting, rollover budgets, and AI recommendations.</p>
         </div>
-        <div className="flex items-center space-x-2">
-          <Button variant="secondary" onClick={exportCSV}>
-            <FileSpreadsheet className="w-4 h-4 mr-2" /> Export Report
-          </Button>
-          <Button variant="primary" onClick={openAdd}>
-            <Plus className="w-4 h-4 mr-2" /> Set Limit
-          </Button>
-        </div>
-      </div>
 
-      {/* Modern Filter Toolbar */}
-      <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl flex flex-wrap items-center gap-4 justify-between">
-        <div className="flex items-center space-x-3 flex-wrap gap-2">
-          <div className="flex items-center space-x-1">
-            <span className="text-xs text-slate-500 font-semibold uppercase">Month:</span>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex items-center space-x-1.5 bg-slate-950 border border-slate-850 rounded-xl p-1">
             <select
               value={selectedMonth}
               onChange={e => setSelectedMonth(Number(e.target.value))}
-              className="px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-sm font-medium"
+              className="bg-transparent text-xs font-bold text-slate-200 px-2 py-1 focus:outline-none cursor-pointer"
             >
-              {MONTHS_LIST.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+              {MONTHS_LIST.map(m => <option key={m.value} value={m.value} className="bg-slate-900">{m.label}</option>)}
             </select>
-          </div>
-          <div className="flex items-center space-x-1">
-            <span className="text-xs text-slate-500 font-semibold uppercase">Year:</span>
             <select
               value={selectedYear}
               onChange={e => setSelectedYear(Number(e.target.value))}
-              className="px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-sm font-medium"
+              className="bg-transparent text-xs font-bold text-slate-200 px-2 py-1 focus:outline-none cursor-pointer"
             >
-              {YEARS_LIST.map(y => <option key={y} value={y}>{y}</option>)}
+              {YEARS_LIST.map(y => <option key={y} value={y} className="bg-slate-900">{y}</option>)}
             </select>
           </div>
-        </div>
 
-        <div className="flex items-center space-x-3 flex-wrap gap-2">
-          <div className="flex items-center space-x-1">
-            <span className="text-xs text-slate-500 font-semibold uppercase">Category:</span>
-            <select
-              value={filterCategory}
-              onChange={e => setFilterCategory(e.target.value)}
-              className="px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-sm font-medium"
-            >
-              <option value="all">All Categories</option>
-              {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </div>
-          <div className="flex items-center space-x-1">
-            <span className="text-xs text-slate-500 font-semibold uppercase">Status:</span>
-            <select
-              value={filterStatus}
-              onChange={e => setFilterStatus(e.target.value)}
-              className="px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-sm font-medium"
-            >
-              <option value="all">All Status</option>
-              <option value="healthy">🟢 Healthy</option>
-              <option value="near">🟠 Near Limit</option>
-              <option value="over">🔴 Over Budget</option>
-            </select>
-          </div>
+          <Button onClick={exportBudgetCSV} variant="ghost" className="border border-slate-800 text-slate-300 hover:text-white text-xs py-2">
+            <FileSpreadsheet className="w-3.5 h-3.5 mr-1.5 text-green-400" /> Export CSV
+          </Button>
+
+          <Button onClick={openAdd} variant="primary" className="text-xs font-bold py-2 bg-purple-600 hover:bg-purple-700">
+            <Plus className="w-4 h-4 mr-1.5" /> Configure Budget
+          </Button>
         </div>
       </div>
 
-      {/* Overall Budget Summary Panel */}
-      {budgets.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-5">
-          {/* Main Overview Summary */}
-          <div className="lg:col-span-3 bg-white dark:bg-slate-950 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between space-y-4">
-            <div className="flex justify-between items-center">
-              <div>
-                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Overall Budget Summary</h3>
-                <p className="text-xs text-slate-500">Usage statistics for current filters</p>
-              </div>
-              <span className="text-sm font-bold bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-lg">
-                {overallPct.toFixed(0)}% Used
-              </span>
-            </div>
-            
-            <div className="h-3.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all duration-700 ${getProgressBarColor(overallPct)}`}
-                style={{ width: `${Math.min(overallPct, 100)}%` }}
-              />
-            </div>
+      {/* TOP TAB NAVIGATION */}
+      <div className="flex border-b border-slate-900 gap-6 overflow-x-auto custom-scrollbar">
+        <button
+          onClick={() => setActiveTab('overview')}
+          className={`pb-3 text-xs font-extrabold uppercase tracking-wider transition border-b-2 ${
+            activeTab === 'overview' ? 'border-purple-500 text-purple-400' : 'border-transparent text-slate-400 hover:text-white'
+          }`}
+        >
+          📊 Overview & Category Budgets
+        </button>
+        <button
+          onClick={() => setActiveTab('salary')}
+          className={`pb-3 text-xs font-extrabold uppercase tracking-wider transition border-b-2 ${
+            activeTab === 'salary' ? 'border-purple-500 text-purple-400' : 'border-transparent text-slate-400 hover:text-white'
+          }`}
+        >
+          💵 Salary Allocation Planner
+        </button>
+        <button
+          onClick={() => setActiveTab('forecast')}
+          className={`pb-3 text-xs font-extrabold uppercase tracking-wider transition border-b-2 ${
+            activeTab === 'forecast' ? 'border-purple-500 text-purple-400' : 'border-transparent text-slate-400 hover:text-white'
+          }`}
+        >
+          📈 Predictive Spend Forecast
+        </button>
+        <button
+          onClick={() => setActiveTab('ai')}
+          className={`pb-3 text-xs font-extrabold uppercase tracking-wider transition border-b-2 flex items-center gap-1.5 ${
+            activeTab === 'ai' ? 'border-purple-500 text-purple-400' : 'border-transparent text-slate-400 hover:text-white'
+          }`}
+        >
+          <Sparkles className="w-3.5 h-3.5 text-amber-400" /> Venke AI Advisor ({aiRecs.length})
+        </button>
+      </div>
 
-            <div className="grid grid-cols-3 gap-2 text-center pt-2 border-t border-slate-100 dark:border-slate-800">
-              <div>
-                <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Total Limit</p>
-                <p className="text-xl font-extrabold">₹{totalBudget.toLocaleString('en-IN')}</p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Total Spent</p>
-                <p className="text-xl font-extrabold text-red-500">₹{totalSpent.toLocaleString('en-IN')}</p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Remaining</p>
-                <p className={`text-xl font-extrabold ${totalRemaining >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                  ₹{totalRemaining.toLocaleString('en-IN')}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Side Indicator Card */}
-          <div className="bg-white dark:bg-slate-950 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
-            <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Month Status</p>
-              {daysLeft !== null ? (
-                <div>
-                  <h4 className="text-3xl font-extrabold text-slate-900 dark:text-white">{daysLeft} Days</h4>
-                  <p className="text-xs text-slate-500 mt-1">Remaining in {MONTHS_LIST.find(m => m.value === selectedMonth)?.label}</p>
-                </div>
-              ) : (
-                <div>
-                  <h4 className="text-xl font-extrabold text-slate-900 dark:text-white">Historical View</h4>
-                  <p className="text-xs text-slate-500 mt-1">Viewing records of {MONTHS_LIST.find(m => m.value === selectedMonth)?.label} {selectedYear}</p>
+      {loading ? (
+        <div className="text-center py-16 text-slate-400 text-sm font-semibold">Loading budget planning intelligence...</div>
+      ) : (
+        <>
+          {/* TAB 1: OVERVIEW & CATEGORY BUDGETS */}
+          {activeTab === 'overview' && (
+            <div className="space-y-6">
+              {/* TOP SUMMARY CARDS GRID */}
+              {plannerSummary && (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3.5">
+                  <div className="p-4 bg-slate-950/40 border border-slate-850 rounded-2xl">
+                    <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wider">Actual Income</p>
+                    <p className="text-base font-black text-white font-mono mt-1">₹{plannerSummary.actualIncome.toLocaleString('en-IN')}</p>
+                    <p className="text-[9px] text-slate-400 mt-1 font-semibold">Logged received</p>
+                  </div>
+                  <div className="p-4 bg-slate-950/40 border border-slate-850 rounded-2xl">
+                    <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wider">Planned Budget</p>
+                    <p className="text-base font-black text-purple-400 font-mono mt-1">₹{plannerSummary.plannedExpenses.toLocaleString('en-IN')}</p>
+                    <p className="text-[9px] text-slate-400 mt-1 font-semibold">Configured limits</p>
+                  </div>
+                  <div className="p-4 bg-slate-950/40 border border-slate-850 rounded-2xl">
+                    <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wider">Actual Spent</p>
+                    <p className="text-base font-black text-red-400 font-mono mt-1">₹{plannerSummary.actualExpenses.toLocaleString('en-IN')}</p>
+                    <p className="text-[9px] text-slate-400 mt-1 font-semibold">Categorized expenses</p>
+                  </div>
+                  <div className="p-4 bg-slate-950/40 border border-slate-850 rounded-2xl">
+                    <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wider">Budget Remaining</p>
+                    <p className="text-base font-black text-emerald-400 font-mono mt-1">₹{plannerSummary.budgetRemaining.toLocaleString('en-IN')}</p>
+                    <p className="text-[9px] text-slate-400 mt-1 font-semibold">Unspent pool</p>
+                  </div>
+                  <div className="p-4 bg-slate-950/40 border border-slate-850 rounded-2xl">
+                    <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wider">Budget Saved</p>
+                    <p className="text-base font-black text-blue-400 font-mono mt-1">₹{plannerSummary.budgetSaved.toLocaleString('en-IN')}</p>
+                    <p className="text-[9px] text-slate-400 mt-1 font-semibold">Under budget pool</p>
+                  </div>
+                  <div className="p-4 bg-purple-500/10 border border-purple-500/20 rounded-2xl">
+                    <p className="text-[9px] text-purple-400 font-black uppercase tracking-wider">Health Score</p>
+                    <p className="text-base font-black text-white font-mono mt-1">{plannerSummary.healthScore} / 100</p>
+                    <p className="text-[9px] text-slate-400 mt-1 font-semibold">
+                      {plannerSummary.healthScore >= 80 ? '🟢 Excellent' : plannerSummary.healthScore >= 60 ? '🟡 Good' : '🔴 Needs Attention'}
+                    </p>
+                  </div>
                 </div>
               )}
-            </div>
-            
-            <div className="pt-4 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-400">
-              <span className="font-semibold text-slate-900 dark:text-white">Active Budgets: </span>
-              {filteredBudgets.length} limit lines set.
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* Main Budget Grid */}
-      {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[1, 2, 3].map(i => <div key={i} className="h-56 bg-slate-100 dark:bg-slate-900 rounded-2xl animate-pulse"></div>)}
-        </div>
-      ) : filteredBudgets.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-slate-950 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700">
-          <p className="text-5xl mb-4">📋</p>
-          <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">No configured budgets</h3>
-          <p className="text-xs text-slate-500 mt-1 max-w-sm text-center">There are no custom limits configured matching your search. Click "Set Limit" to add one.</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredBudgets.map(b => {
-            const pct = b.limit_amount > 0 ? (b.spent / b.limit_amount) * 100 : 0;
-            const remaining = b.limit_amount - b.spent;
-            const statusInfo = getBudgetStatusInfo(pct);
-
-            return (
-              <div key={b.id} className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 hover:shadow-md transition-shadow group relative">
-                <div className="absolute top-0 left-0 right-0 h-1.5 rounded-t-2xl" style={{ backgroundColor: b.category_color }} />
-                
-                {/* Card Title Header */}
-                <div className="flex justify-between items-center mb-3.5">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: b.category_color }} />
-                    <span className="font-bold text-slate-900 dark:text-white truncate max-w-[140px]">{b.category_name}</span>
+              {/* SEGMENTED HEALTH PROGRESS BAR */}
+              {plannerSummary && (
+                <div className="bg-slate-950/40 border border-slate-850 p-4.5 rounded-3xl space-y-3">
+                  <div className="flex justify-between items-center text-xs font-extrabold">
+                    <span className="text-white flex items-center gap-2">
+                      <Shield className="w-4 h-4 text-purple-400" /> Overall Monthly Budget Utilization
+                    </span>
+                    <span className="font-mono text-slate-300">
+                      ₹{plannerSummary.actualExpenses.toLocaleString('en-IN')} / ₹{(plannerSummary.plannedExpenses + plannerSummary.totalRollover).toLocaleString('en-IN')}
+                    </span>
                   </div>
 
+                  {/* Multi-zone color progress bar */}
+                  {(() => {
+                    const totalLimit = plannerSummary.plannedExpenses + plannerSummary.totalRollover;
+                    const pct = totalLimit > 0 ? Math.min(100, (plannerSummary.actualExpenses / totalLimit) * 100) : 0;
+                    let barColor = 'bg-emerald-500';
+                    if (pct >= 100) barColor = 'bg-rose-500';
+                    else if (pct >= 90) barColor = 'bg-orange-500';
+                    else if (pct >= 70) barColor = 'bg-amber-500';
+
+                    return (
+                      <div className="space-y-1.5">
+                        <div className="h-3 w-full bg-slate-900 rounded-full overflow-hidden p-0.5">
+                          <div className={`h-full rounded-full ${barColor} transition-all duration-500`} style={{ width: `${pct}%` }} />
+                        </div>
+                        <div className="flex justify-between text-[10px] text-slate-500 font-bold uppercase">
+                          <span>0%</span>
+                          <span>70% (Healthy)</span>
+                          <span>90% (Warning)</span>
+                          <span>100% (Limit)</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+
+              {/* FILTERS & CATEGORY CARDS */}
+              <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
+                  <h2 className="text-xs font-black uppercase text-slate-400 tracking-wider">
+                    Category Budgets ({filteredBudgets.length})
+                  </h2>
+
                   <div className="flex items-center space-x-2">
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full border font-semibold flex items-center space-x-1 ${statusInfo.color}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${statusInfo.dot} mr-1`} />
-                      {statusInfo.text}
-                    </span>
-                    <div className="flex opacity-0 group-hover:opacity-100 transition space-x-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setLogCatId(b.category_id);
-                          setLogCatName(b.category_name);
-                          setLogExpenseData({
-                            amount: '',
-                            date: new Date().toISOString().slice(0, 10),
-                            notes: `Manual spend logged for ${b.category_name}`,
-                            payment_method: 'UPI'
-                          });
-                          setIsLogExpenseOpen(true);
-                        }}
-                        title="Add Spend Amount Directly"
-                        className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-400 hover:text-green-500 transition"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                      </button>
-                      <button onClick={() => openEdit(b)} title="Edit Budget" className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-400 hover:text-primary transition">
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                      <button onClick={() => handleDelete(b.id)} title="Delete Budget" className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-400 hover:text-red-500 transition">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                    <select
+                      value={filterCategory}
+                      onChange={e => setFilterCategory(e.target.value)}
+                      className="bg-slate-950 border border-slate-850 text-xs font-bold text-slate-300 rounded-xl px-2.5 py-1.5 focus:outline-none"
+                    >
+                      <option value="all">All Categories</option>
+                      {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+
+                    <select
+                      value={filterPriority}
+                      onChange={e => setFilterPriority(e.target.value)}
+                      className="bg-slate-950 border border-slate-850 text-xs font-bold text-slate-300 rounded-xl px-2.5 py-1.5 focus:outline-none"
+                    >
+                      <option value="all">All Priorities</option>
+                      <option value="essential">Essential</option>
+                      <option value="important">Important</option>
+                      <option value="optional">Optional</option>
+                      <option value="avoid">Avoid / Reduce</option>
+                    </select>
+                  </div>
+                </div>
+
+                {filteredBudgets.length === 0 ? (
+                  <div className="bg-slate-950/40 border border-slate-850 rounded-3xl p-10 text-center space-y-4">
+                    <p className="text-slate-400 text-sm">No budget limits configured for {selectedMonthLabel} {selectedYear}.</p>
+                    <Button onClick={openAdd} variant="primary" className="text-xs py-2 bg-purple-600 hover:bg-purple-700">
+                      Configure Category Budget
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {filteredBudgets.map(b => {
+                      const effLimit = b.effectiveLimit || b.limit_amount;
+                      const pct = effLimit > 0 ? Math.min(100, (b.spent / effLimit) * 100) : 0;
+                      const isOver = b.spent > effLimit;
+
+                      let statusBadge = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+                      let statusText = 'On Track';
+                      if (isOver) {
+                        statusBadge = 'bg-rose-500/10 text-rose-400 border-rose-500/20';
+                        statusText = 'Over Budget';
+                      } else if (pct >= 90) {
+                        statusBadge = 'bg-orange-500/10 text-orange-400 border-orange-500/20';
+                        statusText = 'Critical (90%+)';
+                      } else if (pct >= 70) {
+                        statusBadge = 'bg-amber-500/10 text-amber-400 border-amber-500/20';
+                        statusText = 'Warning (70%+)';
+                      }
+
+                      const priBadge = PRIORITY_BADGES[b.priority || 'essential'];
+
+                      return (
+                        <div
+                          key={b.id}
+                          className="bg-slate-950/40 border border-slate-850 p-4.5 rounded-3xl space-y-3.5 dashboard-card-hover transition hover:border-purple-500/30 relative"
+                        >
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <div className="flex items-center space-x-2">
+                                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: b.category_color }} />
+                                <h3 className="font-extrabold text-white text-sm">{b.category_name}</h3>
+                              </div>
+                              <div className="mt-1 flex items-center space-x-1.5 flex-wrap gap-1">
+                                <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase border ${priBadge.color}`}>
+                                  {priBadge.label}
+                                </span>
+                                {b.linked_goal_name && (
+                                  <span className="px-2 py-0.5 rounded text-[8px] font-black uppercase border bg-purple-500/10 text-purple-400 border-purple-500/20 flex items-center gap-1">
+                                    <Target className="w-2.5 h-2.5" /> {b.linked_goal_name}
+                                  </span>
+                                )}
+                                {b.rollover_enabled === 1 && (
+                                  <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase border bg-blue-500/10 text-blue-400 border-blue-500/20">
+                                    🔄 +₹{(b.rollover_amount || 0).toLocaleString('en-IN')}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center space-x-1">
+                              <button onClick={() => openEdit(b)} className="p-1 text-slate-500 hover:text-white transition">
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button onClick={() => handleDelete(b.id)} className="p-1 text-slate-500 hover:text-rose-400 transition">
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Limit vs Spent Amount */}
+                          <div className="flex justify-between items-end">
+                            <div>
+                              <p className="text-[9px] text-slate-500 font-bold uppercase">Spent / Effective Limit</p>
+                              <p className="text-base font-black text-white font-mono mt-0.5">
+                                ₹{b.spent.toLocaleString('en-IN')} <span className="text-xs text-slate-400 font-semibold">/ ₹{effLimit.toLocaleString('en-IN')}</span>
+                              </p>
+                            </div>
+                            <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase border ${statusBadge}`}>
+                              {statusText}
+                            </span>
+                          </div>
+
+                          {/* Progress Bar */}
+                          <div className="space-y-1">
+                            <div className="h-2 w-full bg-slate-900 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all duration-300 ${
+                                  isOver ? 'bg-rose-500' : pct >= 90 ? 'bg-orange-500' : pct >= 70 ? 'bg-amber-500' : 'bg-emerald-500'
+                                }`}
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                            <div className="flex justify-between text-[9px] text-slate-500 font-bold">
+                              <span>{pct.toFixed(0)}% used</span>
+                              <span>
+                                {isOver
+                                  ? `Over by ₹${(b.spent - effLimit).toLocaleString('en-IN')}`
+                                  : `Remaining: ₹${(effLimit - b.spent).toLocaleString('en-IN')}`}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Forecast pill */}
+                          <div className="pt-2 border-t border-slate-900/60 flex justify-between items-center text-[10px]">
+                            <span className="text-slate-400 font-medium">Month-End Forecast:</span>
+                            <span className={`font-mono font-black ${b.isForecastOver ? 'text-rose-400' : 'text-slate-300'}`}>
+                              ₹{(b.forecastedEnd || 0).toLocaleString('en-IN')} {b.isForecastOver ? '⚠️' : '✅'}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: SALARY ALLOCATION PLANNER */}
+          {activeTab === 'salary' && (
+            <div className="space-y-6">
+              <div className="bg-slate-950/40 border border-slate-850 p-6 rounded-3xl space-y-6">
+                <div className="border-b border-slate-900 pb-3">
+                  <h2 className="text-sm font-black text-white flex items-center gap-2">
+                    💵 Monthly Salary Allocation Plan ({selectedMonthLabel} {selectedYear})
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-0.5">Plan your income allocations across fixed commitments, investments, savings, essential expenses, and emergency reserves before spending.</p>
+                </div>
+
+                <form onSubmit={handleSaveSalaryAllocation} className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-1">
+                      <label className="block text-[10px] text-slate-500 font-bold uppercase">Monthly Income (₹) *</label>
+                      <input
+                        type="number" required min="0"
+                        value={salaryAllocForm.income_amount}
+                        onChange={e => setSalaryAllocForm(f => ({ ...f, income_amount: e.target.value }))}
+                        className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white font-mono font-bold text-xs focus:ring-1 focus:ring-purple-500"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-[10px] text-slate-500 font-bold uppercase">Chit Contribution (₹)</label>
+                      <input
+                        type="number" min="0"
+                        value={salaryAllocForm.chit}
+                        onChange={e => setSalaryAllocForm(f => ({ ...f, chit: e.target.value }))}
+                        className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white font-mono text-xs focus:ring-1 focus:ring-purple-500"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-[10px] text-slate-500 font-bold uppercase">LIC Premium (₹)</label>
+                      <input
+                        type="number" min="0"
+                        value={salaryAllocForm.lic}
+                        onChange={e => setSalaryAllocForm(f => ({ ...f, lic: e.target.value }))}
+                        className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white font-mono text-xs focus:ring-1 focus:ring-purple-500"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-[10px] text-slate-500 font-bold uppercase">Mutual Funds SIP (₹)</label>
+                      <input
+                        type="number" min="0"
+                        value={salaryAllocForm.mutual_funds}
+                        onChange={e => setSalaryAllocForm(f => ({ ...f, mutual_funds: e.target.value }))}
+                        className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white font-mono text-xs focus:ring-1 focus:ring-purple-500"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-[10px] text-slate-500 font-bold uppercase">Digital Gold (₹)</label>
+                      <input
+                        type="number" min="0"
+                        value={salaryAllocForm.gold}
+                        onChange={e => setSalaryAllocForm(f => ({ ...f, gold: e.target.value }))}
+                        className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white font-mono text-xs focus:ring-1 focus:ring-purple-500"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-[10px] text-slate-500 font-bold uppercase">Essential Expenses (₹)</label>
+                      <input
+                        type="number" min="0"
+                        value={salaryAllocForm.essential_expenses}
+                        onChange={e => setSalaryAllocForm(f => ({ ...f, essential_expenses: e.target.value }))}
+                        className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white font-mono text-xs focus:ring-1 focus:ring-purple-500"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-[10px] text-slate-500 font-bold uppercase">Debt Repayment (₹)</label>
+                      <input
+                        type="number" min="0"
+                        value={salaryAllocForm.debt_repayment}
+                        onChange={e => setSalaryAllocForm(f => ({ ...f, debt_repayment: e.target.value }))}
+                        className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white font-mono text-xs focus:ring-1 focus:ring-purple-500"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-[10px] text-slate-500 font-bold uppercase">Emergency Reserve (₹)</label>
+                      <input
+                        type="number" min="0"
+                        value={salaryAllocForm.emergency_reserve}
+                        onChange={e => setSalaryAllocForm(f => ({ ...f, emergency_reserve: e.target.value }))}
+                        className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white font-mono text-xs focus:ring-1 focus:ring-purple-500"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-[10px] text-slate-500 font-bold uppercase">Bangalore House Fund (₹)</label>
+                      <input
+                        type="number" min="0"
+                        value={salaryAllocForm.house_fund}
+                        onChange={e => setSalaryAllocForm(f => ({ ...f, house_fund: e.target.value }))}
+                        className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white font-mono text-xs focus:ring-1 focus:ring-purple-500"
+                      />
                     </div>
                   </div>
-                </div>
 
-                {/* Progress values */}
-                <div className="space-y-1">
-                  <div className="flex justify-between text-xs text-slate-500">
-                    <span>Spent: ₹{b.spent.toLocaleString('en-IN')}</span>
-                    <span>Limit: ₹{b.limit_amount.toLocaleString('en-IN')}</span>
+                  <div className="flex justify-end">
+                    <Button type="submit" variant="primary" className="bg-purple-600 hover:bg-purple-700 text-xs px-6 py-2">
+                      Save Salary Allocation Plan
+                    </Button>
                   </div>
-                  <div className="h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-700 ${getProgressBarColor(pct)}`}
-                      style={{ width: `${Math.min(pct, 100)}%` }}
-                    />
-                  </div>
-                </div>
-
-                {/* Detail Summary Footer */}
-                <div className="flex justify-between items-center text-xs mt-3.5 pt-2 border-t border-slate-100 dark:border-slate-800">
-                  <span className="text-slate-500">{pct.toFixed(0)}% consumed</span>
-                  <span className={`font-semibold ${remaining >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                    {remaining >= 0 ? `₹${remaining.toLocaleString('en-IN')} left` : `Over by ₹${Math.abs(remaining).toLocaleString('en-IN')}`}
-                  </span>
-                </div>
+                </form>
               </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Analytics Chart & Smart suggestions split */}
-      {budgets.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Chart */}
-          <div className="lg:col-span-2 bg-white dark:bg-slate-950 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
-            <h3 className="text-base font-bold text-slate-900 dark:text-white mb-4">Budget vs Spending Comparison</h3>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.15} />
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} />
-                  <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px', color: '#fff' }} />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
-                  <Bar dataKey="Limit" name="Limit Amount" fill="#3B82F6" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="Spent" name="Actual Spent" fill="#EF4444" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
             </div>
-          </div>
+          )}
 
-          {/* Smart Suggestions and alerts */}
-          <div className="bg-white dark:bg-slate-950 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
-            <div>
-              <h3 className="text-base font-bold text-slate-900 dark:text-white mb-4 flex items-center">
-                <Info className="w-5 h-5 text-primary mr-2" />
-                Smart Recommendations
-              </h3>
-              {smartSuggestions.length === 0 ? (
-                <div className="py-10 text-center text-slate-400 text-xs">
-                  All spending aligns beautifully with your set budget limits!
-                </div>
-              ) : (
-                <div className="space-y-3 max-h-[180px] overflow-y-auto pr-1">
-                  {smartSuggestions.map((s, idx) => (
-                    <div key={idx} className="flex items-start space-x-2 text-xs text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-900 p-2.5 rounded-lg border border-slate-100 dark:border-slate-800">
-                      <span className="text-primary mt-0.5">•</span>
-                      <span>{s}</span>
+          {/* TAB 3: PREDICTIVE SPEND FORECAST */}
+          {activeTab === 'forecast' && (
+            <div className="space-y-6">
+              <div className="bg-slate-950/40 border border-slate-850 p-6 rounded-3xl space-y-4">
+                <h2 className="text-sm font-black text-white flex items-center gap-2">
+                  📈 Month-End Predictive Spend Projection
+                </h2>
+                <p className="text-xs text-slate-400">Based on your daily spending velocity and category limits for {selectedMonthLabel} {selectedYear}.</p>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+                  {budgets.map(b => (
+                    <div key={b.id} className="p-4 bg-slate-900/40 border border-slate-850 rounded-2xl space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="font-extrabold text-white text-xs">{b.category_name}</span>
+                        <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded border ${
+                          b.isForecastOver ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                        }`}>
+                          {b.isForecastOver ? 'Over Forecast' : 'Within Limit'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-end text-xs font-mono">
+                        <span className="text-slate-400">Current Spend: ₹{b.spent.toLocaleString('en-IN')}</span>
+                        <span className="text-purple-400 font-bold">Est. Final: ₹{(b.forecastedEnd || 0).toLocaleString('en-IN')}</span>
+                      </div>
                     </div>
                   ))}
                 </div>
-              )}
+              </div>
             </div>
+          )}
 
-            <div className="text-[10px] text-slate-400 text-center border-t border-slate-100 dark:border-slate-800 pt-3">
-              Recommendations generate automatically based on real spending velocities.
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Main Budget Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white dark:bg-slate-950 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in fade-in duration-200">
-            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
-              <h3 className="text-lg font-bold text-slate-900 dark:text-white">
-                {editingId ? 'Edit Budget Limit' : 'Configure New Budget'}
-              </h3>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              {errorMessage && (
-                <div className="p-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 text-red-500 rounded-xl text-xs font-semibold flex items-center space-x-2">
-                  <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-                  <span>{errorMessage}</span>
+          {/* TAB 4: VENKE AI ADVISOR */}
+          {activeTab === 'ai' && (
+            <div className="space-y-6">
+              <div className="bg-slate-950/40 border border-slate-850 p-6 rounded-3xl space-y-4">
+                <div className="border-b border-slate-900 pb-3">
+                  <h2 className="text-sm font-black text-white flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-amber-400" /> Venke AI Budget Optimization Recommendations
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-0.5">Automated intelligence analyzing your 6-month trailing averages to optimize category limits and free up savings for goals.</p>
                 </div>
-              )}
 
-              {!editingId && (
-                <>
-                  <div>
-                    <label className="block text-sm font-semibold mb-2 text-slate-700 dark:text-slate-300">Expense Category *</label>
-                    <select
-                      required
-                      value={formData.category_id}
-                      onChange={e => setFormData(f => ({ ...f, category_id: e.target.value }))}
-                      className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary"
-                    >
-                      <option value="">Select category...</option>
-                      {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
+                {aiRecs.length === 0 ? (
+                  <p className="text-xs text-slate-500 italic p-4 text-center">No limit adjustments recommended right now. Your budget limits align well with historical spending!</p>
+                ) : (
+                  <div className="space-y-3.5">
+                    {aiRecs.map((rec, i) => (
+                      <div key={i} className="p-4 bg-slate-900/40 border border-slate-850 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div className="space-y-1">
+                          <span className="font-extrabold text-white text-xs flex items-center gap-2">
+                            {rec.category_name} ({rec.type === 'increase' ? 'Limit Increase Advised' : 'Limit Reduction Opportunity'})
+                          </span>
+                          <p className="text-xs text-slate-400">{rec.reason}</p>
+                          <div className="flex items-center space-x-3 text-[10px] font-mono font-bold text-slate-300 mt-1">
+                            <span>Current: ₹{rec.current_limit.toLocaleString('en-IN')}</span>
+                            <span>6-Mo Avg: ₹{rec.avg_spent.toLocaleString('en-IN')}</span>
+                            <span className="text-purple-400">Suggested: ₹{rec.recommended_limit.toLocaleString('en-IN')}</span>
+                          </div>
+                        </div>
+
+                        <Button onClick={() => handleApplyAiRec(rec)} variant="primary" className="text-xs py-1.5 px-4 bg-purple-600 hover:bg-purple-700 shrink-0">
+                          Apply Recommendation
+                        </Button>
+                      </div>
+                    ))}
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-semibold mb-2 text-slate-700 dark:text-slate-300">Month *</label>
-                      <select
-                        value={formData.month}
-                        onChange={e => setFormData(f => ({ ...f, month: Number(e.target.value) }))}
-                        className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary"
-                      >
-                        {MONTHS_LIST.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold mb-2 text-slate-700 dark:text-slate-300">Year *</label>
-                      <select
-                        value={formData.year}
-                        onChange={e => setFormData(f => ({ ...f, year: Number(e.target.value) }))}
-                        className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary"
-                      >
-                        {YEARS_LIST.map(y => <option key={y} value={y}>{y}</option>)}
-                      </select>
-                    </div>
-                  </div>
-                </>
-              )}
-
-              <div>
-                <label className="block text-sm font-semibold mb-2 text-slate-700 dark:text-slate-300">Monthly Limit Amount (₹) *</label>
-                <input
-                  type="number"
-                  required
-                  min="1"
-                  placeholder="e.g. 15000"
-                  value={formData.limit_amount}
-                  onChange={e => setFormData(f => ({ ...f, limit_amount: e.target.value }))}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white text-xl font-bold focus:outline-none focus:ring-2 focus:ring-primary"
-                />
+                )}
               </div>
-
-              <div className="flex justify-end space-x-3 pt-2 border-t border-slate-100 dark:border-slate-800">
-                <Button variant="ghost" type="button" onClick={() => setIsModalOpen(false)}>Cancel</Button>
-                <Button variant="primary" type="submit" isLoading={isSubmitting}>
-                  {editingId ? 'Save Changes' : 'Create Budget'}
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
+            </div>
+          )}
+        </>
       )}
 
-      {/* Quick Log Expense Modal */}
-      {isLogExpenseOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white dark:bg-slate-950 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in fade-in duration-200">
-            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
-              <h3 className="text-lg font-bold text-slate-900 dark:text-white">
-                Log Spend for {logCatName}
-              </h3>
-              <button onClick={() => setIsLogExpenseOpen(false)} className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">
-                <X className="w-5 h-5" />
-              </button>
+      {/* CONFIGURE BUDGET MODAL */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsModalOpen(false)} />
+          <form onSubmit={handleSubmit} className="relative bg-slate-950 border border-slate-800 rounded-3xl p-6 shadow-2xl w-full max-w-md space-y-4">
+            <h3 className="text-sm font-black text-white border-b border-slate-900 pb-2 uppercase tracking-wider">
+              {editingId ? 'Edit Category Budget' : 'New Category Budget'}
+            </h3>
+
+            {errorMessage && (
+              <p className="text-xs text-rose-400 font-semibold bg-rose-500/10 border border-rose-500/20 p-2 rounded-xl">{errorMessage}</p>
+            )}
+
+            <div className="space-y-1">
+              <label className="block text-[10px] text-slate-500 font-bold uppercase">Category *</label>
+              <select
+                disabled={!!editingId}
+                required
+                value={formData.category_id}
+                onChange={e => setFormData(f => ({ ...f, category_id: e.target.value }))}
+                className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white text-xs font-bold focus:ring-1 focus:ring-purple-500"
+              >
+                <option value="">-- Select Expense Category --</option>
+                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
             </div>
-            <form onSubmit={handleLogExpenseSubmit} className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-semibold mb-2 text-slate-700 dark:text-slate-300">Amount Spent (₹) *</label>
-                <input
-                  type="number"
-                  required
-                  min="1"
-                  placeholder="0.00"
-                  value={logExpenseData.amount}
-                  onChange={e => setLogExpenseData(f => ({ ...f, amount: e.target.value }))}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white text-xl font-bold focus:outline-none focus:ring-2 focus:ring-primary"
-                />
-              </div>
 
-              <div>
-                <label className="block text-sm font-semibold mb-2 text-slate-700 dark:text-slate-300">Date *</label>
-                <input
-                  type="date"
-                  required
-                  value={logExpenseData.date}
-                  onChange={e => setLogExpenseData(f => ({ ...f, date: e.target.value }))}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary"
-                />
-              </div>
+            <div className="space-y-1">
+              <label className="block text-[10px] text-slate-500 font-bold uppercase">Monthly Limit (₹) *</label>
+              <input
+                type="number" required min="1" step="any"
+                value={formData.limit_amount}
+                onChange={e => setFormData(f => ({ ...f, limit_amount: e.target.value }))}
+                placeholder="₹8,000"
+                className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white font-mono text-xs font-bold focus:ring-1 focus:ring-purple-500"
+              />
+            </div>
 
-              <div>
-                <label className="block text-sm font-semibold mb-2 text-slate-700 dark:text-slate-300">Description / Note</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Grocery items, metro ticket"
-                  value={logExpenseData.notes}
-                  onChange={e => setLogExpenseData(f => ({ ...f, notes: e.target.value }))}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold mb-2 text-slate-700 dark:text-slate-300">Payment Method</label>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="block text-[10px] text-slate-500 font-bold uppercase">Priority *</label>
                 <select
-                  value={logExpenseData.payment_method}
-                  onChange={e => setLogExpenseData(f => ({ ...f, payment_method: e.target.value }))}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary"
+                  value={formData.priority}
+                  onChange={e => setFormData(f => ({ ...f, priority: e.target.value as any }))}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white text-xs font-bold focus:ring-1 focus:ring-purple-500"
                 >
-                  <option value="UPI">UPI (GPay, PhonePe)</option>
-                  <option value="Credit Card">Credit Card</option>
-                  <option value="Debit Card">Debit Card</option>
-                  <option value="Bank Transfer">Bank Transfer / NEFT</option>
-                  <option value="Cash">Cash</option>
+                  <option value="essential">Essential</option>
+                  <option value="important">Important</option>
+                  <option value="optional">Optional</option>
+                  <option value="avoid">Avoid / Reduce</option>
                 </select>
               </div>
 
-              <div className="flex justify-end space-x-3 pt-2 border-t border-slate-100 dark:border-slate-800">
-                <Button variant="ghost" type="button" onClick={() => setIsLogExpenseOpen(false)}>Cancel</Button>
-                <Button variant="primary" type="submit">Log Expense</Button>
+              <div className="space-y-1">
+                <label className="block text-[10px] text-slate-500 font-bold uppercase">Link to Goal</label>
+                <select
+                  value={formData.linked_goal_id}
+                  onChange={e => setFormData(f => ({ ...f, linked_goal_id: e.target.value }))}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white text-xs font-bold focus:ring-1 focus:ring-purple-500"
+                >
+                  <option value="">-- None --</option>
+                  {goals.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                </select>
               </div>
-            </form>
-          </div>
+            </div>
+
+            {/* Rollover controls */}
+            <div className="p-3 bg-slate-900/50 border border-slate-850 rounded-2xl space-y-2">
+              <label className="flex items-center space-x-2 text-xs font-extrabold text-slate-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={formData.rollover_enabled}
+                  onChange={e => setFormData(f => ({ ...f, rollover_enabled: e.target.checked }))}
+                  className="rounded text-purple-600 focus:ring-purple-500 w-4 h-4"
+                />
+                <span>Enable Rollover Budgeting</span>
+              </label>
+
+              {formData.rollover_enabled && (
+                <div className="space-y-1 pt-1">
+                  <label className="block text-[9px] text-slate-500 font-bold uppercase">Unused Rollover Balance (₹)</label>
+                  <input
+                    type="number" min="0" step="any"
+                    value={formData.rollover_amount}
+                    onChange={e => setFormData(f => ({ ...f, rollover_amount: e.target.value }))}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl py-1.5 px-3 text-white font-mono text-xs focus:ring-1 focus:ring-purple-500"
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end space-x-3 pt-2">
+              <Button onClick={() => setIsModalOpen(false)} variant="ghost">Cancel</Button>
+              <Button type="submit" variant="primary" disabled={isSubmitting} className="bg-purple-600 hover:bg-purple-700 px-5 text-white">
+                {isSubmitting ? 'Saving...' : 'Save Budget'}
+              </Button>
+            </div>
+          </form>
         </div>
       )}
     </div>
