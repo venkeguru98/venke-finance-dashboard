@@ -11,6 +11,14 @@ interface DebtModuleProps {
   onBack: () => void;
 }
 
+export const PRIORITY_CONFIG: Record<string, { label: string; shortLabel: string; badgeClass: string; dot: string; order: number }> = {
+  pay_first: { label: 'Pay First', shortLabel: 'PAY FIRST', badgeClass: 'bg-red-500/20 border-red-500/40 text-red-400', dot: '🔴', order: 1 },
+  high:      { label: 'High Priority', shortLabel: 'HIGH', badgeClass: 'bg-orange-500/20 border-orange-500/40 text-orange-400', dot: '🟠', order: 2 },
+  medium:    { label: 'Medium Priority', shortLabel: 'MEDIUM', badgeClass: 'bg-amber-500/20 border-amber-500/40 text-amber-400', dot: '🟡', order: 3 },
+  low:       { label: 'Low Priority', shortLabel: 'LOW', badgeClass: 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400', dot: '🟢', order: 4 },
+  last:      { label: 'Last to Pay', shortLabel: 'LAST', badgeClass: 'bg-slate-500/20 border-slate-500/40 text-slate-400', dot: '⚪', order: 5 },
+};
+
 export default function DebtModule({ onBack }: DebtModuleProps) {
   const [accounts, setAccounts] = useState<any[]>([]);
   const [activeAccount, setActiveAccount] = useState<any | null>(null);
@@ -19,7 +27,9 @@ export default function DebtModule({ onBack }: DebtModuleProps) {
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [isDetailCollapsed, setIsDetailCollapsed] = useState(false);
 
-  // Filters
+  // Sorting & Filtering
+  const [sortBy, setSortBy] = useState<'Priority' | 'Name' | 'NetBalance'>('Priority');
+  const [filterPriority, setFilterPriority] = useState<string>('All');
   const [filterType, setFilterType] = useState<'All' | 'Borrowed' | 'Lent'>('All');
   const [filterStatus, setFilterStatus] = useState<'All' | 'Pending' | 'Partially Settled' | 'Fully Settled'>('All');
   const [filterStartDate, setFilterStartDate] = useState('');
@@ -37,7 +47,8 @@ export default function DebtModule({ onBack }: DebtModuleProps) {
   const [editingAcc, setEditingAcc] = useState<any | null>(null);
   const [accForm, setAccForm] = useState({
     account_name: '',
-    description: ''
+    description: '',
+    priority: 'medium'
   });
 
   const [showTxModal, setShowTxModal] = useState(false);
@@ -107,14 +118,23 @@ export default function DebtModule({ onBack }: DebtModuleProps) {
   // Account CRUD
   const handleOpenAddAcc = () => {
     setEditingAcc(null);
-    setAccForm({ account_name: '', description: '' });
+    setAccForm({ account_name: '', description: '', priority: 'medium' });
     setShowAccModal(true);
   };
 
   const handleOpenEditAcc = (a: any) => {
     setEditingAcc(a);
-    setAccForm({ account_name: a.account_name, description: a.description || '' });
+    setAccForm({ account_name: a.account_name, description: a.description || '', priority: a.priority || 'medium' });
     setShowAccModal(true);
+  };
+
+  const handleQuickChangePriority = async (accId: number, newPriority: string) => {
+    try {
+      await axios.patch(`${API}/records/debts/${accId}/priority`, { priority: newPriority });
+      fetchAccounts(activeAccount?.id);
+    } catch (_) {
+      alert('Error updating priority.');
+    }
   };
 
   const handleAccSubmit = async (e: React.FormEvent) => {
@@ -309,6 +329,41 @@ export default function DebtModule({ onBack }: DebtModuleProps) {
     fetchAccounts(activeAccount?.id);
   };
 
+  // Priority Summary Counts
+  const getPriorityCounts = () => {
+    const counts: Record<string, number> = { pay_first: 0, high: 0, medium: 0, low: 0, last: 0 };
+    accounts.forEach(a => {
+      const key = a.priority && counts[a.priority] !== undefined ? a.priority : 'medium';
+      counts[key]++;
+    });
+    return counts;
+  };
+
+  const priorityCounts = getPriorityCounts();
+
+  // Filter & Sort Accounts
+  const getFilteredAndSortedAccounts = () => {
+    let list = accounts.filter(a => {
+      if (filterPriority !== 'All' && (a.priority || 'medium') !== filterPriority) return false;
+      return true;
+    });
+
+    return list.sort((a, b) => {
+      if (sortBy === 'Priority') {
+        const orderA = PRIORITY_CONFIG[a.priority || 'medium']?.order || 3;
+        const orderB = PRIORITY_CONFIG[b.priority || 'medium']?.order || 3;
+        if (orderA !== orderB) return orderA - orderB;
+        return a.account_name.localeCompare(b.account_name);
+      } else if (sortBy === 'NetBalance') {
+        return (b.runningBalance || 0) - (a.runningBalance || 0);
+      } else {
+        return a.account_name.localeCompare(b.account_name);
+      }
+    });
+  };
+
+  const displayAccounts = getFilteredAndSortedAccounts();
+
   // Running stats for Dashboard
   const getOverallStats = () => {
     let totalBorrowed = 0;
@@ -396,59 +451,124 @@ export default function DebtModule({ onBack }: DebtModuleProps) {
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start transition-all duration-350">
           {/* LEFT SIDEBAR: LIST OF DEBT ACCOUNTS */}
           <div className={`space-y-3.5 transition-all duration-350 ${isDetailCollapsed ? 'lg:col-span-4' : 'lg:col-span-1'}`}>
-            <h2 className="text-xs font-black uppercase text-slate-500 tracking-wider">Debt Accounts ({accounts.length})</h2>
+            <div className="flex flex-col space-y-2">
+              <div className="flex justify-between items-center">
+                <h2 className="text-xs font-black uppercase text-slate-500 tracking-wider">Debt Accounts ({displayAccounts.length})</h2>
+                {/* Sort selector */}
+                <select
+                  value={sortBy}
+                  onChange={e => setSortBy(e.target.value as any)}
+                  className="bg-slate-950 border border-slate-850 rounded-lg text-[10px] font-bold text-slate-300 py-1 px-1.5 focus:outline-none"
+                >
+                  <option value="Priority">Sort: Priority</option>
+                  <option value="NetBalance">Sort: Net Balance</option>
+                  <option value="Name">Sort: Name</option>
+                </select>
+              </div>
+
+              {/* Priority Filter */}
+              <div className="flex items-center space-x-1.5">
+                <span className="text-[9px] font-bold uppercase text-slate-500">Filter:</span>
+                <select
+                  value={filterPriority}
+                  onChange={e => setFilterPriority(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-850 rounded-lg text-[10px] font-bold text-slate-300 py-1 px-1.5 focus:outline-none"
+                >
+                  <option value="All">All Priorities</option>
+                  <option value="pay_first">🔴 Pay First</option>
+                  <option value="high">🟠 High Priority</option>
+                  <option value="medium">🟡 Medium Priority</option>
+                  <option value="low">🟢 Low Priority</option>
+                  <option value="last">⚪ Last to Pay</option>
+                </select>
+              </div>
+            </div>
+
             <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1 custom-scrollbar">
-              {accounts.map((a) => {
-                const isActive = activeAccount && activeAccount.id === a.id;
-                return (
-                  <div
-                    key={a.id}
-                    onClick={() => handleSelectAccount(a)}
-                    onDoubleClick={() => {
-                      if (activeAccount && activeAccount.id === a.id) {
-                        setIsDetailCollapsed(!isDetailCollapsed);
-                      }
-                    }}
-                    className={`p-4 rounded-2xl border transition cursor-pointer flex flex-col gap-2 relative ${
-                      isActive 
-                        ? 'bg-purple-500/10 border-purple-500/40 shadow-lg shadow-purple-500/2' 
-                        : 'bg-slate-950/40 border-slate-850 hover:bg-slate-900/30'
-                    }`}
-                  >
-                    <div className="flex justify-between items-start">
-                      <p className="font-extrabold text-white text-[13px] truncate">{a.account_name}</p>
-                      <div className="flex space-x-1">
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); handleOpenEditAcc(a); }}
-                          className="p-1 rounded text-slate-500 hover:text-white hover:bg-slate-800 transition"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); handleDeleteAcc(a.id); }}
-                          className="p-1 rounded text-slate-500 hover:text-red-400 hover:bg-slate-800 transition"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+              {displayAccounts.length === 0 ? (
+                <p className="text-xs text-slate-500 italic p-3 text-center">No accounts match selected priority.</p>
+              ) : (
+                displayAccounts.map((a) => {
+                  const isActive = activeAccount && activeAccount.id === a.id;
+                  const priKey = a.priority || 'medium';
+                  const priConfig = PRIORITY_CONFIG[priKey] || PRIORITY_CONFIG.medium;
+                  return (
+                    <div
+                      key={a.id}
+                      onClick={() => handleSelectAccount(a)}
+                      onDoubleClick={() => {
+                        if (activeAccount && activeAccount.id === a.id) {
+                          setIsDetailCollapsed(!isDetailCollapsed);
+                        }
+                      }}
+                      className={`p-4 rounded-2xl border transition cursor-pointer flex flex-col gap-2 relative ${
+                        isActive 
+                          ? 'bg-purple-500/10 border-purple-500/40 shadow-lg shadow-purple-500/2' 
+                          : 'bg-slate-950/40 border-slate-850 hover:bg-slate-900/30'
+                      }`}
+                    >
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="font-extrabold text-white text-[13px] truncate">{a.account_name}</p>
+                          {/* Priority badge on card */}
+                          <div className="mt-1 flex items-center space-x-1.5">
+                            <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase border flex items-center gap-1 ${priConfig.badgeClass}`}>
+                              <span>{priConfig.dot}</span> {priConfig.shortLabel}
+                            </span>
+                            
+                            {/* Quick priority changer */}
+                            <select
+                              value={priKey}
+                              onClick={e => e.stopPropagation()}
+                              onChange={e => {
+                                e.stopPropagation();
+                                handleQuickChangePriority(a.id, e.target.value);
+                              }}
+                              className="bg-slate-900 border border-slate-800 text-[8px] text-slate-400 font-bold rounded px-1 py-0.5 focus:outline-none cursor-pointer"
+                              title="Quick set priority"
+                            >
+                              <option value="pay_first">🔴 Pay First</option>
+                              <option value="high">🟠 High</option>
+                              <option value="medium">🟡 Medium</option>
+                              <option value="low">🟢 Low</option>
+                              <option value="last">⚪ Last</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="flex space-x-1">
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); handleOpenEditAcc(a); }}
+                            className="p-1 rounded text-slate-500 hover:text-white hover:bg-slate-800 transition"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); handleDeleteAcc(a.id); }}
+                            className="p-1 rounded text-slate-500 hover:text-red-400 hover:bg-slate-800 transition"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                    {a.description && <p className="text-[10px] text-slate-500 font-semibold truncate">{a.description}</p>}
-                    
-                    <div className="flex justify-between items-center text-[10px] font-bold mt-2 pt-2 border-t border-slate-900/60">
-                      <span className="text-slate-500">Net Balance</span>
-                      <span className={`font-mono font-black ${a.runningBalance >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {a.runningBalance >= 0 ? '+' : ''}₹{a.runningBalance.toLocaleString('en-IN')}
-                      </span>
-                    </div>
-                    {(a.outstandingPay === 0 && a.outstandingReceive === 0) && (
-                      <div className="flex justify-between items-center text-[8px] font-black uppercase tracking-wider mt-1.5 pt-1 border-t border-slate-900/40 text-green-400">
-                        <span>Status</span>
-                        <span className="bg-green-500/10 border border-green-500/20 px-1.5 py-0.5 rounded">Closed</span>
+                      {a.description && <p className="text-[10px] text-slate-500 font-semibold truncate">{a.description}</p>}
+                      
+                      <div className="flex justify-between items-center text-[10px] font-bold mt-2 pt-2 border-t border-slate-900/60">
+                        <span className="text-slate-500">Net Balance</span>
+                        <span className={`font-mono font-black ${a.runningBalance >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {a.runningBalance >= 0 ? '+' : ''}₹{a.runningBalance.toLocaleString('en-IN')}
+                        </span>
                       </div>
-                    )}
-                  </div>
-                );
-              })}
+                      {(a.outstandingPay === 0 && a.outstandingReceive === 0) && (
+                        <div className="flex justify-between items-center text-[8px] font-black uppercase tracking-wider mt-1.5 pt-1 border-t border-slate-900/40 text-green-400">
+                          <span>Status</span>
+                          <span className="bg-green-500/10 border border-green-500/20 px-1.5 py-0.5 rounded">Closed</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
 
@@ -485,6 +605,28 @@ export default function DebtModule({ onBack }: DebtModuleProps) {
               </div>
             </div>
 
+            {/* PRIORITY OVERVIEW BAR */}
+            <div className="bg-slate-950/40 border border-slate-900 p-3.5 rounded-2xl flex flex-wrap items-center justify-between gap-2 text-xs">
+              <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Priority Overview:</span>
+              <div className="flex items-center space-x-2 flex-wrap text-[11px] font-mono font-bold">
+                <span className="px-2 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20">
+                  🔴 Pay First: <strong>{priorityCounts.pay_first}</strong>
+                </span>
+                <span className="px-2 py-0.5 rounded bg-orange-500/10 text-orange-400 border border-orange-500/20">
+                  🟠 High: <strong>{priorityCounts.high}</strong>
+                </span>
+                <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                  🟡 Medium: <strong>{priorityCounts.medium}</strong>
+                </span>
+                <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  🟢 Low: <strong>{priorityCounts.low}</strong>
+                </span>
+                <span className="px-2 py-0.5 rounded bg-slate-500/10 text-slate-400 border border-slate-500/20">
+                  ⚪ Last: <strong>{priorityCounts.last}</strong>
+                </span>
+              </div>
+            </div>
+
             {/* LEDGER DETAILS PANEL */}
             {activeAccount && (
               <div className="bg-slate-950/40 border border-slate-850 p-5 rounded-3xl space-y-5">
@@ -499,6 +641,31 @@ export default function DebtModule({ onBack }: DebtModuleProps) {
                       >
                         <ChevronRight className="w-4 h-4" />
                       </button>
+
+                      {/* Account Priority Badge & Selector in header */}
+                      {(() => {
+                        const activePriKey = activeAccount.priority || 'medium';
+                        const activePriConfig = PRIORITY_CONFIG[activePriKey] || PRIORITY_CONFIG.medium;
+                        return (
+                          <div className="flex items-center space-x-1.5 ml-1">
+                            <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase border flex items-center gap-1 ${activePriConfig.badgeClass}`}>
+                              <span>{activePriConfig.dot}</span> {activePriConfig.shortLabel}
+                            </span>
+                            <select
+                              value={activePriKey}
+                              onChange={e => handleQuickChangePriority(activeAccount.id, e.target.value)}
+                              className="bg-slate-900 border border-slate-800 text-[10px] text-slate-300 font-bold rounded px-2 py-0.5 focus:outline-none cursor-pointer"
+                            >
+                              <option value="pay_first">🔴 Pay First</option>
+                              <option value="high">🟠 High Priority</option>
+                              <option value="medium">🟡 Medium Priority</option>
+                              <option value="low">🟢 Low Priority</option>
+                              <option value="last">⚪ Last to Pay</option>
+                            </select>
+                          </div>
+                        );
+                      })()}
+
                       {(activeAccount.outstandingPay === 0 && activeAccount.outstandingReceive === 0) ? (
                         <span className="bg-green-500/10 text-green-400 border border-green-500/20 px-2 py-0.5 rounded text-[8px] uppercase tracking-wider font-black">
                           Closed (Fully Settled)
@@ -768,6 +935,21 @@ export default function DebtModule({ onBack }: DebtModuleProps) {
                 placeholder="e.g. Friends, SBI Loan, Ashok"
                 className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white focus:outline-none focus:ring-1 focus:ring-purple-500 font-bold text-xs"
               />
+            </div>
+
+            <div className="space-y-1">
+              <label className="block text-[10px] text-slate-500 font-bold uppercase">Priority *</label>
+              <select
+                value={accForm.priority}
+                onChange={e => setAccForm(f => ({ ...f, priority: e.target.value }))}
+                className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white focus:outline-none focus:ring-1 focus:ring-purple-500 font-bold text-xs"
+              >
+                <option value="pay_first">🔴 Pay First (Highest Priority)</option>
+                <option value="high">🟠 High Priority</option>
+                <option value="medium">🟡 Medium Priority (Default)</option>
+                <option value="low">🟢 Low Priority</option>
+                <option value="last">⚪ Last to Pay (Lowest Priority)</option>
+              </select>
             </div>
 
             <div className="space-y-1">

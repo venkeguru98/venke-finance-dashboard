@@ -971,11 +971,13 @@ router.get('/debts', async (req: Request, res: Response) => {
 });
 
 router.post('/debts', async (req: Request, res: Response) => {
-  const { account_name, description } = req.body;
+  const { account_name, description, priority } = req.body;
+  const validPriorities = ['pay_first', 'high', 'medium', 'low', 'last'];
+  const priorityVal = validPriorities.includes(priority) ? priority : 'medium';
   try {
     const result = await execute(
-      `INSERT INTO debt_accounts (user_id, account_name, description) VALUES (?, ?, ?)`,
-      [req.user!.id, account_name, description || '']
+      `INSERT INTO debt_accounts (user_id, account_name, description, priority) VALUES (?, ?, ?, ?)`,
+      [req.user!.id, account_name, description || '', priorityVal]
     );
     res.json({ id: result.lastID, success: true });
   } catch (err: any) {
@@ -984,13 +986,30 @@ router.post('/debts', async (req: Request, res: Response) => {
 });
 
 router.put('/debts/:id', async (req: Request, res: Response) => {
-  const { account_name, description } = req.body;
+  const { account_name, description, priority } = req.body;
+  const validPriorities = ['pay_first', 'high', 'medium', 'low', 'last'];
+  const priorityVal = validPriorities.includes(priority) ? priority : 'medium';
   try {
     await execute(
-      `UPDATE debt_accounts SET account_name = ?, description = ? WHERE id = ? AND user_id = ?`,
-      [account_name, description || '', Number(req.params.id), req.user!.id]
+      `UPDATE debt_accounts SET account_name = ?, description = ?, priority = ? WHERE id = ? AND user_id = ?`,
+      [account_name, description || '', priorityVal, Number(req.params.id), req.user!.id]
     );
     res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch('/debts/:id/priority', async (req: Request, res: Response) => {
+  const { priority } = req.body;
+  const validPriorities = ['pay_first', 'high', 'medium', 'low', 'last'];
+  const priorityVal = validPriorities.includes(priority) ? priority : 'medium';
+  try {
+    await execute(
+      `UPDATE debt_accounts SET priority = ? WHERE id = ? AND user_id = ?`,
+      [priorityVal, Number(req.params.id), req.user!.id]
+    );
+    res.json({ success: true, priority: priorityVal });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

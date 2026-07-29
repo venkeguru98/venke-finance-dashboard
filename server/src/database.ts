@@ -199,6 +199,7 @@ export const initializeDatabase = async () => {
             user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
             account_name VARCHAR(255) NOT NULL,
             description TEXT,
+            priority VARCHAR(50) DEFAULT 'medium',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
           )
         `);
@@ -233,6 +234,7 @@ export const initializeDatabase = async () => {
             user_id INTEGER NOT NULL,
             account_name TEXT NOT NULL,
             description TEXT,
+            priority TEXT DEFAULT 'medium',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
           )
@@ -265,6 +267,20 @@ export const initializeDatabase = async () => {
           )
         `);
       }
+
+      // Dynamic migration for priority column in debt_accounts
+      try {
+        if (isPg && pgPool) {
+          await pgPool.query(`ALTER TABLE debt_accounts ADD COLUMN IF NOT EXISTS priority VARCHAR(50) DEFAULT 'medium'`);
+          await pgPool.query(`UPDATE debt_accounts SET priority = 'medium' WHERE priority IS NULL OR priority = ''`);
+        } else {
+          await execute(`ALTER TABLE debt_accounts ADD COLUMN priority TEXT DEFAULT 'medium'`);
+          await execute(`UPDATE debt_accounts SET priority = 'medium' WHERE priority IS NULL OR priority = ''`);
+        }
+      } catch (colErr) {
+        // Ignore if column already exists
+      }
+
       console.log('Debt Manager database tables verified/created.');
     } catch (dbErr) {
       console.error('Migration failed for debt manager tables:', dbErr);
