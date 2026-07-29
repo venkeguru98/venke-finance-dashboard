@@ -560,6 +560,84 @@ router.post('/budgets/salary-allocation', async (req, res) => {
   }
 });
 
+// Atomic "Save Monthly Plan & Auto-Generate Budgets" Route
+router.post('/budgets/save-monthly-plan', async (req, res) => {
+  const uid = req.user!.id;
+  const { month, year, income_amount, allocations } = req.body;
+  try {
+    const jsonStr = JSON.stringify(allocations || []);
+    
+    // 1. Save salary allocation plan
+    const existingAlloc = await query(
+      `SELECT id FROM salary_allocations WHERE user_id = ? AND month = ? AND year = ?`,
+      [uid, month, year]
+    );
+    if (existingAlloc.length > 0) {
+      await execute(
+        `UPDATE salary_allocations SET income_amount=?, allocation_json=? WHERE id=? AND user_id=?`,
+        [income_amount || 0, jsonStr, existingAlloc[0].id, uid]
+      );
+    } else {
+      await execute(
+        `INSERT INTO salary_allocations (user_id, month, year, income_amount, allocation_json) VALUES (?, ?, ?, ?, ?)`,
+        [uid, month, year, income_amount || 0, jsonStr]
+      );
+    }
+
+    // 2. Auto-generate / update category budget limits
+    let updatedCount = 0;
+    if (Array.isArray(allocations)) {
+      for (const item of allocations) {
+        if (!item.category_id || item.category_id <= 0) continue;
+        const existingB = await query(
+          `SELECT id FROM budgets WHERE user_id = ? AND category_id = ? AND month = ? AND year = ?`,
+          [uid, item.category_id, month, year]
+        );
+        if (existingB.length > 0) {
+          await execute(
+            `UPDATE budgets SET limit_amount = ? WHERE id = ? AND user_id = ?`,
+            [item.amount || 0, existingB[0].id, uid]
+          );
+        } else {
+          await execute(
+            `INSERT INTO budgets (user_id, category_id, limit_amount, month, year, priority) VALUES (?, ?, ?, ?, ?, ?)`,
+            [uid, item.category_id, item.amount || 0, month, year, item.category_group === 'Expenses' ? 'essential' : 'important']
+          );
+        }
+        updatedCount++;
+      }
+    }
+
+    res.json({ success: true, count: updatedCount });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Category Smart Suggestions (6-month trailing average spend)
+router.get('/budgets/category-suggestions', async (req, res) => {
+  const uid = req.user!.id;
+  try {
+    const suggestions = await query(
+      `SELECT c.id as category_id, c.name as category_name, c.type as category_type,
+         COALESCE(ROUND(AVG(monthly_sum.total)), 0) as suggested_amount
+       FROM categories c
+       LEFT JOIN (
+         SELECT category_id, strftime('%Y-%m', date) as m_prefix, SUM(amount) as total
+         FROM transactions
+         WHERE user_id = ? AND type != 'income'
+         GROUP BY category_id, m_prefix
+       ) monthly_sum ON c.id = monthly_sum.category_id
+       WHERE c.type != 'income' AND c.user_id IS NULL OR c.user_id = ?
+       GROUP BY c.id, c.name, c.type`,
+      [uid, uid]
+    );
+    res.json(suggestions);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.post('/budgets/salary-allocation/copy-prev', async (req, res) => {
   const uid = req.user!.id;
   const { target_month, target_year } = req.body;
