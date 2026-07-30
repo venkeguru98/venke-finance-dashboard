@@ -766,10 +766,25 @@ export default function Budgets() {
                     </div>
                   )}
 
-                  <div className="flex justify-end pt-2">
+                  {/* DESKTOP SAVE BUTTON */}
+                  <div className="hidden md:flex justify-end pt-2">
                     <Button type="submit" variant="primary" className="bg-purple-600 hover:bg-purple-700 text-xs px-6 py-2.5 font-extrabold flex items-center gap-2">
                       <Zap className="w-4 h-4 text-amber-300" />
                       Save Monthly Plan & Auto-Generate Budgets
+                    </Button>
+                  </div>
+
+                  {/* MOBILE STICKY ACTION BAR */}
+                  <div className="md:hidden sticky bottom-0 left-0 right-0 z-40 bg-slate-950/95 backdrop-blur-md border-t border-slate-850 p-3 flex items-center justify-between gap-3 shadow-2xl rounded-t-2xl -mx-6 -mb-6">
+                    <div>
+                      <p className="text-[9px] text-slate-500 font-bold uppercase">Remaining</p>
+                      <p className={`text-xs font-black font-mono ${isOverAllocated ? 'text-rose-400' : 'text-emerald-400'}`}>
+                        ₹{remainingUnallocatedIncome.toLocaleString('en-IN')}
+                      </p>
+                    </div>
+                    <Button type="submit" variant="primary" className="bg-purple-600 hover:bg-purple-700 text-xs py-2 px-4 font-extrabold flex items-center gap-1.5 min-h-[44px]">
+                      <Zap className="w-4 h-4 text-amber-300" />
+                      Save Monthly Plan
                     </Button>
                   </div>
                 </form>
@@ -865,6 +880,16 @@ export default function Budgets() {
                   </div>
                 </div>
 
+                {/* STATUS LEGEND BAR */}
+                <div className="flex flex-wrap items-center gap-3 bg-slate-950/40 p-2.5 rounded-2xl border border-slate-850 text-[10px] font-bold">
+                  <span className="text-slate-500 uppercase tracking-wider">Status Legend:</span>
+                  <span className="flex items-center gap-1.5 text-slate-400"><span className="w-2 h-2 rounded-full bg-slate-700" /> Not Started</span>
+                  <span className="flex items-center gap-1.5 text-emerald-400"><span className="w-2 h-2 rounded-full bg-emerald-500" /> On Track</span>
+                  <span className="flex items-center gap-1.5 text-orange-400"><span className="w-2 h-2 rounded-full bg-orange-500" /> Near Limit (90-99%)</span>
+                  <span className="flex items-center gap-1.5 text-emerald-400"><span className="w-2 h-2 rounded-full bg-emerald-400" /> Completed</span>
+                  <span className="flex items-center gap-1.5 text-rose-400"><span className="w-2 h-2 rounded-full bg-rose-500" /> Overspent</span>
+                </div>
+
                 {filteredBudgets.length === 0 ? (
                   <div className="bg-slate-950/40 border border-slate-850 rounded-3xl p-10 text-center space-y-4">
                     <p className="text-slate-400 text-sm">No active budgets generated for {selectedMonthLabel} {selectedYear}.</p>
@@ -878,29 +903,53 @@ export default function Budgets() {
                       const effLimit = b.effectiveLimit || b.limit_amount;
                       const pct = effLimit > 0 ? Math.min(100, (b.spent / effLimit) * 100) : 0;
                       const isOver = b.spent > effLimit;
-                      const variance = b.spent - effLimit;
+                      const isCompleted = b.spent === effLimit && effLimit > 0;
+                      const isNotStarted = b.spent === 0;
 
                       let statusBadge = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
                       let statusText = 'On Track';
-                      if (isOver) {
+                      let barColor = 'bg-emerald-500';
+
+                      const matchCat = categories.find(c => c.id === b.category_id);
+                      const grp = matchCat ? getCategoryGroup(matchCat) : 'Expenses';
+
+                      if (isNotStarted) {
+                        statusBadge = 'bg-slate-800/80 text-slate-400 border-slate-700';
+                        statusText = 'Not Started';
+                        barColor = 'bg-slate-700';
+                      } else if (isCompleted) {
+                        statusBadge = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+                        statusText = 'Completed';
+                        barColor = 'bg-emerald-500';
+                      } else if (isOver) {
                         statusBadge = 'bg-rose-500/10 text-rose-400 border-rose-500/20';
                         statusText = 'Overspent';
+                        barColor = 'bg-rose-500';
                       } else if (pct >= 90) {
                         statusBadge = 'bg-orange-500/10 text-orange-400 border-orange-500/20';
-                        statusText = 'Critical (90%+)';
+                        statusText = 'Near Limit';
+                        barColor = 'bg-orange-500';
+                      } else if (grp === 'Savings') {
+                        barColor = 'bg-blue-500';
+                      } else if (grp === 'Investments') {
+                        barColor = 'bg-purple-500';
                       }
 
                       const priBadge = PRIORITY_BADGES[b.priority || 'essential'];
-                      const matchCat = categories.find(c => c.id === b.category_id);
-                      const grp = matchCat ? getCategoryGroup(matchCat) : 'Expenses';
                       const allocItem = salaryAllocations.find(a => a.category_id === b.category_id);
 
-                      // Bar colors based on group and status
-                      let barColor = 'bg-emerald-500';
-                      if (isOver) barColor = 'bg-rose-500';
-                      else if (pct >= 90) barColor = 'bg-orange-500';
-                      else if (grp === 'Savings') barColor = 'bg-blue-500';
-                      else if (grp === 'Investments') barColor = 'bg-purple-500';
+                      // Variance calculation: Planned Limit - Actual Spent
+                      const rawVariance = effLimit - b.spent;
+                      let varianceLabel = 'On Budget (₹0)';
+                      let varianceClass = 'text-emerald-400';
+
+                      if (rawVariance > 0) {
+                        varianceLabel = `Under Budget (+₹${rawVariance.toLocaleString('en-IN')})`;
+                        varianceClass = 'text-emerald-400';
+                      } else if (rawVariance < 0) {
+                        varianceLabel = `Overspent (-₹${Math.abs(rawVariance).toLocaleString('en-IN')})`;
+                        varianceClass = 'text-rose-400';
+                      }
 
                       return (
                         <div
@@ -954,8 +1003,8 @@ export default function Budgets() {
                             </div>
                             <div>
                               <span className="text-slate-500 font-bold uppercase">Variance:</span>
-                              <p className={`font-mono font-black ${variance > 0 ? 'text-rose-400' : 'text-slate-300'}`}>
-                                {variance > 0 ? `+₹${variance.toLocaleString('en-IN')}` : `-₹${Math.abs(variance).toLocaleString('en-IN')}`}
+                              <p className={`font-mono font-black ${varianceClass}`}>
+                                {varianceLabel}
                               </p>
                             </div>
                           </div>
@@ -970,8 +1019,30 @@ export default function Budgets() {
                             </div>
                             <div className="flex justify-between text-[9px] text-slate-500 font-bold">
                               <span>{pct.toFixed(0)}% executed</span>
-                              <span className="font-mono">Forecast: ₹{(b.forecastedEnd || 0).toLocaleString('en-IN')}</span>
+                              <span>{isCompleted ? '100% Reached' : `${b.spent.toLocaleString('en-IN')} / ${effLimit.toLocaleString('en-IN')}`}</span>
                             </div>
+                          </div>
+
+                          {/* Forecast / Footer Note */}
+                          <div className="pt-2 border-t border-slate-900/60 flex justify-between items-center text-[10px]">
+                            <span className="text-slate-400 font-medium">Status Note:</span>
+                            {isCompleted ? (
+                              <span className="font-mono font-black text-emerald-400 flex items-center gap-1">
+                                Budget successfully completed ✅
+                              </span>
+                            ) : isOver ? (
+                              <span className="font-mono font-black text-rose-400 flex items-center gap-1">
+                                Overspent by ₹{(b.spent - effLimit).toLocaleString('en-IN')} ⚠️
+                              </span>
+                            ) : isNotStarted ? (
+                              <span className="font-mono font-bold text-slate-500">
+                                No activity yet ⚪
+                              </span>
+                            ) : (
+                              <span className={`font-mono font-black ${b.isForecastOver ? 'text-rose-400' : 'text-slate-300'}`}>
+                                Forecast: ₹{(b.forecastedEnd || 0).toLocaleString('en-IN')} {b.isForecastOver ? '⚠️' : '✅'}
+                              </span>
+                            )}
                           </div>
                         </div>
                       );
