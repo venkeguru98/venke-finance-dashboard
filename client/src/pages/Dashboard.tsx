@@ -26,6 +26,23 @@ export const formatIndianRupee = (num: number) => {
   return (isNegative ? '-₹' : '₹') + formatted;
 };
 
+const getCategoryGroup = (cat: any): string => {
+  const type = (cat.type || '').toLowerCase();
+  const name = (cat.name || '').toLowerCase();
+  if (type === 'debt' || name.includes('loan') || name.includes('debt') || name.includes('credit card')) return 'Debt';
+  if (type === 'insurance' || name.includes('lic') || name.includes('insurance')) return 'Insurance';
+  if (type === 'investment' || name.includes('sip') || name.includes('gold') || name.includes('mutual')) return 'Investments';
+  if (type === 'savings' || name.includes('fund') || name.includes('reserve') || name.includes('saving')) return 'Savings';
+  return 'Expenses';
+};
+
+const isFixedCommitment = (catName: string, grp: string): boolean => {
+  const name = catName.toLowerCase();
+  if (grp === 'Debt' || grp === 'Insurance') return true;
+  if (name.includes('rent') || name.includes('lic') || name.includes('sip') || name.includes('chit') || name.includes('emi') || name.includes('loan') || name.includes('debt')) return true;
+  return false;
+};
+
 // Default widget visibility states
 const DEFAULT_WIDGETS = {
   summaryCards: true,
@@ -915,13 +932,21 @@ export default function Dashboard() {
 
       const rangeLabel = `${formatDayLabel(range.start)} – ${formatDayLabel(range.end)}`;
 
+      const sortedTxs = [...txs].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      const txsList = sortedTxs.slice(0, 6);
+      const remainingTxCount = Math.max(0, sortedTxs.length - 6);
+
       return {
         weekNum: range.num,
         rangeLabel,
+        startDay: range.start,
+        endDay: range.end,
         totalExpense,
         transactionCount: txs.length,
         topCategory,
         largestTxAmount,
+        txsList,
+        remainingTxCount
       };
     });
 
@@ -940,9 +965,6 @@ export default function Dashboard() {
 
   const hasData = monthlyData.length > 0;
   const monthlyChartData = monthlyData.slice(-6);
-
-  // Filter budgets to warn or over limit
-  const criticalBudgets = budgets.filter(b => (b.spent / b.limit_amount) >= 0.8);
   const activeGoals = goals.filter(g => g.status !== 'completed').slice(0, 3);
 
   if (loading) return (
@@ -1318,7 +1340,19 @@ export default function Dashboard() {
         {/* Line Chart */}
         {widgets.cashFlow && (
           <div className="lg:col-span-2 bg-white dark:bg-slate-950 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
-            <h3 className="text-base font-bold text-slate-900 dark:text-white mb-6">Cash Flow Trends</h3>
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">Cash Flow Trends</h3>
+                <p className="text-xs text-slate-500 mt-0.5 font-medium">Income, Expenses, and Monthly Savings against Planned Savings Target</p>
+              </div>
+              <div className="flex items-center space-x-3 text-[10px] font-bold">
+                <span className="flex items-center text-emerald-400"><span className="w-2 h-2 rounded-full bg-emerald-500 mr-1"></span> Income</span>
+                <span className="flex items-center text-rose-400"><span className="w-2 h-2 rounded-full bg-rose-500 mr-1"></span> Expense</span>
+                <span className="flex items-center text-blue-400"><span className="w-2 h-2 rounded-full bg-blue-500 mr-1"></span> Savings</span>
+                <span className="flex items-center text-purple-400"><span className="w-2 h-0.5 bg-purple-400 border-dashed mr-1"></span> Target</span>
+              </div>
+            </div>
+
             {!hasData ? (
               <div className="h-60 flex flex-col items-center justify-center text-center p-4">
                 <span className="text-3xl mb-2">📉</span>
@@ -1329,23 +1363,34 @@ export default function Dashboard() {
             ) : (
               <div className="h-60">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={monthlyChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <AreaChart
+                    data={monthlyChartData.map(m => ({
+                      ...m,
+                      savings: Math.max(0, (m.income || 0) - (m.expense || 0))
+                    }))}
+                    margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+                  >
                     <defs>
                       <linearGradient id="colorInc" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#10B981" stopOpacity={0.2}/>
+                        <stop offset="5%" stopColor="#10B981" stopOpacity={0.25}/>
                         <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
                       </linearGradient>
                       <linearGradient id="colorExp" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#F43F5E" stopOpacity={0.2}/>
+                        <stop offset="5%" stopColor="#F43F5E" stopOpacity={0.25}/>
                         <stop offset="95%" stopColor="#F43F5E" stopOpacity={0}/>
+                      </linearGradient>
+                      <linearGradient id="colorSav" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.25}/>
+                        <stop offset="95%" stopColor="#3B82F6" stopOpacity={0}/>
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.15}/>
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b'}}/>
-                    <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b'}} tickFormatter={v => `₹${(v/1000).toFixed(0)}k`}/>
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 11}}/>
+                    <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 11}} tickFormatter={v => `₹${(v/1000).toFixed(0)}k`}/>
                     <Tooltip content={<StandardChartTooltip />} />
                     <Area type="monotone" dataKey="income" name="Income" stroke="#10B981" strokeWidth={2.5} fillOpacity={1} fill="url(#colorInc)"/>
                     <Area type="monotone" dataKey="expense" name="Expense" stroke="#F43F5E" strokeWidth={2.5} fillOpacity={1} fill="url(#colorExp)"/>
+                    <Area type="monotone" dataKey="savings" name="Monthly Savings" stroke="#3B82F6" strokeWidth={2.5} fillOpacity={1} fill="url(#colorSav)"/>
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
@@ -1441,42 +1486,129 @@ export default function Dashboard() {
         {/* Budget watch */}
         {widgets.budgetWatch && (
           <div className="bg-white dark:bg-slate-950 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
-            <div>
-              <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center">
-                <AlertTriangle className="w-5 h-5 text-warning mr-2" /> Budget Watchlist
-              </h3>
-              <p className="text-xs text-slate-500 mt-0.5 font-medium">Critical limits exceeding 80% consumption threshold</p>
+            <div className="flex justify-between items-center mb-2">
+              <div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center">
+                  <AlertTriangle className="w-5 h-5 text-warning mr-2" /> Budget Watchlist
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5 font-medium">
+                  {now.toLocaleString('default', { month: 'long', year: 'numeric' })} budget priorities sorted by urgency
+                </p>
+              </div>
+
+              <button
+                onClick={() => navigate('/budgets', { state: { month: now.getMonth() + 1, year: now.getFullYear() } })}
+                className="text-xs font-extrabold text-primary hover:underline"
+              >
+                View Planner →
+              </button>
             </div>
             
-            {criticalBudgets.length === 0 ? (
-              <div className="py-8 text-center text-slate-400 text-sm flex flex-col items-center justify-center space-y-1">
-                <CheckCircle2 className="w-8 h-8 text-green-500 mb-1" />
-                <p className="font-semibold text-slate-700 dark:text-slate-300">All budgets safe</p>
-                <p className="text-xs">No categories exceeded 80% limit</p>
-              </div>
-            ) : (
-              <div className="space-y-4 py-2">
-                {criticalBudgets.map(b => {
-                  const pct = (b.spent / b.limit_amount) * 100;
-                  return (
-                    <div key={b.id} className="space-y-1">
-                      <div className="flex justify-between text-xs font-semibold">
-                        <span className="text-slate-700 dark:text-slate-300">{b.category_name}</span>
-                        <span className={pct >= 100 ? 'text-red-500 font-bold' : 'text-yellow-500 font-bold'}>
-                          {pct.toFixed(0)}% (₹{b.spent.toLocaleString('en-IN')})
-                        </span>
+            {(() => {
+              const selectedMonthNum = now.getMonth() + 1;
+              const selectedYearNum = now.getFullYear();
+
+              // Filter budgets matching selected month & year
+              const monthBudgets = budgets.filter(b => b.month === selectedMonthNum && b.year === selectedYearNum);
+
+              if (monthBudgets.length === 0) {
+                return (
+                  <div className="py-8 text-center text-slate-400 text-sm flex flex-col items-center justify-center space-y-2">
+                    <CheckCircle2 className="w-8 h-8 text-emerald-500 mb-1" />
+                    <p className="font-semibold text-slate-700 dark:text-slate-300">No budget limits configured</p>
+                    <p className="text-xs text-slate-500">Go to Monthly Financial Plan to generate category budgets for {now.toLocaleString('default', { month: 'long' })}.</p>
+                  </div>
+                );
+              }
+
+              // Urgency Sorting Order:
+              // 1. Overspent (>100%)
+              // 2. Near Limit (95-99%)
+              // 3. Near Limit (80-94%)
+              // 4. Fixed Commitments Pending
+              // 5. Remaining Budget
+              // 6. Completed / On Track
+              const sortedWatchlist = [...monthBudgets].sort((a, b) => {
+                const effA = a.effectiveLimit || a.limit_amount;
+                const effB = b.effectiveLimit || b.limit_amount;
+                const pctA = effA > 0 ? (a.spent / effA) * 100 : 0;
+                const pctB = effB > 0 ? (b.spent / effB) * 100 : 0;
+
+                const getUrgencyScore = (budget: any, pct: number, eff: number) => {
+                  if (pct >= 100) return 1; // Overspent
+                  if (pct >= 95) return 2;  // Near Limit (95-99%)
+                  if (pct >= 80) return 3;  // Near Limit (80-94%)
+                  const matchCat = categories.find(c => c.id === budget.category_id);
+                  const grp = matchCat ? getCategoryGroup(matchCat) : 'Expenses';
+                  if (isFixedCommitment(budget.category_name, grp) && budget.spent < eff) return 4; // Fixed commitment pending
+                  if (budget.spent > 0 && budget.spent < eff) return 5; // Remaining Budget
+                  return 6; // Completed / Not started
+                };
+
+                return getUrgencyScore(a, pctA, effA) - getUrgencyScore(b, pctB, effB);
+              }).slice(0, 5);
+
+              return (
+                <div className="space-y-3 py-2">
+                  {sortedWatchlist.map(b => {
+                    const effLimit = b.effectiveLimit || b.limit_amount;
+                    const pct = effLimit > 0 ? (b.spent / effLimit) * 100 : 0;
+                    const remaining = effLimit - b.spent;
+
+                    let badgeColor = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+                    let badgeText = 'Completed ✓';
+                    let barColor = 'bg-emerald-500';
+
+                    if (b.spent === 0) {
+                      badgeColor = 'bg-slate-800 text-slate-400 border-slate-700';
+                      badgeText = 'Not Started';
+                      barColor = 'bg-slate-700';
+                    } else if (b.spent > effLimit) {
+                      badgeColor = 'bg-rose-500/10 text-rose-400 border-rose-500/20';
+                      badgeText = `Overspent by ₹${(b.spent - effLimit).toLocaleString('en-IN')}`;
+                      barColor = 'bg-rose-500';
+                    } else if (pct >= 95) {
+                      badgeColor = 'bg-rose-500/10 text-rose-400 border-rose-500/20';
+                      badgeText = `Near Limit (₹${remaining.toLocaleString('en-IN')} remaining)`;
+                      barColor = 'bg-rose-500';
+                    } else if (pct >= 80) {
+                      badgeColor = 'bg-amber-500/10 text-amber-400 border-amber-500/20';
+                      badgeText = `Near Limit (₹${remaining.toLocaleString('en-IN')} remaining)`;
+                      barColor = 'bg-amber-500';
+                    } else {
+                      badgeColor = 'bg-blue-500/10 text-blue-400 border-blue-500/20';
+                      badgeText = `Remaining Budget: ₹${remaining.toLocaleString('en-IN')}`;
+                      barColor = 'bg-blue-500';
+                    }
+
+                    return (
+                      <div
+                        key={b.id}
+                        onClick={() => navigate('/budgets', { state: { month: selectedMonthNum, year: selectedYearNum } })}
+                        className="p-3 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-xl space-y-1.5 hover:border-primary/40 cursor-pointer transition"
+                      >
+                        <div className="flex justify-between items-center text-xs font-semibold">
+                          <span className="text-slate-900 dark:text-white font-extrabold">{b.category_name}</span>
+                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${badgeColor}`}>
+                            {badgeText}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center text-[10px] text-slate-400 font-mono">
+                          <span>{pct.toFixed(0)}% used</span>
+                          <span>₹{b.spent.toLocaleString('en-IN')} of ₹{effLimit.toLocaleString('en-IN')}</span>
+                        </div>
+                        <div className="h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all duration-300 ${barColor}`}
+                            style={{ width: `${Math.min(pct, 100)}%` }}
+                          />
+                        </div>
                       </div>
-                      <div className="h-2.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full ${pct >= 100 ? 'bg-red-500' : 'bg-yellow-500'}`}
-                          style={{ width: `${Math.min(pct, 100)}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -1521,40 +1653,112 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {widgets.breakdownWidget && (
           <div className="bg-white dark:bg-slate-950 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
-            <h3 className="text-base font-bold text-slate-900 dark:text-white mb-4">Expense Distribution</h3>
-            {categoryData.length === 0 ? (
-              <div className="py-8 text-center text-slate-400">No category breakdown data available</div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
-                <div className="h-[200px] flex justify-center">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={categoryData} cx="50%" cy="50%" innerRadius={55} outerRadius={80} paddingAngle={4} dataKey="value" stroke="none">
-                        {categoryData.map((_e, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]}/>
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '12px', color: '#fff' }}
-                        formatter={(v: any) => [`₹${Number(v).toLocaleString('en-IN')}`, '']}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-
-                <div className="space-y-2">
-                  {categoryData.slice(0, 5).map((item, index) => (
-                    <div key={item.name} className="flex items-center justify-between text-xs bg-slate-50 dark:bg-slate-900 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
-                      <div className="flex items-center space-x-2">
-                        <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: COLORS[index % COLORS.length] }}></div>
-                        <span className="text-slate-600 dark:text-slate-400 font-semibold">{item.name}</span>
-                      </div>
-                      <span className="font-bold text-slate-800 dark:text-slate-200">₹{Number(item.value).toLocaleString('en-IN')}</span>
-                    </div>
-                  ))}
-                </div>
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">Expense Distribution</h3>
+                <p className="text-xs text-slate-500 mt-0.5 font-medium">Category breakdown for {now.toLocaleString('default', { month: 'long', year: 'numeric' })}</p>
               </div>
-            )}
+            </div>
+
+            {(() => {
+              const selectedMonthPrefix = formatLocalYYYYMM(now);
+              const monthExpenseTx = transactions.filter(t => t.date.startsWith(selectedMonthPrefix) && t.type === 'expense');
+
+              if (monthExpenseTx.length === 0) {
+                return (
+                  <div className="py-12 flex flex-col items-center justify-center text-center text-slate-400">
+                    <span className="text-3xl mb-2">🍩</span>
+                    <p className="text-xs font-bold text-slate-500">No expenses recorded for {now.toLocaleString('default', { month: 'long', year: 'numeric' })}.</p>
+                  </div>
+                );
+              }
+
+              const categoryTotalsMap: Record<string, { id: number; name: string; amount: number }> = {};
+              let totalMonthExpense = 0;
+
+              monthExpenseTx.forEach(t => {
+                totalMonthExpense += t.amount;
+                const catName = t.category_name || 'Other';
+                if (!categoryTotalsMap[catName]) {
+                  categoryTotalsMap[catName] = { id: t.category_id, name: catName, amount: 0 };
+                }
+                categoryTotalsMap[catName].amount += t.amount;
+              });
+
+              const sortedCategories = Object.values(categoryTotalsMap).sort((a, b) => b.amount - a.amount);
+              const pieData = sortedCategories.map(item => ({
+                id: item.id,
+                name: item.name,
+                value: item.amount,
+                pct: totalMonthExpense > 0 ? parseFloat(((item.amount / totalMonthExpense) * 100).toFixed(1)) : 0
+              }));
+
+              return (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+                  <div className="h-[200px] flex justify-center">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={pieData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={55}
+                          outerRadius={80}
+                          paddingAngle={4}
+                          dataKey="value"
+                          stroke="none"
+                          onClick={(entry: any) => {
+                            if (entry && entry.id) {
+                              navigate('/transactions', { state: { month: now.getMonth() + 1, year: now.getFullYear(), categoryId: entry.id } });
+                            }
+                          }}
+                          className="cursor-pointer"
+                        >
+                          {pieData.map((_e, index) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          content={({ active, payload }: any) => {
+                            if (active && payload && payload.length) {
+                              const d = payload[0].payload;
+                              return (
+                                <div className="bg-slate-950/95 border border-slate-800 rounded-xl p-3 shadow-xl text-xs font-semibold text-white space-y-1">
+                                  <p className="font-extrabold text-purple-400">{d.name}</p>
+                                  <p className="font-mono text-sm font-black">₹{d.value.toLocaleString('en-IN')}</p>
+                                  <p className="text-[10px] text-slate-400 font-bold">{d.pct}% of {now.toLocaleString('default', { month: 'short' })} expenses</p>
+                                  <p className="text-[9px] text-primary italic pt-1">Click to drill down transactions →</p>
+                                </div>
+                              );
+                            }
+                            return null;
+                          }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  <div className="space-y-2">
+                    {pieData.slice(0, 5).map((item, index) => (
+                      <div
+                        key={item.name}
+                        onClick={() => navigate('/transactions', { state: { month: now.getMonth() + 1, year: now.getFullYear(), categoryId: item.id } })}
+                        className="flex items-center justify-between text-xs bg-slate-50 dark:bg-slate-900 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800 hover:border-primary/40 cursor-pointer transition"
+                      >
+                        <div className="flex items-center space-x-2">
+                          <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: COLORS[index % COLORS.length] }} />
+                          <span className="text-slate-600 dark:text-slate-400 font-semibold">{item.name}</span>
+                        </div>
+                        <div className="text-right font-mono">
+                          <span className="font-bold text-slate-800 dark:text-slate-200">₹{item.value.toLocaleString('en-IN')}</span>
+                          <span className="text-[10px] text-slate-400 ml-1 font-semibold">({item.pct}%)</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -1562,7 +1766,7 @@ export default function Dashboard() {
           <div className="bg-white dark:bg-slate-950 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between relative">
             <div>
               <h3 className="text-base font-bold text-slate-900 dark:text-white">Weekly Expense Breakdown</h3>
-              <p className="text-xs text-slate-500 mt-0.5 font-medium">Cash spent across each week of the selected month.</p>
+              <p className="text-xs text-slate-500 mt-0.5 font-medium">Cash spent across each week of {now.toLocaleString('default', { month: 'long', year: 'numeric' })}.</p>
             </div>
 
             {(() => {
@@ -1572,75 +1776,106 @@ export default function Dashboard() {
                   <div className="py-12 flex flex-col items-center justify-center text-center text-slate-400">
                     <p className="text-2xl mb-1">📅</p>
                     <p className="text-xs font-bold text-slate-500 max-w-[240px]">
-                      No expenses recorded for this month. Weekly insights will appear once transactions are available.
+                      No expenses recorded for {now.toLocaleString('default', { month: 'long', year: 'numeric' })}. Weekly insights will appear once transactions are available.
                     </p>
                   </div>
                 );
               }
 
               const maxWeeklyExpense = Math.max(...weeksData.map(w => w.totalExpense), 0);
-              
-              // Find highest and lowest weeks
               const highestWeek = weeksData.reduce((max, w) => w.totalExpense > (max?.totalExpense || 0) ? w : max, weeksData[0]);
               const lowestWeek = weeksData.reduce((min, w) => w.totalExpense < min.totalExpense ? w : min, weeksData[0]);
-
               const totalExpenses = weeksData.reduce((sum, w) => sum + w.totalExpense, 0);
               const weeklyAverage = Math.round(totalExpenses / weeksData.length);
 
               return (
-                <div className="space-y-4.5 mt-4 flex-1 flex flex-col justify-between">
-                  {/* Progress Rows */}
+                <div className="space-y-4 mt-4 flex-1 flex flex-col justify-between">
+                  {/* Progress Rows & Interactive Popovers */}
                   <div className="space-y-3">
                     {weeksData.map(w => {
                       const isHighest = w.totalExpense === highestWeek.totalExpense && w.totalExpense > 0;
                       const isLowest = w.totalExpense === lowestWeek.totalExpense && w.totalExpense > 0;
 
-                      let barColor = 'bg-primary'; // purple default
-                      if (isHighest) barColor = 'bg-red-500 dark:bg-red-500/80';
-                      else if (isLowest) barColor = 'bg-green-500 dark:bg-green-500/80';
+                      let barColor = 'bg-primary';
+                      if (isHighest) barColor = 'bg-rose-500';
+                      else if (isLowest) barColor = 'bg-emerald-500';
 
                       const pct = maxWeeklyExpense > 0 ? (w.totalExpense / maxWeeklyExpense) * 100 : 0;
+                      const year = now.getFullYear();
+                      const month = String(now.getMonth() + 1).padStart(2, '0');
+                      const startDateStr = `${year}-${month}-${String(w.startDay).padStart(2, '0')}`;
+                      const endDateStr = `${year}-${month}-${String(w.endDay).padStart(2, '0')}`;
 
                       return (
-                        <div key={w.weekNum} className="group relative space-y-1 cursor-pointer">
+                        <div
+                          key={w.weekNum}
+                          onClick={() => navigate('/transactions', { state: { dateStart: startDateStr, dateEnd: endDateStr } })}
+                          className="group relative space-y-1 cursor-pointer p-2 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-900/60 transition"
+                        >
                           <div className="flex justify-between text-xs font-semibold">
-                            <span className="text-slate-700 dark:text-slate-300">Week {w.weekNum}</span>
-                            <span className="text-slate-900 dark:text-white font-extrabold font-mono">
+                            <div className="flex items-center space-x-2">
+                              <span className="text-slate-900 dark:text-white font-extrabold">Week {w.weekNum}</span>
+                              <span className="text-[10px] text-slate-400 font-mono">({w.rangeLabel})</span>
+                            </div>
+                            <span className="text-slate-900 dark:text-white font-black font-mono">
                               ₹{w.totalExpense.toLocaleString('en-IN')}
                             </span>
                           </div>
 
                           <div className="h-3 bg-slate-100 dark:bg-slate-800/60 rounded-full overflow-hidden">
-                            <div 
-                              className={`h-full rounded-full transition-all duration-500 ${barColor}`} 
-                              style={{ width: `${Math.max(pct, 2)}%` }} 
+                            <div
+                              className={`h-full rounded-full transition-all duration-500 ${barColor}`}
+                              style={{ width: `${Math.max(pct, 2)}%` }}
                             />
                           </div>
 
-                          {/* Hover Tooltip Popup */}
-                          <div className="absolute z-50 hidden group-hover:block bg-slate-900 border border-slate-800 p-4 rounded-xl text-left text-white shadow-2xl min-w-[220px] left-1/2 transform -translate-x-1/2 bottom-full mb-2 pointer-events-none transition-all duration-200">
-                            <div className="border-b border-slate-800 pb-1.5 mb-1.5">
-                              <p className="font-extrabold text-white">Week {w.weekNum}</p>
-                              <p className="text-[10px] text-slate-400 font-bold">{w.rangeLabel}</p>
+                          {/* Desktop Hover Rich Drill-Down Popover Card */}
+                          <div className="absolute z-50 hidden group-hover:block bg-slate-950 border border-slate-800 p-4 rounded-2xl text-left text-white shadow-2xl w-80 left-1/2 transform -translate-x-1/2 bottom-full mb-3 pointer-events-none transition-all duration-200">
+                            <div className="border-b border-slate-800 pb-2 mb-2 flex justify-between items-center">
+                              <div>
+                                <p className="font-black text-sm text-white">Week {w.weekNum} ({w.rangeLabel})</p>
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Transaction Drill-Down</p>
+                              </div>
+                              <span className="text-xs font-black font-mono text-purple-400">₹{w.totalExpense.toLocaleString('en-IN')}</span>
                             </div>
-                            <div className="space-y-1 font-semibold text-[10px] text-slate-350">
-                              <div className="flex justify-between">
-                                <span>Total Expense:</span>
-                                <span className="font-bold text-white">₹{w.totalExpense.toLocaleString('en-IN')}</span>
+
+                            <div className="grid grid-cols-2 gap-2 text-[10px] bg-slate-900/80 p-2.5 rounded-xl border border-slate-800/80 mb-3">
+                              <div>
+                                <span className="text-slate-400 block font-bold">Total Transactions</span>
+                                <span className="font-mono font-extrabold text-white text-xs">{w.transactionCount}</span>
                               </div>
-                              <div className="flex justify-between">
-                                <span>Transactions:</span>
-                                <span className="font-bold text-white">{w.transactionCount}</span>
+                              <div>
+                                <span className="text-slate-400 block font-bold">Largest Transaction</span>
+                                <span className="font-mono font-extrabold text-rose-400 text-xs">₹{w.largestTxAmount.toLocaleString('en-IN')}</span>
                               </div>
-                              <div className="flex justify-between">
-                                <span>Top Category:</span>
-                                <span className="font-bold text-purple-400">{w.topCategory}</span>
+                              <div>
+                                <span className="text-slate-400 block font-bold">Largest Category</span>
+                                <span className="font-extrabold text-purple-400 text-xs truncate block">{w.topCategory}</span>
                               </div>
-                              <div className="flex justify-between">
-                                <span>Largest Expense:</span>
-                                <span className="font-bold text-red-400">₹{w.largestTxAmount.toLocaleString('en-IN')}</span>
+                              <div>
+                                <span className="text-slate-400 block font-bold">Avg Tx Value</span>
+                                <span className="font-mono font-extrabold text-blue-400 text-xs">
+                                  ₹{w.transactionCount > 0 ? Math.round(w.totalExpense / w.transactionCount).toLocaleString('en-IN') : 0}
+                                </span>
                               </div>
                             </div>
+
+                            {w.txsList.length > 0 && (
+                              <div className="space-y-1.5">
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Recent Transactions</p>
+                                <div className="space-y-1">
+                                  {w.txsList.map((t: any) => (
+                                    <div key={t.id} className="flex justify-between items-center text-[10px] py-1 border-b border-slate-900/60 last:border-0">
+                                      <span className="text-slate-300 truncate max-w-[170px]">{t.notes || t.category_name}</span>
+                                      <span className="font-mono font-black text-rose-400">₹{t.amount.toLocaleString('en-IN')}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                                {w.remainingTxCount > 0 && (
+                                  <p className="text-[9px] font-bold text-slate-500 text-center pt-1">+ {w.remainingTxCount} more transactions</p>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
                       );
@@ -1651,11 +1886,11 @@ export default function Dashboard() {
                   <div className="border-t border-slate-100 dark:border-slate-800/80 pt-3 text-xs font-semibold space-y-2 bg-slate-50/50 dark:bg-slate-900/10 p-3 rounded-xl">
                     <div className="flex justify-between items-center text-[11px]">
                       <span className="text-slate-500 font-bold uppercase">Highest Spending Week</span>
-                      <span className="text-red-400 font-extrabold">Week {highestWeek.weekNum} ({formatIndianRupee(highestWeek.totalExpense)})</span>
+                      <span className="text-rose-400 font-extrabold">Week {highestWeek.weekNum} ({formatIndianRupee(highestWeek.totalExpense)})</span>
                     </div>
                     <div className="flex justify-between items-center text-[11px] border-t border-slate-200/20 pt-1.5">
                       <span className="text-slate-500 font-bold uppercase">Lowest Spending Week</span>
-                      <span className="text-green-400 font-extrabold">Week {lowestWeek.weekNum} ({formatIndianRupee(lowestWeek.totalExpense)})</span>
+                      <span className="text-emerald-400 font-extrabold">Week {lowestWeek.weekNum} ({formatIndianRupee(lowestWeek.totalExpense)})</span>
                     </div>
                     <div className="flex justify-between items-center text-[11px] border-t border-slate-200/20 pt-1.5">
                       <span className="text-slate-500 font-bold uppercase">Weekly Average</span>
