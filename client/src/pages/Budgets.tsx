@@ -3,7 +3,7 @@ import {
   Plus, Pencil, Trash2, CheckCircle2, FileSpreadsheet,
   Sparkles, PieChart as PieChartIcon, Search,
   Zap, Copy, AlertTriangle, RefreshCw, ChevronDown, ChevronUp,
-  Lock, ShoppingBag
+  Lock, ShoppingBag, Calendar
 } from 'lucide-react';
 import axios from 'axios';
 import Button from '../components/ui/Button';
@@ -63,8 +63,8 @@ const MONTHS_LIST = [
 const YEARS_LIST = [2025, 2026, 2027, 2028];
 
 const PRIORITY_BADGES = {
-  essential: { label: 'Essential', color: 'bg-blue-500/10 text-blue-400 border-blue-500/20' },
-  important: { label: 'Important', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
+  essential: { label: 'Essential ◆', color: 'bg-blue-500/10 text-blue-400 border-blue-500/20 shadow-sm shadow-blue-500/10' },
+  important: { label: 'Important ◆', color: 'bg-purple-500/10 text-purple-400 border-purple-500/20 shadow-sm shadow-purple-500/10' },
   optional:  { label: 'Optional', color: 'bg-amber-500/10 text-amber-400 border-amber-500/20' },
   avoid:     { label: 'Avoid / Reduce', color: 'bg-rose-500/10 text-rose-400 border-rose-500/20' },
 };
@@ -567,17 +567,17 @@ export default function Budgets() {
   // Health Score status text & color
   const healthScore = plannerSummary?.healthScore || 85;
   let healthLabel = 'Excellent';
-  let healthBadgeColor = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+  let healthBadgeColor = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 shadow-sm shadow-emerald-500/10';
 
   if (healthScore < 50) {
     healthLabel = 'Critical';
-    healthBadgeColor = 'bg-rose-500/10 text-rose-400 border-rose-500/20';
+    healthBadgeColor = 'bg-rose-500/10 text-rose-400 border-rose-500/20 shadow-sm shadow-rose-500/10';
   } else if (healthScore < 70) {
     healthLabel = 'Needs Attention';
-    healthBadgeColor = 'bg-amber-500/10 text-amber-400 border-amber-500/20';
+    healthBadgeColor = 'bg-amber-500/10 text-amber-400 border-amber-500/20 shadow-sm shadow-amber-500/10';
   } else if (healthScore < 85) {
     healthLabel = 'Good';
-    healthBadgeColor = 'bg-blue-500/10 text-blue-400 border-blue-500/20';
+    healthBadgeColor = 'bg-blue-500/10 text-blue-400 border-blue-500/20 shadow-sm shadow-blue-500/10';
   }
 
   // Filter & Sort Budgets for Vertical Priority Dashboard
@@ -616,7 +616,7 @@ export default function Budgets() {
         return scoreA - scoreB;
       }
       if (sortBy === 'remaining') return (effB - b.spent) - (effA - a.spent);
-      if (sortBy === 'pct') return (b.spent / (effB || 1)) - (a.spent / (effA || 1));
+      if (sortBy === 'pct') return (b.spent / (effA || 1)) - (a.spent / (effB || 1));
       if (sortBy === 'spent') return b.spent - a.spent;
       if (sortBy === 'name') return a.category_name.localeCompare(b.category_name);
       return 0;
@@ -646,8 +646,17 @@ export default function Budgets() {
   const overallCompletionPct = totalAllocatedAmount > 0 ? Math.min(100, Math.round(((plannerSummary?.actualExpenses || 0) / totalAllocatedAmount) * 100)) : 0;
   const remainingBudgetValue = totalAllocatedAmount - (plannerSummary?.actualExpenses || 0);
 
+  // Monthly Pace Timeline Calculations
+  const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
+  const isCurrentMonth = selectedMonth === (now.getMonth() + 1) && selectedYear === now.getFullYear();
+  const currentDay = isCurrentMonth ? now.getDate() : daysInMonth;
+  const expectedPaceAmount = Math.round((totalAllocatedAmount / daysInMonth) * currentDay);
+  const actualSpentTotal = plannerSummary?.actualExpenses || 0;
+  const paceDifference = actualSpentTotal - expectedPaceAmount;
+  const isAbovePace = paceDifference > 0;
+
   return (
-    <div className="space-y-10 min-h-screen bg-[#050816] text-white p-2 md:p-4">
+    <div className="space-y-10 min-h-screen bg-[#050816] bg-[radial-gradient(ellipse_at_top_left,_var(--tw-gradient-stops))] from-purple-900/10 via-transparent to-blue-900/10 text-white p-3 md:p-8">
       {/* TOAST NOTIFICATION */}
       {toastMessage && (
         <div className="fixed top-5 right-5 z-50 bg-[#0B1228]/95 border border-purple-500/40 text-white text-xs font-bold px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
@@ -656,11 +665,11 @@ export default function Budgets() {
         </div>
       )}
 
-      {/* HEADER SECTION (GLASS TOOLBAR) */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[#0B1228]/60 backdrop-blur-xl border border-[#1E2A4A]/60 p-6 rounded-3xl shadow-2xl">
+      {/* HEADER SECTION (GLASS TOOLBAR HERO) */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[#0B1228]/80 backdrop-blur-xl border border-[#1E2A4A]/50 p-7 rounded-3xl shadow-2xl">
         <div>
-          <h1 className="text-2xl font-black tracking-tight text-white flex items-center gap-3">
-            <PieChartIcon className="w-7 h-7 text-purple-400" /> Monthly Financial Planning & Execution
+          <h1 className="text-2xl lg:text-3xl font-black tracking-tight text-white flex items-center gap-3">
+            <PieChartIcon className="w-8 h-8 text-purple-400" /> Monthly Financial Planning & Execution
           </h1>
           <p className="text-xs text-slate-400 mt-1">Luxury fintech operating system — Plan once per month, track automatically from transactions.</p>
         </div>
@@ -683,12 +692,12 @@ export default function Budgets() {
             </select>
           </div>
 
-          <Button onClick={exportBudgetCSV} variant="ghost" className="border border-[#1E2A4A] text-slate-300 hover:text-white text-xs py-2 px-3 rounded-2xl">
-            <FileSpreadsheet className="w-3.5 h-3.5 mr-1.5 text-emerald-400" /> Export CSV
+          <Button onClick={exportBudgetCSV} variant="ghost" className="border border-[#1E2A4A] text-slate-300 hover:text-white text-xs py-2.5 px-4 rounded-2xl">
+            <FileSpreadsheet className="w-4 h-4 mr-1.5 text-emerald-400" /> Export CSV
           </Button>
 
-          <Button onClick={openAdd} variant="ghost" className="text-xs border border-[#1E2A4A] text-slate-400 hover:text-white py-2 px-3 rounded-2xl">
-            <Plus className="w-3.5 h-3.5 mr-1.5" /> Manual Override
+          <Button onClick={openAdd} variant="ghost" className="text-xs border border-[#1E2A4A] text-slate-400 hover:text-white py-2.5 px-4 rounded-2xl">
+            <Plus className="w-4 h-4 mr-1.5" /> Manual Override
           </Button>
         </div>
       </div>
@@ -726,14 +735,14 @@ export default function Budgets() {
       </div>
 
       {loading ? (
-        <div className="text-center py-20 text-slate-400 text-sm font-semibold">Loading luxury financial operating system...</div>
+        <div className="text-center py-24 text-slate-400 text-sm font-semibold">Loading luxury financial operating system...</div>
       ) : (
         <>
           {/* TAB 1: MONTHLY FINANCIAL PLAN */}
           {activeTab === 'plan' && (
             <div className="space-y-8">
               {/* PRIMARY PLANNING HEADER CARD */}
-              <div className="bg-[#0B1228]/80 backdrop-blur-xl border border-[#1E2A4A]/60 p-7 rounded-3xl space-y-6 shadow-2xl">
+              <div className="bg-[#0B1228]/80 backdrop-blur-xl border border-[#1E2A4A]/50 p-8 rounded-3xl space-y-6 shadow-2xl">
                 <div className="border-b border-[#1E2A4A]/60 pb-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div>
                     <h2 className="text-base font-black text-white flex items-center gap-2">
@@ -772,7 +781,7 @@ export default function Budgets() {
 
                 {/* TARGET BREAKDOWN CARDS */}
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-                  <div className="p-4 bg-[#101935]/60 border border-[#1E2A4A]/60 rounded-2xl">
+                  <div className="p-4 bg-[#101935]/70 border border-[#1E2A4A]/50 rounded-2xl">
                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Monthly Income</p>
                     <input
                       type="number" min="0" required
@@ -782,13 +791,13 @@ export default function Budgets() {
                     />
                   </div>
 
-                  <div className="p-4 bg-[#101935]/60 border border-[#1E2A4A]/60 rounded-2xl">
+                  <div className="p-4 bg-[#101935]/70 border border-[#1E2A4A]/50 rounded-2xl">
                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Planned Total</p>
                     <p className="text-base font-black text-purple-400 font-mono mt-1">₹{totalAllocatedAmount.toLocaleString('en-IN')}</p>
                     <p className="text-[10px] text-slate-400 mt-1 font-semibold">{totalAllocatedPct}% of income</p>
                   </div>
 
-                  <div className="p-4 bg-[#101935]/60 border border-[#1E2A4A]/60 rounded-2xl">
+                  <div className="p-4 bg-[#101935]/70 border border-[#1E2A4A]/50 rounded-2xl">
                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Remaining Unallocated</p>
                     <p className={`text-base font-black font-mono mt-1 ${isOverAllocated ? 'text-rose-400' : 'text-emerald-400'}`}>
                       ₹{remainingUnallocatedIncome.toLocaleString('en-IN')}
@@ -917,29 +926,96 @@ export default function Budgets() {
 
           {/* TAB 2: BUDGET TRACKING VERTICAL PRIORITY DASHBOARD */}
           {activeTab === 'tracking' && (
-            <div className="space-y-10">
-              {/* COMPACT STICKY PROGRESS HEADER WHILE SCROLLING */}
-              <div className="sticky top-0 z-30 bg-[#0B1228]/95 backdrop-blur-xl border-b border-[#1E2A4A]/80 p-3.5 rounded-2xl flex flex-wrap items-center justify-between gap-4 shadow-2xl -mt-4">
-                <div className="flex items-center space-x-4 font-mono font-black text-xs">
-                  <span className="text-slate-400 uppercase text-[10px]">Remaining Budget:</span>
-                  <span className={`text-sm font-black ${remainingBudgetValue >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    ₹{remainingBudgetValue.toLocaleString('en-IN')}
-                  </span>
+            <div className="space-y-8">
+              {/* UNIFIED STICKY COMMAND CENTER HEADER WHILE SCROLLING */}
+              <div className="sticky top-0 z-30 bg-[#0B1228]/95 backdrop-blur-xl border-b border-[#1E2A4A]/80 p-4 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-2xl -mt-4">
+                <div className="flex items-center space-x-6">
+                  <div>
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Remaining Budget</span>
+                    <span className={`text-base font-black font-mono tracking-tight ${remainingBudgetValue >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      ₹{remainingBudgetValue.toLocaleString('en-IN')}
+                    </span>
+                  </div>
+
+                  <div className="border-l border-[#1E2A4A] pl-4">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Completion</span>
+                    <span className="text-sm font-mono font-black text-purple-400">{overallCompletionPct}%</span>
+                  </div>
+
+                  <div className="hidden sm:block border-l border-[#1E2A4A] pl-4">
+                    <span className={`px-2.5 py-1 rounded-xl border text-[10px] font-mono font-black ${healthBadgeColor}`}>
+                      Health: {healthLabel} ({healthScore}/100)
+                    </span>
+                  </div>
                 </div>
 
-                <div className="flex items-center space-x-4">
-                  <div className="flex items-center space-x-2">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase">Completion:</span>
-                    <span className="text-xs font-mono font-black text-purple-400">{overallCompletionPct}%</span>
+                {/* FILTERS & SEARCH INTEGRATED INTO STICKY BAR */}
+                <div className="flex items-center space-x-2 flex-wrap gap-2">
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
+                    <input
+                      type="text"
+                      placeholder="Search categories..."
+                      value={searchQuery}
+                      onChange={e => setSearchQuery(e.target.value)}
+                      className="bg-[#050816] border border-[#1E2A4A] text-xs font-bold text-white rounded-xl py-1.5 pl-8 pr-3 focus:outline-none"
+                    />
                   </div>
-                  <span className={`px-2.5 py-1 rounded-xl border text-[10px] font-mono font-black ${healthBadgeColor}`}>
-                    Health: {healthLabel} ({healthScore}/100)
-                  </span>
+
+                  <select
+                    value={filterCategoryGroup}
+                    onChange={e => setFilterCategoryGroup(e.target.value)}
+                    className="bg-[#050816] border border-[#1E2A4A] text-xs font-bold text-slate-300 rounded-xl px-2.5 py-1.5 focus:outline-none"
+                  >
+                    <option value="all">All Groups</option>
+                    <option value="Expenses">🍽 Expenses</option>
+                    <option value="Savings">💰 Savings</option>
+                    <option value="Investments">📈 Investments</option>
+                    <option value="Debt">💳 Debt</option>
+                    <option value="Insurance">🛡 Insurance</option>
+                  </select>
+
+                  <select
+                    value={filterStatus}
+                    onChange={e => setFilterStatus(e.target.value)}
+                    className="bg-[#050816] border border-[#1E2A4A] text-xs font-bold text-slate-300 rounded-xl px-2.5 py-1.5 focus:outline-none"
+                  >
+                    <option value="all">All Statuses</option>
+                    <option value="overspent">Overspent</option>
+                    <option value="nearlimit">Near Limit</option>
+                    <option value="ontrack">On Track</option>
+                    <option value="completed">Completed</option>
+                    <option value="notstarted">Not Started</option>
+                  </select>
+
+                  <select
+                    value={filterPriority}
+                    onChange={e => setFilterPriority(e.target.value)}
+                    className="bg-[#050816] border border-[#1E2A4A] text-xs font-bold text-slate-300 rounded-xl px-2.5 py-1.5 focus:outline-none"
+                  >
+                    <option value="all">All Priorities</option>
+                    <option value="essential">Essential</option>
+                    <option value="important">Important</option>
+                    <option value="optional">Optional</option>
+                    <option value="avoid">Avoid / Reduce</option>
+                  </select>
+
+                  <select
+                    value={sortBy}
+                    onChange={e => setSortBy(e.target.value as any)}
+                    className="bg-[#050816] border border-[#1E2A4A] text-xs font-bold text-purple-400 rounded-xl px-2.5 py-1.5 focus:outline-none"
+                  >
+                    <option value="priority">Sort: Priority Order</option>
+                    <option value="remaining">Sort: Remaining Amount</option>
+                    <option value="pct">Sort: % Executed</option>
+                    <option value="spent">Sort: Highest Spending</option>
+                    <option value="name">Sort: Alphabetical</option>
+                  </select>
                 </div>
               </div>
 
-              {/* SINGLE UNIFIED HERO ANALYTICS CARD */}
-              <div className="bg-[#0B1228]/80 backdrop-blur-xl border border-[#1E2A4A]/60 p-7 rounded-3xl shadow-2xl space-y-6">
+              {/* SINGLE UNIFIED HERO ANALYTICS CARD WITH DOMINANT REMAINING BUDGET */}
+              <div className="bg-[#0B1228]/80 backdrop-blur-xl border border-[#1E2A4A]/50 p-8 rounded-3xl shadow-2xl space-y-6">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#1E2A4A]/60 pb-4">
                   <div>
                     <h2 className="text-base font-black text-white flex items-center gap-2">
@@ -948,16 +1024,16 @@ export default function Budgets() {
                     <p className="text-xs text-slate-400 mt-1">Single-surface execution tracking comparing planned allocations against actual spent from transactions.</p>
                   </div>
 
-                  <span className="px-3 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-mono font-extrabold flex items-center gap-2 self-start md:self-auto">
+                  <span className="px-3 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-mono font-extrabold flex items-center gap-2 self-start md:self-auto shadow-sm shadow-emerald-500/10">
                     <RefreshCw className="w-3.5 h-3.5 text-emerald-400 animate-spin" /> Live Transaction Sync Active
                   </span>
                 </div>
 
                 {plannerSummary && (
-                  <div className="grid grid-cols-1 md:grid-cols-5 gap-6 items-center">
-                    {/* SVG CIRCULAR COMPLETION RING */}
-                    <div className="flex items-center justify-center p-4 bg-[#101935]/40 border border-[#1E2A4A]/60 rounded-2xl">
-                      <div className="relative w-28 h-28 flex items-center justify-center">
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+                    {/* LEFT: SVG CIRCULAR COMPLETION RING */}
+                    <div className="lg:col-span-3 flex items-center justify-center p-5 bg-[#101935]/70 border border-[#1E2A4A]/50 rounded-2xl">
+                      <div className="relative w-32 h-32 flex items-center justify-center">
                         <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
                           <path
                             className="text-slate-800"
@@ -977,122 +1053,92 @@ export default function Budgets() {
                           />
                         </svg>
                         <div className="absolute flex flex-col items-center justify-center text-center">
-                          <span className="text-lg font-black font-mono text-white">{overallCompletionPct}%</span>
+                          <span className="text-xl font-black font-mono text-white">{overallCompletionPct}%</span>
                           <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Completed</span>
                         </div>
                       </div>
                     </div>
 
-                    {/* METRICS DISPLAY */}
-                    <div className="md:col-span-4 grid grid-cols-2 lg:grid-cols-4 gap-4">
-                      <div className="p-4 bg-[#101935]/40 border border-[#1E2A4A]/60 rounded-2xl">
-                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Income Received</p>
-                        <p className="text-lg font-black text-white font-mono mt-1">₹{salaryIncome.toLocaleString('en-IN')}</p>
+                    {/* CENTER: INCOME, PLANNED, SPENT */}
+                    <div className="lg:col-span-5 grid grid-cols-3 gap-4">
+                      <div className="p-4 bg-[#101935]/70 border border-[#1E2A4A]/50 rounded-2xl">
+                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Income Received</p>
+                        <p className="text-sm font-black text-white font-mono mt-1">₹{salaryIncome.toLocaleString('en-IN')}</p>
                       </div>
-                      <div className="p-4 bg-[#101935]/40 border border-[#1E2A4A]/60 rounded-2xl">
-                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Planned Allocation</p>
-                        <p className="text-lg font-black text-purple-400 font-mono mt-1">₹{totalAllocatedAmount.toLocaleString('en-IN')}</p>
+                      <div className="p-4 bg-[#101935]/70 border border-[#1E2A4A]/50 rounded-2xl">
+                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Planned Total</p>
+                        <p className="text-sm font-black text-purple-400 font-mono mt-1">₹{totalAllocatedAmount.toLocaleString('en-IN')}</p>
                       </div>
-                      <div className="p-4 bg-[#101935]/40 border border-[#1E2A4A]/60 rounded-2xl">
-                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Actual Spent</p>
-                        <p className="text-lg font-black text-rose-400 font-mono mt-1">₹{plannerSummary.actualExpenses.toLocaleString('en-IN')}</p>
+                      <div className="p-4 bg-[#101935]/70 border border-[#1E2A4A]/50 rounded-2xl">
+                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Actual Spent</p>
+                        <p className="text-sm font-black text-rose-400 font-mono mt-1">₹{plannerSummary.actualExpenses.toLocaleString('en-IN')}</p>
                       </div>
-                      <div className="p-4 bg-[#101935]/40 border border-[#1E2A4A]/60 rounded-2xl">
-                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Remaining Budget</p>
-                        <p className={`text-lg font-black font-mono mt-1 ${remainingBudgetValue >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                          ₹{remainingBudgetValue.toLocaleString('en-IN')}
-                        </p>
+                    </div>
+
+                    {/* RIGHT: DOMINANT REMAINING BUDGET HERO METRIC */}
+                    <div className="lg:col-span-4 p-6 bg-[#101935]/90 border border-[#1E2A4A]/60 rounded-2xl flex flex-col justify-between space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest">Remaining Budget</span>
+                        <span className={`px-2.5 py-1 rounded-xl border text-[10px] font-mono font-black ${healthBadgeColor}`}>
+                          Health: {healthLabel}
+                        </span>
                       </div>
+                      <p className={`text-3xl lg:text-4xl font-black font-mono tracking-tight ${remainingBudgetValue >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        ₹{remainingBudgetValue.toLocaleString('en-IN')}
+                      </p>
                     </div>
                   </div>
                 )}
               </div>
 
-              {/* COMPACT TRANSLUCENT COMMAND BAR */}
-              <div className="bg-[#0B1228]/80 backdrop-blur-xl border border-[#1E2A4A]/60 p-5 rounded-3xl space-y-4 shadow-xl">
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                  <div className="flex items-center space-x-2 flex-wrap gap-2">
-                    <span className="text-xs font-black text-white uppercase tracking-wider">Today's Status:</span>
-                    <span className="px-2.5 py-1 rounded-xl text-[10px] font-black uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                      {statusCounts.completed} Completed
-                    </span>
-                    <span className="px-2.5 py-1 rounded-xl text-[10px] font-black uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                      {statusCounts.onTrack} On Track
-                    </span>
-                    <span className="px-2.5 py-1 rounded-xl text-[10px] font-black uppercase bg-orange-500/10 text-orange-400 border border-orange-500/20">
-                      {statusCounts.nearLimit} Near Limit
-                    </span>
-                    <span className="px-2.5 py-1 rounded-xl text-[10px] font-black uppercase bg-rose-500/10 text-rose-400 border border-rose-500/20">
-                      {statusCounts.overspent} Overspent
-                    </span>
-                    <span className="px-2.5 py-1 rounded-xl text-[10px] font-black uppercase bg-slate-800 text-slate-400 border border-slate-700">
-                      {statusCounts.notStarted} Not Started
-                    </span>
+              {/* MONTHLY TIMELINE & PACE CARD */}
+              <div className="bg-[#0B1228]/80 backdrop-blur-xl border border-[#1E2A4A]/50 p-6 rounded-3xl space-y-4 shadow-xl">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#1E2A4A]/60 pb-3">
+                  <div className="flex items-center space-x-2">
+                    <Calendar className="w-4 h-4 text-purple-400" />
+                    <h3 className="text-xs font-black text-white uppercase tracking-wider">
+                      {selectedMonthLabel} Spending Pace — Day {currentDay} of {daysInMonth}
+                    </h3>
                   </div>
 
-                  {/* Multi-field Filter Controls */}
-                  <div className="flex items-center space-x-2 flex-wrap gap-2">
-                    <div className="relative">
-                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
-                      <input
-                        type="text"
-                        placeholder="Search categories..."
-                        value={searchQuery}
-                        onChange={e => setSearchQuery(e.target.value)}
-                        className="bg-[#050816] border border-[#1E2A4A] text-xs font-bold text-white rounded-xl py-1.5 pl-8 pr-3 focus:outline-none"
-                      />
-                    </div>
+                  <span className={`text-xs font-mono font-extrabold ${isAbovePace ? 'text-rose-400' : 'text-emerald-400'}`}>
+                    {isAbovePace ? `Above pace by ₹${paceDifference.toLocaleString('en-IN')} ⚠️` : `On Track (Under pace by ₹${Math.abs(paceDifference).toLocaleString('en-IN')}) ✅`}
+                  </span>
+                </div>
 
-                    <select
-                      value={filterCategoryGroup}
-                      onChange={e => setFilterCategoryGroup(e.target.value)}
-                      className="bg-[#050816] border border-[#1E2A4A] text-xs font-bold text-slate-300 rounded-xl px-3 py-1.5 focus:outline-none"
-                    >
-                      <option value="all">All Groups</option>
-                      <option value="Expenses">🍽 Expenses</option>
-                      <option value="Savings">💰 Savings</option>
-                      <option value="Investments">📈 Investments</option>
-                      <option value="Debt">💳 Debt</option>
-                      <option value="Insurance">🛡 Insurance</option>
-                    </select>
-
-                    <select
-                      value={filterStatus}
-                      onChange={e => setFilterStatus(e.target.value)}
-                      className="bg-[#050816] border border-[#1E2A4A] text-xs font-bold text-slate-300 rounded-xl px-3 py-1.5 focus:outline-none"
-                    >
-                      <option value="all">All Statuses</option>
-                      <option value="overspent">Overspent</option>
-                      <option value="nearlimit">Near Limit</option>
-                      <option value="ontrack">On Track</option>
-                      <option value="completed">Completed</option>
-                      <option value="notstarted">Not Started</option>
-                    </select>
-
-                    <select
-                      value={filterPriority}
-                      onChange={e => setFilterPriority(e.target.value)}
-                      className="bg-[#050816] border border-[#1E2A4A] text-xs font-bold text-slate-300 rounded-xl px-3 py-1.5 focus:outline-none"
-                    >
-                      <option value="all">All Priorities</option>
-                      <option value="essential">Essential</option>
-                      <option value="important">Important</option>
-                      <option value="optional">Optional</option>
-                      <option value="avoid">Avoid / Reduce</option>
-                    </select>
-
-                    <select
-                      value={sortBy}
-                      onChange={e => setSortBy(e.target.value as any)}
-                      className="bg-[#050816] border border-[#1E2A4A] text-xs font-bold text-purple-400 rounded-xl px-3 py-1.5 focus:outline-none"
-                    >
-                      <option value="priority">Sort: Priority Order</option>
-                      <option value="remaining">Sort: Remaining Amount</option>
-                      <option value="pct">Sort: % Executed</option>
-                      <option value="spent">Sort: Highest Spending</option>
-                      <option value="name">Sort: Alphabetical</option>
-                    </select>
+                <div className="space-y-2">
+                  <div className="h-2 w-full bg-[#050816] rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-purple-500 to-blue-500 transition-all duration-500 rounded-full"
+                      style={{ width: `${Math.min(100, Math.round((currentDay / daysInMonth) * 100))}%` }}
+                    />
                   </div>
+                  <div className="flex justify-between text-[10px] font-mono font-bold text-slate-400">
+                    <span>Expected Spending by Today: ₹{expectedPaceAmount.toLocaleString('en-IN')}</span>
+                    <span>Actual Spent: ₹{actualSpentTotal.toLocaleString('en-IN')}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* TRANSLUCENT STATUS COMMAND BAR */}
+              <div className="bg-[#0B1228]/80 backdrop-blur-xl border border-[#1E2A4A]/50 p-4 rounded-3xl space-y-3 shadow-xl">
+                <div className="flex items-center space-x-2 flex-wrap gap-2">
+                  <span className="text-xs font-black text-white uppercase tracking-wider mr-2">Today's Status:</span>
+                  <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-sm shadow-emerald-500/10">
+                    Completed ✓ ({statusCounts.completed})
+                  </span>
+                  <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    On Track ({statusCounts.onTrack})
+                  </span>
+                  <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase bg-orange-500/10 text-orange-400 border border-orange-500/20 shadow-sm shadow-orange-500/10">
+                    Near Limit ⚠ ({statusCounts.nearLimit})
+                  </span>
+                  <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase bg-rose-500/10 text-rose-400 border border-rose-500/20 shadow-sm shadow-rose-500/10">
+                    Overspent ▲ ({statusCounts.overspent})
+                  </span>
+                  <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase bg-slate-800 text-slate-400 border border-slate-700">
+                    Not Started ({statusCounts.notStarted})
+                  </span>
                 </div>
               </div>
 
@@ -1101,7 +1147,7 @@ export default function Budgets() {
                 {/* SECTION 1: FIXED COMMITMENTS & DEBT */}
                 {fixedCommitmentBudgets.length > 0 && (
                   <div className="space-y-4">
-                    <div className="bg-[#0B1228]/80 p-4 rounded-2xl border border-[#1E2A4A]/60 space-y-2">
+                    <div className="bg-[#0B1228]/80 p-5 rounded-2xl border border-[#1E2A4A]/50 space-y-2">
                       <div className="flex justify-between items-center">
                         <h3 className="text-xs font-black text-white flex items-center gap-2 uppercase tracking-wider">
                           <Lock className="w-4 h-4 text-purple-400" /> 🔒 Fixed Commitments & Mandatory Debt ({fixedCommitmentBudgets.length})
@@ -1123,7 +1169,7 @@ export default function Budgets() {
                       </div>
                     </div>
 
-                    <div className="space-y-3">
+                    <div className="space-y-4">
                       {fixedCommitmentBudgets.map(b => renderCategoryPriorityRow(b))}
                     </div>
                   </div>
@@ -1132,7 +1178,7 @@ export default function Budgets() {
                 {/* SECTION 2: VARIABLE EXPENSES & SAVINGS */}
                 {variableBudgets.length > 0 && (
                   <div className="space-y-4">
-                    <div className="bg-[#0B1228]/80 p-4 rounded-2xl border border-[#1E2A4A]/60 space-y-2">
+                    <div className="bg-[#0B1228]/80 p-5 rounded-2xl border border-[#1E2A4A]/50 space-y-2">
                       <div className="flex justify-between items-center">
                         <h3 className="text-xs font-black text-white flex items-center gap-2 uppercase tracking-wider">
                           <ShoppingBag className="w-4 h-4 text-emerald-400" /> 🛒 Variable Expenses & Savings ({variableBudgets.length})
@@ -1154,14 +1200,14 @@ export default function Budgets() {
                       </div>
                     </div>
 
-                    <div className="space-y-3">
+                    <div className="space-y-4">
                       {variableBudgets.map(b => renderCategoryPriorityRow(b))}
                     </div>
                   </div>
                 )}
 
                 {processedBudgets.length === 0 && (
-                  <div className="bg-[#0B1228]/60 border border-[#1E2A4A]/60 rounded-3xl p-12 text-center space-y-4">
+                  <div className="bg-[#0B1228]/60 border border-[#1E2A4A]/50 rounded-3xl p-12 text-center space-y-4">
                     <p className="text-slate-400 text-sm font-semibold">No active budgets match your filters for {selectedMonthLabel} {selectedYear}.</p>
                     <Button onClick={() => setActiveTab('plan')} variant="primary" className="text-xs py-2.5 px-6 bg-purple-600 hover:bg-purple-700 rounded-xl">
                       Go to Monthly Financial Plan to Set Allocations
@@ -1175,7 +1221,7 @@ export default function Budgets() {
           {/* TAB 3: VENKE AI ADVISOR */}
           {activeTab === 'ai' && (
             <div className="space-y-8">
-              <div className="bg-[#0B1228]/80 backdrop-blur-xl border border-[#1E2A4A]/60 p-7 rounded-3xl space-y-6 shadow-2xl">
+              <div className="bg-[#0B1228]/80 backdrop-blur-xl border border-[#1E2A4A]/50 p-8 rounded-3xl space-y-6 shadow-2xl">
                 <div className="border-b border-[#1E2A4A]/60 pb-4">
                   <h2 className="text-base font-black text-white flex items-center gap-2">
                     <Sparkles className="w-5 h-5 text-amber-400" /> Venke AI Budget Optimization Recommendations
@@ -1188,7 +1234,7 @@ export default function Budgets() {
                 ) : (
                   <div className="space-y-4">
                     {aiRecs.map((rec, i) => (
-                      <div key={i} className="p-5 bg-[#101935]/40 border border-[#1E2A4A]/60 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+                      <div key={i} className="p-5 bg-[#101935]/70 border border-[#1E2A4A]/50 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div className="space-y-1">
                           <span className="font-extrabold text-white text-sm flex items-center gap-2">
                             {rec.category_name} ({rec.type === 'increase' ? 'Limit Increase Advised' : 'Limit Reduction Opportunity'})
@@ -1348,10 +1394,10 @@ export default function Budgets() {
     const isNotStarted = b.spent === 0;
     const isExpanded = !!expandedRows[b.id];
 
-    let statusBadge = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+    let statusBadge = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 shadow-sm shadow-emerald-500/10';
     let statusText = 'On Track';
     let barColor = 'bg-emerald-500';
-    let stripColor = 'bg-emerald-500';
+    let stripColor = 'bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.4)]';
 
     const matchCat = categories.find(c => c.id === b.category_id);
     const grp = matchCat ? getCategoryGroup(matchCat) : 'Expenses';
@@ -1362,26 +1408,26 @@ export default function Budgets() {
       barColor = 'bg-slate-700';
       stripColor = 'bg-slate-700';
     } else if (isCompleted) {
-      statusBadge = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
-      statusText = 'Completed';
+      statusBadge = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 shadow-sm shadow-emerald-500/10';
+      statusText = 'Completed ✓';
       barColor = 'bg-emerald-500';
-      stripColor = 'bg-emerald-500';
+      stripColor = 'bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.4)]';
     } else if (isOver) {
-      statusBadge = 'bg-rose-500/10 text-rose-400 border-rose-500/20';
-      statusText = 'Overspent';
+      statusBadge = 'bg-rose-500/10 text-rose-400 border-rose-500/20 shadow-sm shadow-rose-500/10';
+      statusText = 'Overspent ▲';
       barColor = 'bg-rose-500';
-      stripColor = 'bg-rose-500';
+      stripColor = 'bg-rose-500 shadow-[0_0_12px_rgba(244,63,94,0.4)]';
     } else if (pct >= 90) {
-      statusBadge = 'bg-orange-500/10 text-orange-400 border-orange-500/20';
-      statusText = 'Near Limit';
+      statusBadge = 'bg-orange-500/10 text-orange-400 border-orange-500/20 shadow-sm shadow-orange-500/10';
+      statusText = 'Near Limit ⚠';
       barColor = 'bg-orange-500';
-      stripColor = 'bg-orange-500';
+      stripColor = 'bg-orange-500 shadow-[0_0_12px_rgba(245,158,11,0.4)]';
     } else if (grp === 'Savings') {
       barColor = 'bg-blue-500';
-      stripColor = 'bg-blue-500';
+      stripColor = 'bg-blue-500 shadow-[0_0_12px_rgba(59,130,246,0.4)]';
     } else if (grp === 'Investments') {
       barColor = 'bg-purple-500';
-      stripColor = 'bg-purple-500';
+      stripColor = 'bg-purple-500 shadow-[0_0_12px_rgba(168,85,247,0.4)]';
     }
 
     const priBadge = PRIORITY_BADGES[b.priority || 'essential'];
@@ -1399,31 +1445,31 @@ export default function Budgets() {
     return (
       <div
         key={b.id}
-        className="bg-[#101935]/60 hover:bg-[#101935] border border-[#1E2A4A]/60 rounded-2xl overflow-hidden transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-purple-500/5 relative flex"
+        className="bg-[#101935]/70 hover:bg-[#162248] border border-[#1E2A4A]/50 rounded-2xl overflow-hidden transition-all duration-220 hover:-translate-y-0.5 hover:shadow-2xl relative flex"
       >
-        {/* 4PX LEFT PRIORITY ACCENT STRIP */}
+        {/* 4PX LEFT PRIORITY ACCENT STRIP WITH GLOW */}
         <div className={`w-1 shrink-0 ${stripColor}`} />
 
         <div className="flex-1">
           {/* MAIN HORIZONTAL FINANCIAL TILE */}
           <div
             onClick={() => toggleRowExpanded(b.id)}
-            className="p-4 cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-4 select-none"
+            className="p-5 md:p-6 cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-4 select-none"
           >
-            <div className="flex items-center space-x-3">
-              <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: b.category_color }} />
+            <div className="flex items-center space-x-3.5">
+              <span className="w-3.5 h-3.5 rounded-full shrink-0" style={{ backgroundColor: b.category_color }} />
               <div>
                 <div className="flex items-center space-x-2 flex-wrap gap-1.5">
                   <h4 className="font-extrabold text-white text-base tracking-tight">{b.category_name}</h4>
-                  <span className={`px-2.5 py-0.5 rounded-lg text-[9px] font-black uppercase border ${statusBadge}`}>
+                  <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase border ${statusBadge}`}>
                     {statusText}
                   </span>
-                  <span className={`px-2.5 py-0.5 rounded-lg text-[9px] font-black uppercase border ${priBadge.color}`}>
+                  <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase border ${priBadge.color}`}>
                     {priBadge.label}
                   </span>
                 </div>
                 <p className="text-[10px] text-slate-400 mt-1 font-medium">
-                  {isCompleted ? 'Budget completed ✅' : isOver ? `Exceeded by ₹${(b.spent - effLimit).toLocaleString('en-IN')} ⚠️` : isNotStarted ? 'No activity yet ⚪' : `Expected Completion: ₹${(b.forecastedEnd || 0).toLocaleString('en-IN')}`}
+                  {isCompleted ? 'Budget completed ✅' : isOver ? `Exceeded by ₹${(b.spent - effLimit).toLocaleString('en-IN')} ⚠️` : isNotStarted ? `No transactions yet • ₹${effLimit.toLocaleString('en-IN')} available` : `Expected Completion: ₹${(b.forecastedEnd || 0).toLocaleString('en-IN')}`}
                 </p>
               </div>
             </div>
@@ -1431,9 +1477,9 @@ export default function Budgets() {
             <div className="flex items-center space-x-6 shrink-0">
               {/* PRIMARY VISUAL METRIC: REMAINING AMOUNT */}
               <div className="text-right">
-                <p className={`text-base font-black font-mono tracking-tight ${remainingAmount >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                <p className={`text-xl font-black font-mono tracking-tight ${remainingAmount >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                   {remainingAmount >= 0 ? `₹${remainingAmount.toLocaleString('en-IN')}` : `-₹${Math.abs(remainingAmount).toLocaleString('en-IN')}`}
-                  <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 ml-1">remaining</span>
+                  <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 ml-1.5">remaining</span>
                 </p>
                 <p className="text-xs font-mono font-semibold text-slate-400 mt-0.5">
                   Spent ₹{b.spent.toLocaleString('en-IN')} / ₹{effLimit.toLocaleString('en-IN')}
@@ -1455,10 +1501,10 @@ export default function Budgets() {
             </div>
           </div>
 
-          {/* EXPANDED INLINE DETAILS & ACTIONS (200ms EASE-OUT TRANSITION) */}
+          {/* EXPANDED INLINE DETAILS & ACTIONS (220ms EASE-OUT TRANSITION) */}
           {isExpanded && (
-            <div className="p-5 bg-[#0B1228]/80 border-t border-[#1E2A4A]/60 space-y-4 animate-in fade-in slide-in-from-top-1 duration-200">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs bg-[#050816]/80 p-4 rounded-2xl border border-[#1E2A4A]/60">
+            <div className="p-6 bg-[#0B1228]/90 border-t border-[#1E2A4A]/60 space-y-4 animate-in fade-in slide-in-from-top-1 duration-220">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs bg-[#050816]/80 p-4 rounded-2xl border border-[#1E2A4A]/50">
                 <div>
                   <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Planned Allocation</span>
                   <p className="font-mono font-black text-purple-400 text-sm mt-0.5">₹{allocItem ? allocItem.amount.toLocaleString('en-IN') : effLimit.toLocaleString('en-IN')}</p>
@@ -1486,11 +1532,11 @@ export default function Budgets() {
                 </h5>
 
                 {catTransactions.length === 0 ? (
-                  <p className="text-xs text-slate-400 italic p-3 bg-[#050816]/40 rounded-xl border border-[#1E2A4A]/40">No transactions recorded for {b.category_name} in {selectedMonthLabel} {selectedYear}.</p>
+                  <p className="text-xs text-slate-400 italic p-3 bg-[#050816]/50 rounded-xl border border-[#1E2A4A]/40">No transactions recorded for {b.category_name} in {selectedMonthLabel} {selectedYear}.</p>
                 ) : (
                   <div className="space-y-2">
                     {catTransactions.map((t: any) => (
-                      <div key={t.id} className="p-3 bg-[#050816]/60 border border-[#1E2A4A]/60 rounded-xl flex justify-between items-center text-xs">
+                      <div key={t.id} className="p-3.5 bg-[#050816]/70 border border-[#1E2A4A]/50 rounded-xl flex justify-between items-center text-xs">
                         <div>
                           <p className="font-extrabold text-white text-xs">{t.notes || t.category_name}</p>
                           <p className="text-[10px] text-slate-400 mt-0.5">{t.date} • {t.payment_method}</p>
