@@ -43,6 +43,52 @@ const isFixedCommitment = (catName: string, grp: string): boolean => {
   return false;
 };
 
+export const isSavingsCommitment = (t: any, categories: any[]) => {
+  if (t.type === 'savings' || t.type === 'investment') return true;
+  const matchCat = categories.find((c: any) => c.id === t.category_id);
+  if (!matchCat) {
+    const notes = (t.notes || '').toLowerCase();
+    const catName = (t.category_name || '').toLowerCase();
+    if (notes.includes('lic') || notes.includes('sip') || notes.includes('gold') || notes.includes('mutual') || notes.includes('chit') || notes.includes('fund') || notes.includes('reserve') || notes.includes('saving') || notes.includes('invest') || notes.includes('ppf') || notes.includes('nps') || notes.includes('stock')) return true;
+    if (catName.includes('lic') || catName.includes('sip') || catName.includes('gold') || catName.includes('mutual') || catName.includes('chit') || catName.includes('fund') || catName.includes('reserve') || catName.includes('saving') || catName.includes('invest') || catName.includes('ppf') || catName.includes('nps') || catName.includes('stock')) return true;
+    return false;
+  }
+  const grp = getCategoryGroup(matchCat);
+  return grp === 'Savings' || grp === 'Investments' || grp === 'Insurance' || grp === 'Retirement' || grp === 'Wealth' || grp === 'Gold / Assets';
+};
+
+export const getSingleSourceMonthlySummary = (monthPrefix: string, transactions: any[], categories: any[]) => {
+  const monthTx = transactions.filter((t: any) => t.date.startsWith(monthPrefix));
+  const income = monthTx.filter((t: any) => t.type === 'income').reduce((s: number, t: any) => s + t.amount, 0);
+
+  let savingsCommitments = 0;
+  let livingExpenses = 0;
+
+  monthTx.filter((t: any) => t.type !== 'income').forEach((t: any) => {
+    if (isSavingsCommitment(t, categories)) {
+      savingsCommitments += t.amount;
+    } else {
+      livingExpenses += t.amount;
+    }
+  });
+
+  const netMonthlySavings = income - livingExpenses - savingsCommitments;
+  const expenseRatio = income > 0 ? parseFloat(((livingExpenses / income) * 100).toFixed(1)) : 0;
+  const savingsCommitmentRatio = income > 0 ? parseFloat(((savingsCommitments / income) * 100).toFixed(1)) : 0;
+  const netSavingsRate = income > 0 ? parseFloat(((netMonthlySavings / income) * 100).toFixed(1)) : 0;
+
+  return {
+    income,
+    expenses: livingExpenses,
+    savingsCommitments,
+    netMonthlySavings,
+    availableBalance: netMonthlySavings,
+    expenseRatio,
+    savingsCommitmentRatio,
+    netSavingsRate
+  };
+};
+
 // Default widget visibility states
 const DEFAULT_WIDGETS = {
   summaryCards: true,
@@ -392,6 +438,19 @@ export default function Dashboard() {
   const getTotalsByPeriod = () => {
     const currMonthPrefix = formatLocalYYYYMM(now);
 
+    const getMonthTotalsByPrefix = (prefix: string) => {
+      const summary = getSingleSourceMonthlySummary(prefix, transactions, categories);
+      return {
+        income: summary.income,
+        expenses: summary.expenses,
+        savings: summary.savingsCommitments,
+        balance: summary.netMonthlySavings,
+        expenseRatio: summary.expenseRatio,
+        savingsCommitmentRatio: summary.savingsCommitmentRatio,
+        netSavingsRate: summary.netSavingsRate
+      };
+    };
+
     const getNearestPrevMonthForMetric = (metricKey: 'income' | 'expenses' | 'savings' | 'balance' | 'savingsRate') => {
       const pastMonths = Array.from(new Set(
         transactions
@@ -400,17 +459,13 @@ export default function Dashboard() {
       )).sort().reverse();
 
       for (const mPrefix of pastMonths) {
-        const txs = transactions.filter(t => t.date.startsWith(mPrefix));
-        const inc = txs.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-        const exp = txs.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
-        const sav = txs.filter(t => t.type === 'savings').reduce((s, t) => s + t.amount, 0);
-        const bal = inc - exp - sav;
+        const totals = getMonthTotalsByPrefix(mPrefix);
 
-        if (metricKey === 'income' && inc > 0) return { prefix: mPrefix, totals: { income: inc, expenses: exp, savings: sav, balance: bal } };
-        if (metricKey === 'expenses' && exp > 0) return { prefix: mPrefix, totals: { income: inc, expenses: exp, savings: sav, balance: bal } };
-        if (metricKey === 'savings' && sav > 0) return { prefix: mPrefix, totals: { income: inc, expenses: exp, savings: sav, balance: bal } };
-        if (metricKey === 'balance' && txs.length > 0) return { prefix: mPrefix, totals: { income: inc, expenses: exp, savings: sav, balance: bal } };
-        if (metricKey === 'savingsRate' && inc > 0) return { prefix: mPrefix, totals: { income: inc, expenses: exp, savings: sav, balance: bal } };
+        if (metricKey === 'income' && totals.income > 0) return { prefix: mPrefix, totals };
+        if (metricKey === 'expenses' && totals.expenses > 0) return { prefix: mPrefix, totals };
+        if (metricKey === 'savings' && totals.savings > 0) return { prefix: mPrefix, totals };
+        if (metricKey === 'balance' && totals.income > 0) return { prefix: mPrefix, totals };
+        if (metricKey === 'savingsRate' && totals.income > 0) return { prefix: mPrefix, totals };
       }
       return null;
     };
@@ -423,15 +478,7 @@ export default function Dashboard() {
     };
 
     const currentMonthLabel = now.toLocaleString('default', { month: 'long', year: 'numeric' });
-
-    const currMonthTx = transactions.filter(t => t.date.startsWith(currMonthPrefix));
-    const calculateTotals = (list: any[]) => {
-      const inc = list.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-      const exp = list.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
-      const sav = list.filter(t => t.type === 'savings').reduce((s, t) => s + t.amount, 0);
-      return { income: inc, expenses: exp, savings: sav, balance: inc - exp - sav };
-    };
-    const current = calculateTotals(currMonthTx);
+    const current = getMonthTotalsByPrefix(currMonthPrefix);
 
     const calcPctChange = (curr: number, prev: number, hasPrev: boolean) => {
       if (!hasPrev) return 0;
@@ -444,7 +491,6 @@ export default function Dashboard() {
     const prevSavings = getNearestPrevMonthForMetric('savings');
     const prevBalance = getNearestPrevMonthForMetric('balance');
     const prevSavingsRate = getNearestPrevMonthForMetric('savingsRate');
-
     const overallPrev = getNearestPrevMonthForMetric('balance');
 
     return {
@@ -479,11 +525,11 @@ export default function Dashboard() {
           prevMonthLabel: prevBalance ? formatMonthLabel(prevBalance.prefix) : ''
         },
         savingsRate: {
-          current: current.income > 0 ? (current.balance / current.income) * 100 : 0,
-          previous: prevSavingsRate ? (prevSavingsRate.totals.balance / prevSavingsRate.totals.income) * 100 : 0,
+          current: current.netSavingsRate,
+          previous: prevSavingsRate ? prevSavingsRate.totals.netSavingsRate : 0,
           pctChange: calcPctChange(
-            current.income > 0 ? (current.balance / current.income) * 100 : 0,
-            prevSavingsRate ? (prevSavingsRate.totals.balance / prevSavingsRate.totals.income) * 100 : 0,
+            current.netSavingsRate,
+            prevSavingsRate ? prevSavingsRate.totals.netSavingsRate : 0,
             !!prevSavingsRate
           ),
           prevMonthLabel: prevSavingsRate ? formatMonthLabel(prevSavingsRate.prefix) : ''
@@ -744,42 +790,29 @@ export default function Dashboard() {
 
   // Net Balance Trend Data (last 12 months)
   const getNetBalanceTrendData = () => {
-    const monthlyGroups: Record<string, { income: number; expenses: number; savings: number }> = {};
-    const sortedTx = [...transactions].sort((a, b) => a.date.localeCompare(b.date));
-    
-    for (const t of sortedTx) {
-      const monthPrefix = t.date.slice(0, 7);
-      if (!monthlyGroups[monthPrefix]) {
-        monthlyGroups[monthPrefix] = { income: 0, expenses: 0, savings: 0 };
-      }
-      if (t.type === 'income') {
-        monthlyGroups[monthPrefix].income += t.amount;
-      } else if (t.type === 'expense') {
-        monthlyGroups[monthPrefix].expenses += t.amount;
-      } else if (t.type === 'savings') {
-        monthlyGroups[monthPrefix].savings += t.amount;
-      }
-    }
-    
-    const months = Object.keys(monthlyGroups).sort();
+    const months = Array.from(new Set(
+      transactions.map(t => t.date.slice(0, 7))
+    )).sort();
+
     const data = months.map(mPrefix => {
-      const { income, expenses, savings } = monthlyGroups[mPrefix];
-      const netBalance = income - expenses - savings;
-      
+      const summary = getSingleSourceMonthlySummary(mPrefix, transactions, categories);
       const [yearStr, monthStr] = mPrefix.split('-');
       const d = new Date(parseInt(yearStr, 10), parseInt(monthStr, 10) - 1, 1);
       const monthLabel = d.toLocaleString('default', { month: 'long', year: 'numeric' });
-      
+
       return {
         monthPrefix: mPrefix,
         monthLabel,
-        income,
-        expenses,
-        savings,
-        netBalance
+        income: summary.income,
+        expenses: summary.expenses,
+        savingsCommitments: summary.savingsCommitments,
+        netMonthlySavings: summary.netMonthlySavings,
+        expenseRatio: summary.expenseRatio,
+        savingsCommitmentRatio: summary.savingsCommitmentRatio,
+        netSavingsRate: summary.netSavingsRate
       };
     });
-    
+
     return data.slice(-12);
   };
 
@@ -1048,24 +1081,23 @@ export default function Dashboard() {
       {/* SUMMARY CARDS WIDGET */}
       {widgets.summaryCards && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-5">
-          <SummaryCard title="Monthly Income" monthLabel={currentMonthLabel} cardKey="income"
+          <SummaryCard title="Income Received" monthLabel={currentMonthLabel} cardKey="income"
             amount={totalsData.current.income} pctChange={totalsData.metrics.income.pctChange}
             prevMonthLabel={totalsData.metrics.income.prevMonthLabel}
-            sparklineData={getSparklineData('income')} color="text-green-500" bg="bg-green-500"
+            sparklineData={getSparklineData('income')} color="text-emerald-500" bg="bg-emerald-500"
             availableMonths={availableMonths} onSelectMonth={handleSelectMonth}
             onClick={() => openKpiDrawer('income')} />
-          <SummaryCard title="Monthly Expenses" monthLabel={currentMonthLabel} cardKey="expenses"
+          <SummaryCard title="Living Expenses" monthLabel={currentMonthLabel} cardKey="expenses"
             amount={totalsData.current.expenses} pctChange={totalsData.metrics.expenses.pctChange}
             prevMonthLabel={totalsData.metrics.expenses.prevMonthLabel}
-            sparklineData={getSparklineData('expense')} color="text-red-500" bg="bg-red-500" inverseTrend
+            sparklineData={getSparklineData('expense')} color="text-[#F43F5E]" bg="bg-[#F43F5E]" inverseTrend
             availableMonths={availableMonths} onSelectMonth={handleSelectMonth}
             onClick={() => openKpiDrawer('expenses')} />
-          <SummaryCard title="Monthly Savings" monthLabel={currentMonthLabel} cardKey="savings"
+          <SummaryCard title="Savings Commitments" monthLabel={currentMonthLabel} cardKey="savings"
             amount={totalsData.current.savings} pctChange={totalsData.metrics.savings.pctChange}
             prevMonthLabel={totalsData.metrics.savings.prevMonthLabel}
             sparklineData={getSparklineData('savings')}
-            color={totalsData.metrics.savings.pctChange >= 0 ? 'text-green-500' : 'text-red-500'}
-            bg={totalsData.metrics.savings.pctChange >= 0 ? 'bg-green-500' : 'bg-red-500'}
+            color="text-purple-400" bg="bg-purple-500"
             availableMonths={availableMonths} onSelectMonth={handleSelectMonth}
             onClick={() => openKpiDrawer('savings')} />
           <SummaryCard title="Available Balance" monthLabel={currentMonthLabel} cardKey="balance"
@@ -1075,26 +1107,26 @@ export default function Dashboard() {
             availableMonths={availableMonths} onSelectMonth={handleSelectMonth}
             onClick={() => openKpiDrawer('balance')}>
             <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 text-[10px] font-semibold text-slate-500 space-y-1">
-              <div className="flex justify-between"><span>Income</span><span className="text-slate-900 dark:text-white font-bold">{formatIndianRupee(totalsData.current.income)}</span></div>
-              <div className="flex justify-between"><span>Expenses</span><span className="text-red-400 font-bold">-{formatIndianRupee(totalsData.current.expenses)}</span></div>
-              <div className="flex justify-between"><span>Savings</span><span className="text-blue-400 font-bold">-{formatIndianRupee(totalsData.current.savings)}</span></div>
-              {unpaidBillsSum > 0 && <div className="flex justify-between text-amber-500 font-bold"><span>Unpaid</span><span>-{formatIndianRupee(unpaidBillsSum)}</span></div>}
+              <div className="flex justify-between"><span>Income Received</span><span className="text-slate-900 dark:text-white font-bold">{formatIndianRupee(totalsData.current.income)}</span></div>
+              <div className="flex justify-between"><span>Living Expenses</span><span className="text-rose-400 font-bold">-{formatIndianRupee(totalsData.current.expenses)}</span></div>
+              <div className="flex justify-between"><span>Savings Commitments</span><span className="text-purple-400 font-bold">-{formatIndianRupee(totalsData.current.savings)}</span></div>
+              {unpaidBillsSum > 0 && <div className="flex justify-between text-amber-500 font-bold"><span>Unpaid Bills</span><span>-{formatIndianRupee(unpaidBillsSum)}</span></div>}
               <div className="border-t border-dashed border-slate-200 dark:border-slate-800 my-1"></div>
               <div className={`text-center font-extrabold mt-1 text-[10px] py-0.5 rounded ${statusBadgeBg} ${statusBadgeText}`}>
                 {totalsData.current.income === 0 ? 'Add income to start tracking' : availableBalance >= 0 ? `Available: ${formatIndianRupee(availableBalance)}` : `Overspent: ${formatIndianRupee(availableBalance)}`}
               </div>
             </div>
           </SummaryCard>
-          <SummaryCard title="Net Balance" monthLabel={currentMonthLabel} cardKey="netbalance"
+          <SummaryCard title="Net Monthly Savings" monthLabel={currentMonthLabel} cardKey="netbalance"
             amount={totalsData.current.balance} pctChange={totalsData.metrics.balance.pctChange}
             prevMonthLabel={totalsData.metrics.balance.prevMonthLabel}
             sparklineData={getSparklineData('balance')} color={availableColor} bg={availableBg}
             availableMonths={availableMonths} onSelectMonth={handleSelectMonth}
             onClick={() => openKpiDrawer('netbalance')}>
             <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 text-[10px] font-semibold text-slate-500 space-y-1">
-              <div className="flex justify-between"><span>Income</span><span className="text-slate-900 dark:text-white font-bold">{formatIndianRupee(totalsData.current.income)}</span></div>
-              <div className="flex justify-between"><span>Expenses</span><span className="text-red-400 font-bold">-{formatIndianRupee(totalsData.current.expenses)}</span></div>
-              <div className="flex justify-between"><span>Savings</span><span className="text-blue-400 font-bold">-{formatIndianRupee(totalsData.current.savings)}</span></div>
+              <div className="flex justify-between"><span>Income Received</span><span className="text-slate-900 dark:text-white font-bold">{formatIndianRupee(totalsData.current.income)}</span></div>
+              <div className="flex justify-between"><span>Living Expenses</span><span className="text-rose-400 font-bold">-{formatIndianRupee(totalsData.current.expenses)}</span></div>
+              <div className="flex justify-between"><span>Savings Commitments</span><span className="text-purple-400 font-bold">-{formatIndianRupee(totalsData.current.savings)}</span></div>
               <div className="border-t border-dashed border-slate-200 dark:border-slate-800 my-1"></div>
               <div className={`text-center font-extrabold mt-1 text-[10px] py-0.5 rounded ${statusBadgeBg} ${statusBadgeText}`}>
                 {totalsData.current.income === 0 ? 'Add income to start tracking' : totalsData.current.balance >= 0 ? `Net: ${formatIndianRupee(totalsData.current.balance)}` : `Deficit: ${formatIndianRupee(totalsData.current.balance)}`}
@@ -1105,7 +1137,7 @@ export default function Dashboard() {
             amount={savingsRate} isPercentage pctChange={totalsData.metrics.savingsRate.pctChange}
             prevMonthLabel={totalsData.metrics.savingsRate.prevMonthLabel}
             availableMonths={availableMonths} onSelectMonth={handleSelectMonth}
-            color="text-orange-500" bg="bg-orange-500" />
+            color="text-emerald-400" bg="bg-emerald-500" />
         </div>
       )}
 
@@ -2616,19 +2648,36 @@ const InsightSparklineTooltip = ({ active, payload }: any) => {
 // Reusable standard tooltip component for Dashboard charts
 const StandardChartTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    const inc = data.income || 0;
+    const exp = data.expenses || data.expense || 0;
+    const sav = data.savingsCommitments || data.savings || 0;
+    const net = data.netMonthlySavings !== undefined ? data.netMonthlySavings : (inc - exp - sav);
+
+    const expRatio = inc > 0 ? ((exp / inc) * 100).toFixed(1) : '0';
+    const savRatio = inc > 0 ? ((sav / inc) * 100).toFixed(1) : '0';
+    const netRatio = inc > 0 ? ((net / inc) * 100).toFixed(1) : '0';
+
     return (
-      <div className="bg-slate-950/95 border border-slate-800 rounded-xl p-3.5 shadow-xl space-y-1.5 text-xs font-semibold text-slate-300">
+      <div className="bg-slate-950/95 border border-slate-800 rounded-xl p-3.5 shadow-xl space-y-2 text-xs font-semibold text-slate-300 min-w-[210px]">
         <p className="font-extrabold text-white text-sm border-b border-slate-800 pb-1">{label}</p>
-        <div className="space-y-1">
-          {payload.map((item: any, i: number) => (
-            <div key={i} className="flex justify-between space-x-6">
-              <span className="flex items-center">
-                <span className="w-1.5 h-1.5 rounded-full mr-1.5" style={{ backgroundColor: item.stroke || item.fill }} />
-                {item.name}
-              </span>
-              <span className="font-mono text-white">{formatIndianRupee(Number(item.value))}</span>
-            </div>
-          ))}
+        <div className="space-y-1.5 font-mono text-xs">
+          <div className="flex justify-between space-x-4">
+            <span className="flex items-center text-emerald-400 font-sans"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5" />Income Received</span>
+            <span className="text-white font-bold">{formatIndianRupee(inc)}</span>
+          </div>
+          <div className="flex justify-between space-x-4">
+            <span className="flex items-center text-rose-400 font-sans"><span className="w-1.5 h-1.5 rounded-full bg-rose-500 mr-1.5" />Living Expenses</span>
+            <span className="text-rose-300">{formatIndianRupee(exp)} ({expRatio}%)</span>
+          </div>
+          <div className="flex justify-between space-x-4">
+            <span className="flex items-center text-purple-400 font-sans"><span className="w-1.5 h-1.5 rounded-full bg-purple-500 mr-1.5" />Savings Commitments</span>
+            <span className="text-purple-300">{formatIndianRupee(sav)} ({savRatio}%)</span>
+          </div>
+          <div className="border-t border-dashed border-slate-800 pt-1 flex justify-between space-x-4 font-black">
+            <span className="flex items-center text-blue-400 font-sans"><span className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-1.5" />Net Monthly Savings</span>
+            <span className="text-emerald-400">{formatIndianRupee(net)} ({netRatio}%)</span>
+          </div>
         </div>
       </div>
     );
@@ -2640,15 +2689,35 @@ const StandardChartTooltip = ({ active, payload, label }: any) => {
 const NetBalanceTooltip = ({ active, payload }: any) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
+    const inc = data.income || 0;
+    const exp = data.expenses || 0;
+    const sav = data.savingsCommitments || 0;
+    const net = data.netMonthlySavings !== undefined ? data.netMonthlySavings : (inc - exp - sav);
+
+    const expRatio = inc > 0 ? ((exp / inc) * 100).toFixed(1) : '0';
+    const savRatio = inc > 0 ? ((sav / inc) * 100).toFixed(1) : '0';
+    const netRatio = inc > 0 ? ((net / inc) * 100).toFixed(1) : '0';
+
     return (
-      <div className="bg-slate-950/95 border border-slate-800 rounded-xl p-4 shadow-xl space-y-2 text-xs font-semibold text-slate-300">
+      <div className="bg-slate-950/95 border border-slate-800 rounded-xl p-4 shadow-xl space-y-2 text-xs font-semibold text-slate-300 min-w-[220px]">
         <p className="font-extrabold text-white text-sm border-b border-slate-800 pb-1">{data.monthLabel}</p>
-        <div className="space-y-1">
-          <div className="flex justify-between space-x-6"><span>Income</span><span className="text-green-400 font-mono">{formatIndianRupee(data.income)}</span></div>
-          <div className="flex justify-between space-x-6"><span>Expenses</span><span className="text-red-400 font-mono">{formatIndianRupee(data.expenses)}</span></div>
-          <div className="flex justify-between space-x-6"><span>Savings</span><span className="text-blue-400 font-mono">{formatIndianRupee(data.savings)}</span></div>
-          <div className="border-t border-dashed border-slate-800 my-1"></div>
-          <div className="flex justify-between space-x-6 font-extrabold text-white"><span>Net Balance</span><span className="text-primary font-mono">{formatIndianRupee(data.netBalance)}</span></div>
+        <div className="space-y-1.5 font-mono text-xs">
+          <div className="flex justify-between space-x-4">
+            <span className="font-sans text-slate-400">Income Received</span>
+            <span className="text-emerald-400 font-bold">{formatIndianRupee(inc)}</span>
+          </div>
+          <div className="flex justify-between space-x-4">
+            <span className="font-sans text-slate-400">Living Expenses</span>
+            <span className="text-rose-400">{formatIndianRupee(exp)} ({expRatio}%)</span>
+          </div>
+          <div className="flex justify-between space-x-4">
+            <span className="font-sans text-slate-400">Savings Commitments</span>
+            <span className="text-purple-400">{formatIndianRupee(sav)} ({savRatio}%)</span>
+          </div>
+          <div className="border-t border-dashed border-slate-800 pt-1 flex justify-between space-x-4 font-black">
+            <span className="font-sans text-white">Net Monthly Savings</span>
+            <span className="text-emerald-400">{formatIndianRupee(net)} ({netRatio}%)</span>
+          </div>
         </div>
       </div>
     );
