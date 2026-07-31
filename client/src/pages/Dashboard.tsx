@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 import { Plus, Search, RefreshCw, Flame, LayoutGrid, CheckCircle2, Target, AlertTriangle, TrendingUp, Info, X, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -59,7 +59,7 @@ export const isSavingsCommitment = (t: any, categories: any[]) => {
 
 export const getSingleSourceMonthlySummary = (monthPrefix: string, transactions: any[], categories: any[]) => {
   const monthTx = transactions.filter((t: any) => t.date.startsWith(monthPrefix));
-  const income = monthTx.filter((t: any) => t.type === 'income').reduce((s: number, t: any) => s + t.amount, 0);
+  const incomeReceived = monthTx.filter((t: any) => t.type === 'income').reduce((s: number, t: any) => s + t.amount, 0);
 
   let savingsCommitments = 0;
   let livingExpenses = 0;
@@ -72,20 +72,29 @@ export const getSingleSourceMonthlySummary = (monthPrefix: string, transactions:
     }
   });
 
-  const netMonthlySavings = income - livingExpenses - savingsCommitments;
-  const expenseRatio = income > 0 ? parseFloat(((livingExpenses / income) * 100).toFixed(1)) : 0;
-  const savingsCommitmentRatio = income > 0 ? parseFloat(((savingsCommitments / income) * 100).toFixed(1)) : 0;
-  const netSavingsRate = income > 0 ? parseFloat(((netMonthlySavings / income) * 100).toFixed(1)) : 0;
+  const netMonthlySavings = incomeReceived - livingExpenses - savingsCommitments;
+  const availableBalance = netMonthlySavings;
+  const discretionarySpending = availableBalance;
+
+  const expenseRatio = incomeReceived > 0 ? parseFloat(((livingExpenses / incomeReceived) * 100).toFixed(1)) : 0;
+  const savingsCommitmentRatio = incomeReceived > 0 ? parseFloat(((savingsCommitments / incomeReceived) * 100).toFixed(1)) : 0;
+  const netSavingsRate = incomeReceived > 0 ? parseFloat(((netMonthlySavings / incomeReceived) * 100).toFixed(1)) : 0;
 
   return {
-    income,
-    expenses: livingExpenses,
+    incomeReceived,
+    livingExpenses,
     savingsCommitments,
     netMonthlySavings,
-    availableBalance: netMonthlySavings,
+    availableBalance,
+    discretionarySpending,
     expenseRatio,
     savingsCommitmentRatio,
-    netSavingsRate
+    netSavingsRate,
+    // Backwards compatibility aliases
+    income: incomeReceived,
+    expenses: livingExpenses,
+    savings: savingsCommitments,
+    balance: netMonthlySavings
   };
 };
 
@@ -124,7 +133,6 @@ export default function Dashboard() {
   const [budgets, setBudgets] = useState<any[]>([]);
   const [goals, setGoals] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
-  const [monthlyData, setMonthlyData] = useState<any[]>([]);
   const [categoryData, setCategoryData] = useState<any[]>([]);
   const [rules, setRules] = useState<any[]>([]);
 
@@ -370,7 +378,6 @@ export default function Dashboard() {
         axios.get(`${API}/categories`),
         axios.get(`${API}/recurring-rules`)
       ]);
-      setMonthlyData(chartsRes.data.monthly || []);
       setCategoryData(chartsRes.data.categories || []);
       setTransactions(txRes.data || []);
       setBudgets(budgetsRes.data || []);
@@ -788,36 +795,6 @@ export default function Dashboard() {
     }).filter(insight => insight.currMonthTotal > 0 || insight.prevMonthTotal > 0);
   };
 
-  // Net Balance Trend Data (last 12 months)
-  const getNetBalanceTrendData = () => {
-    const months = Array.from(new Set(
-      transactions.map(t => t.date.slice(0, 7))
-    )).sort();
-
-    const data = months.map(mPrefix => {
-      const summary = getSingleSourceMonthlySummary(mPrefix, transactions, categories);
-      const [yearStr, monthStr] = mPrefix.split('-');
-      const d = new Date(parseInt(yearStr, 10), parseInt(monthStr, 10) - 1, 1);
-      const monthLabel = d.toLocaleString('default', { month: 'long', year: 'numeric' });
-
-      return {
-        monthPrefix: mPrefix,
-        monthLabel,
-        income: summary.income,
-        expenses: summary.expenses,
-        savingsCommitments: summary.savingsCommitments,
-        netMonthlySavings: summary.netMonthlySavings,
-        expenseRatio: summary.expenseRatio,
-        savingsCommitmentRatio: summary.savingsCommitmentRatio,
-        netSavingsRate: summary.netSavingsRate
-      };
-    });
-
-    return data.slice(-12);
-  };
-
-  const trendData = getNetBalanceTrendData();
-
   // Financial Health Score Calculation
   const calculateHealthScore = () => {
     let score = 60; // Base score
@@ -996,8 +973,25 @@ export default function Dashboard() {
     })
     .slice(0, 7);
 
-  const hasData = monthlyData.length > 0;
-  const monthlyChartData = monthlyData.slice(-6);
+  const cashFlowChartData = useMemo(() => {
+    const monthsPrefixes: string[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      monthsPrefixes.push(formatLocalYYYYMM(d));
+    }
+    return monthsPrefixes.map(prefix => {
+      const summary = getSingleSourceMonthlySummary(prefix, transactions, categories);
+      const dObj = new Date(prefix + '-02');
+      return {
+        name: dObj.toLocaleString('default', { month: 'short' }),
+        monthPrefix: prefix,
+        monthLabel: dObj.toLocaleString('default', { month: 'long', year: 'numeric' }),
+        ...summary
+      };
+    });
+  }, [now, transactions, categories]);
+
+  const hasData = transactions.length > 0;
   const activeGoals = goals.filter(g => g.status !== 'completed').slice(0, 3);
 
   if (loading) return (
@@ -1375,13 +1369,12 @@ export default function Dashboard() {
             <div className="flex justify-between items-center mb-6">
               <div>
                 <h3 className="text-base font-bold text-slate-900 dark:text-white">Cash Flow Trends</h3>
-                <p className="text-xs text-slate-500 mt-0.5 font-medium">Income, Expenses, and Monthly Savings against Planned Savings Target</p>
+                <p className="text-xs text-slate-500 mt-0.5 font-medium">Income Received, Living Expenses, and Net Savings against Planned Savings Target</p>
               </div>
               <div className="flex items-center space-x-3 text-[10px] font-bold">
-                <span className="flex items-center text-emerald-400"><span className="w-2 h-2 rounded-full bg-emerald-500 mr-1"></span> Income</span>
-                <span className="flex items-center text-rose-400"><span className="w-2 h-2 rounded-full bg-rose-500 mr-1"></span> Expense</span>
-                <span className="flex items-center text-blue-400"><span className="w-2 h-2 rounded-full bg-blue-500 mr-1"></span> Savings</span>
-                <span className="flex items-center text-purple-400"><span className="w-2 h-0.5 bg-purple-400 border-dashed mr-1"></span> Target</span>
+                <span className="flex items-center text-emerald-400"><span className="w-2 h-2 rounded-full bg-emerald-500 mr-1"></span> Income Received</span>
+                <span className="flex items-center text-rose-400"><span className="w-2 h-2 rounded-full bg-rose-500 mr-1"></span> Living Expenses</span>
+                <span className="flex items-center text-blue-400"><span className="w-2 h-2 rounded-full bg-blue-500 mr-1"></span> Net Savings</span>
               </div>
             </div>
 
@@ -1396,10 +1389,7 @@ export default function Dashboard() {
               <div className="h-60">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart
-                    data={monthlyChartData.map(m => ({
-                      ...m,
-                      savings: Math.max(0, (m.income || 0) - (m.expense || 0))
-                    }))}
+                    data={cashFlowChartData}
                     margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
                   >
                     <defs>
@@ -1420,9 +1410,9 @@ export default function Dashboard() {
                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 11}}/>
                     <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 11}} tickFormatter={v => `₹${(v/1000).toFixed(0)}k`}/>
                     <Tooltip content={<StandardChartTooltip />} />
-                    <Area type="monotone" dataKey="income" name="Income" stroke="#10B981" strokeWidth={2.5} fillOpacity={1} fill="url(#colorInc)"/>
-                    <Area type="monotone" dataKey="expense" name="Expense" stroke="#F43F5E" strokeWidth={2.5} fillOpacity={1} fill="url(#colorExp)"/>
-                    <Area type="monotone" dataKey="savings" name="Monthly Savings" stroke="#3B82F6" strokeWidth={2.5} fillOpacity={1} fill="url(#colorSav)"/>
+                    <Area type="monotone" dataKey="incomeReceived" name="Income Received" stroke="#10B981" strokeWidth={2.5} fillOpacity={1} fill="url(#colorInc)"/>
+                    <Area type="monotone" dataKey="livingExpenses" name="Living Expenses" stroke="#F43F5E" strokeWidth={2.5} fillOpacity={1} fill="url(#colorExp)"/>
+                    <Area type="monotone" dataKey="netMonthlySavings" name="Net Savings" stroke="#3B82F6" strokeWidth={2.5} fillOpacity={1} fill="url(#colorSav)"/>
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
@@ -1432,15 +1422,15 @@ export default function Dashboard() {
 
         {/* Net Balance Trend Widget */}
         {widgets.heatmapWidget && (
-          <div className="bg-white dark:bg-slate-950 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between h-[285px]">
+          <div className="bg-[#0B1228]/80 backdrop-blur-xl p-6 rounded-2xl border border-[#1E2A4A]/50 shadow-2xl flex flex-col justify-between h-[285px]">
             <div className="mb-2">
-              <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center">
-                <TrendingUp className="w-5 h-5 text-primary mr-2" /> Net Balance Trend
+              <h3 className="text-base font-bold text-white flex items-center">
+                <TrendingUp className="w-5 h-5 text-purple-400 mr-2" /> Net Balance Trend
               </h3>
-              <p className="text-xs text-slate-500 mt-0.5">Monthly evolution of your overall net financial position</p>
+              <p className="text-xs text-slate-400 mt-0.5 font-medium">Monthly evolution of your available net balance</p>
             </div>
 
-            {trendData.length <= 1 ? (
+            {!hasData ? (
               <div className="flex-1 flex flex-col items-center justify-center text-center p-4">
                 <span className="text-3xl mb-2">📈</span>
                 <p className="text-xs font-bold text-slate-500 max-w-[200px]">
@@ -1450,25 +1440,24 @@ export default function Dashboard() {
             ) : (
               <div className="flex-1 w-full min-h-[160px] mt-2 relative">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={trendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <AreaChart data={cashFlowChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                     <defs>
                       <linearGradient id="colorNet" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#8B5CF6" stopOpacity={0.2}/>
+                        <stop offset="5%" stopColor="#8B5CF6" stopOpacity={0.3}/>
                         <stop offset="95%" stopColor="#8B5CF6" stopOpacity={0}/>
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.15} vertical={false} />
                     <XAxis 
-                      dataKey="monthLabel" 
+                      dataKey="name" 
                       stroke="#64748b" 
-                      fontSize={9} 
+                      fontSize={10} 
                       tickLine={false} 
                       axisLine={false} 
-                      tickFormatter={val => val.split(' ')[0]} 
                     />
                     <YAxis 
                       stroke="#64748b" 
-                      fontSize={9} 
+                      fontSize={10} 
                       tickLine={false} 
                       axisLine={false} 
                       tickFormatter={val => {
@@ -1479,35 +1468,35 @@ export default function Dashboard() {
                     <Tooltip content={<NetBalanceTooltip />} />
                     <Area 
                       type="monotone" 
-                      dataKey="netBalance" 
+                      dataKey="availableBalance" 
                       name="Net Balance"
                       stroke="#8B5CF6" 
                       strokeWidth={2.5} 
                       fillOpacity={1}
                       fill="url(#colorNet)"
                       dot={({ payload, cx, cy }) => {
-                        const isSelected = payload.monthLabel === currentMonthLabel;
+                        const isSelected = payload.monthPrefix === formatLocalYYYYMM(now);
                         if (isSelected) {
                           return (
-                            <g key={payload.monthLabel}>
+                            <g key={payload.monthPrefix}>
                               <circle cx={cx} cy={cy} r={7} fill="#8B5CF6" opacity={0.3} />
                               <circle cx={cx} cy={cy} r={4} fill="#8B5CF6" stroke="#fff" strokeWidth={1.5} />
                             </g>
                           );
                         }
-                        return <circle key={payload.monthLabel} cx={cx} cy={cy} r={3} fill="#8B5CF6" stroke="#fff" strokeWidth={1} />;
+                        return <circle key={payload.monthPrefix} cx={cx} cy={cy} r={3} fill="#8B5CF6" stroke="#fff" strokeWidth={1} />;
                       }}
                       activeDot={{ r: 6, stroke: '#8B5CF6', strokeWidth: 2, fill: '#fff' }}
-                      animationDuration={1500} 
+                      animationDuration={1000} 
                     />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
             )}
 
-            <div className="text-[10px] text-slate-400 border-t border-slate-100 dark:border-slate-800 pt-3 flex justify-between items-center">
-              <span>Timeframe: Last 12 Months</span>
-              <span className="font-semibold text-slate-500">Net = Income - Expenses - Savings</span>
+            <div className="text-[10px] text-slate-400 border-t border-[#1E2A4A] pt-3 flex justify-between items-center font-mono">
+              <span>Timeframe: 6-Mo Trailing</span>
+              <span className="font-semibold text-purple-400">Net = Income − Expenses − Savings</span>
             </div>
           </div>
         )}
