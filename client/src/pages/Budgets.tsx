@@ -2,7 +2,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { 
   Plus, Pencil, Trash2, CheckCircle2, FileSpreadsheet,
   Sparkles, PieChart as PieChartIcon, Search,
-  Zap, Copy, AlertTriangle, RefreshCw
+  Zap, Copy, AlertTriangle, RefreshCw, ChevronDown, ChevronUp,
+  Lock, ShoppingBag
 } from 'lucide-react';
 import axios from 'axios';
 import Button from '../components/ui/Button';
@@ -92,20 +93,54 @@ export const getCategoryGroup = (cat: Category): 'Expenses' | 'Savings' | 'Inves
   return 'Expenses';
 };
 
+// Helper: Identify non-negotiable fixed commitments
+export const isFixedCommitment = (catName: string, grp: string): boolean => {
+  const name = catName.toLowerCase();
+  if (grp === 'Debt' || grp === 'Insurance') return true;
+  if (name.includes('rent') || name.includes('lic') || name.includes('sip') || name.includes('chit') || name.includes('emi') || name.includes('loan') || name.includes('debt')) {
+    return true;
+  }
+  return false;
+};
+
+// Helper: Refined Priority Order Sorting (1. Overspent -> 2. Near Limit -> 3. Debt/Commitments -> 4. Savings -> 5. On Track -> 6. Completed -> 7. Not Started)
+export const getPriorityOrderScore = (b: Budget, grp: string, effLimit: number): number => {
+  const isOver = b.spent > effLimit;
+  const pct = effLimit > 0 ? (b.spent / effLimit) * 100 : 0;
+  const isNearLimit = pct >= 90 && b.spent < effLimit;
+  const isCompleted = b.spent === effLimit && effLimit > 0;
+  const isNotStarted = b.spent === 0;
+
+  if (isOver) return 1;
+  if (isNearLimit) return 2;
+  if (grp === 'Debt' || grp === 'Insurance') return 3;
+  if (grp === 'Savings' || grp === 'Investments') return 4;
+  if (isNotStarted) return 7;
+  if (isCompleted) return 6;
+  return 5; // On Track
+};
+
 export default function Budgets() {
   const now = new Date();
   
   // Filter & Navigation States
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
-  const [activeTab, setActiveTab] = useState<'tracking' | 'plan' | 'forecast' | 'ai'>('plan');
+  const [activeTab, setActiveTab] = useState<'tracking' | 'plan' | 'ai'>('plan');
   const [filterCategoryGroup, setFilterCategoryGroup] = useState<string>('all');
-  const [filterPriority, setFilterPriority] = useState('all');
+  const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [filterPriority, setFilterPriority] = useState<string>('all');
+  const [sortBy, setSortBy] = useState<'priority' | 'remaining' | 'pct' | 'spent' | 'name'>('priority');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Expandable Rows State
+  const [expandedRows, setExpandedRows] = useState<Record<number, boolean>>({});
 
   // Data States
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [transactions, setTransactions] = useState<any[]>([]);
   const [plannerSummary, setPlannerSummary] = useState<any>(null);
   const [aiRecs, setAiRecs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -141,16 +176,21 @@ export default function Budgets() {
     setTimeout(() => setToastMessage(null), 3000);
   };
 
+  const toggleRowExpanded = (id: number) => {
+    setExpandedRows(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
   const fetchBudgetsAndData = async () => {
     setLoading(true);
     try {
-      const [budgetsRes, summaryRes, salaryRes, recsRes, goalsRes, catRes] = await Promise.all([
+      const [budgetsRes, summaryRes, salaryRes, recsRes, goalsRes, catRes, txRes] = await Promise.all([
         axios.get(`${API}/budgets?month=${selectedMonth}&year=${selectedYear}`),
         axios.get(`${API}/budgets/planner-summary?month=${selectedMonth}&year=${selectedYear}`),
         axios.get(`${API}/budgets/salary-allocation?month=${selectedMonth}&year=${selectedYear}`),
         axios.get(`${API}/budgets/ai-recommendations`),
         axios.get(`${API}/goals`),
-        axios.get(`${API}/categories`)
+        axios.get(`${API}/categories`),
+        axios.get(`${API}/transactions`)
       ]);
 
       const allCats: Category[] = catRes.data.filter((c: Category) => c.type !== 'income');
@@ -159,6 +199,7 @@ export default function Budgets() {
       setPlannerSummary(summaryRes.data);
       setAiRecs(recsRes.data || []);
       setGoals(goalsRes.data || []);
+      setTransactions(txRes.data || []);
 
       // Parse dynamic salary allocations
       if (salaryRes.data) {
@@ -238,7 +279,7 @@ export default function Budgets() {
     fetchBudgetsAndData();
   }, [selectedMonth, selectedYear]);
 
-  // Group categories into Expenses, Savings, Investments, Debt, Insurance
+  // Group categories for modal dropdown
   const groupedCategories = useMemo(() => {
     const groups: Record<string, Category[]> = {
       Expenses: [],
@@ -361,7 +402,7 @@ export default function Budgets() {
       category_group: getCategoryGroup(matchCat),
       amount: defaultAmt,
       percentage: pct,
-      mode: 'flexible'
+      mode: 'flexible' as const
     };
 
     setSalaryAllocations(prev => [...prev, newItem]);
@@ -459,13 +500,12 @@ export default function Budgets() {
   };
 
   const exportBudgetCSV = () => {
-    const headers = ['Category', 'Type Group', 'Planned Amount', 'Base Limit', 'Rollover', 'Effective Limit', 'Actual Spent', 'Remaining', 'Variance', 'Status', 'Forecast End', 'Priority'];
+    const headers = ['Category', 'Type Group', 'Planned Amount', 'Base Limit', 'Rollover', 'Effective Limit', 'Actual Spent', 'Remaining', 'Status', 'Expected Completion', 'Priority'];
     const rows = budgets.map(b => {
       const matchCat = categories.find(c => c.id === b.category_id);
       const grp = matchCat ? getCategoryGroup(matchCat) : 'Expenses';
       const allocItem = salaryAllocations.find(a => a.category_id === b.category_id);
       const effLimit = b.effectiveLimit || b.limit_amount;
-      const variance = b.spent - effLimit;
       return [
         b.category_name,
         grp,
@@ -475,8 +515,7 @@ export default function Budgets() {
         effLimit,
         b.spent,
         b.remaining,
-        variance,
-        (b.spent > effLimit) ? 'Overspent' : 'On Track',
+        (b.spent > effLimit) ? 'Overspent' : (b.spent === effLimit ? 'Completed' : 'On Track'),
         b.forecastedEnd || 0,
         b.priority || 'essential'
       ];
@@ -504,14 +543,104 @@ export default function Budgets() {
   const investmentTarget = salaryAllocations.filter(a => a.category_group === 'Investments').reduce((s, a) => s + a.amount, 0);
   const debtTarget = salaryAllocations.filter(a => a.category_group === 'Debt').reduce((s, a) => s + a.amount, 0);
 
-  // Filtered Budgets List
-  const filteredBudgets = budgets.filter(b => {
-    const matchCat = categories.find(c => c.id === b.category_id);
-    const grp = matchCat ? getCategoryGroup(matchCat) : 'Expenses';
-    if (filterCategoryGroup !== 'all' && grp !== filterCategoryGroup) return false;
-    if (filterPriority !== 'all' && (b.priority || 'essential') !== filterPriority) return false;
-    return true;
-  });
+  // Status counts for Today's Financial Status Overview
+  const statusCounts = useMemo(() => {
+    let completed = 0;
+    let onTrack = 0;
+    let nearLimit = 0;
+    let overspent = 0;
+    let notStarted = 0;
+
+    budgets.forEach(b => {
+      const effLimit = b.effectiveLimit || b.limit_amount;
+      const pct = effLimit > 0 ? (b.spent / effLimit) * 100 : 0;
+      if (b.spent === 0) notStarted++;
+      else if (b.spent === effLimit) completed++;
+      else if (b.spent > effLimit) overspent++;
+      else if (pct >= 90) nearLimit++;
+      else onTrack++;
+    });
+
+    return { completed, onTrack, nearLimit, overspent, notStarted };
+  }, [budgets]);
+
+  // Health Score status text & color
+  const healthScore = plannerSummary?.healthScore || 85;
+  let healthLabel = 'Excellent';
+  let healthBadgeColor = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+
+  if (healthScore < 50) {
+    healthLabel = 'Critical';
+    healthBadgeColor = 'bg-rose-500/10 text-rose-400 border-rose-500/20';
+  } else if (healthScore < 70) {
+    healthLabel = 'Needs Attention';
+    healthBadgeColor = 'bg-amber-500/10 text-amber-400 border-amber-500/20';
+  } else if (healthScore < 85) {
+    healthLabel = 'Good';
+    healthBadgeColor = 'bg-blue-500/10 text-blue-400 border-blue-500/20';
+  }
+
+  // Filter & Sort Budgets for Vertical Priority Dashboard
+  const processedBudgets = useMemo(() => {
+    let list = budgets.filter(b => {
+      const matchCat = categories.find(c => c.id === b.category_id);
+      const grp = matchCat ? getCategoryGroup(matchCat) : 'Expenses';
+      const effLimit = b.effectiveLimit || b.limit_amount;
+      const pct = effLimit > 0 ? (b.spent / effLimit) * 100 : 0;
+      
+      let status = 'ontrack';
+      if (b.spent === 0) status = 'notstarted';
+      else if (b.spent === effLimit) status = 'completed';
+      else if (b.spent > effLimit) status = 'overspent';
+      else if (pct >= 90) status = 'nearlimit';
+
+      if (filterCategoryGroup !== 'all' && grp !== filterCategoryGroup) return false;
+      if (filterStatus !== 'all' && status !== filterStatus) return false;
+      if (filterPriority !== 'all' && (b.priority || 'essential') !== filterPriority) return false;
+      if (searchQuery.trim() && !b.category_name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+      return true;
+    });
+
+    // Sorting
+    list.sort((a, b) => {
+      const matchCatA = categories.find(c => c.id === a.category_id);
+      const matchCatB = categories.find(c => c.id === b.category_id);
+      const grpA = matchCatA ? getCategoryGroup(matchCatA) : 'Expenses';
+      const grpB = matchCatB ? getCategoryGroup(matchCatB) : 'Expenses';
+      const effA = a.effectiveLimit || a.limit_amount;
+      const effB = b.effectiveLimit || b.limit_amount;
+
+      if (sortBy === 'priority') {
+        const scoreA = getPriorityOrderScore(a, grpA, effA);
+        const scoreB = getPriorityOrderScore(b, grpB, effB);
+        return scoreA - scoreB;
+      }
+      if (sortBy === 'remaining') return (effB - b.spent) - (effA - a.spent);
+      if (sortBy === 'pct') return (b.spent / (effB || 1)) - (a.spent / (effA || 1));
+      if (sortBy === 'spent') return b.spent - a.spent;
+      if (sortBy === 'name') return a.category_name.localeCompare(b.category_name);
+      return 0;
+    });
+
+    return list;
+  }, [budgets, categories, filterCategoryGroup, filterStatus, filterPriority, searchQuery, sortBy]);
+
+  // Separate into Fixed Commitments & Debt vs Variable Expenses & Savings
+  const fixedCommitmentBudgets = useMemo(() => {
+    return processedBudgets.filter(b => {
+      const matchCat = categories.find(c => c.id === b.category_id);
+      const grp = matchCat ? getCategoryGroup(matchCat) : 'Expenses';
+      return isFixedCommitment(b.category_name, grp);
+    });
+  }, [processedBudgets, categories]);
+
+  const variableBudgets = useMemo(() => {
+    return processedBudgets.filter(b => {
+      const matchCat = categories.find(c => c.id === b.category_id);
+      const grp = matchCat ? getCategoryGroup(matchCat) : 'Expenses';
+      return !isFixedCommitment(b.category_name, grp);
+    });
+  }, [processedBudgets, categories]);
 
   const selectedMonthLabel = MONTHS_LIST.find(m => m.value === selectedMonth)?.label || '';
 
@@ -562,7 +691,7 @@ export default function Budgets() {
         </div>
       </div>
 
-      {/* TOP TAB NAVIGATION */}
+      {/* TOP TAB NAVIGATION (3 FOCUSED TABS) */}
       <div className="flex border-b border-slate-900 gap-6 overflow-x-auto custom-scrollbar">
         <button
           onClick={() => setActiveTab('plan')}
@@ -581,24 +710,16 @@ export default function Budgets() {
           }`}
         >
           <span>📊 2. Budget Tracking (Actual vs Plan)</span>
-          <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 rounded text-[8px]">Auto Track</span>
+          <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 rounded text-[8px]">Command Center</span>
         </button>
 
-        <button
-          onClick={() => setActiveTab('forecast')}
-          className={`pb-3 text-xs font-extrabold uppercase tracking-wider transition border-b-2 ${
-            activeTab === 'forecast' ? 'border-purple-500 text-purple-400' : 'border-transparent text-slate-400 hover:text-white'
-          }`}
-        >
-          📈 Predictive Spend Forecast
-        </button>
         <button
           onClick={() => setActiveTab('ai')}
           className={`pb-3 text-xs font-extrabold uppercase tracking-wider transition border-b-2 flex items-center gap-1.5 ${
             activeTab === 'ai' ? 'border-purple-500 text-purple-400' : 'border-transparent text-slate-400 hover:text-white'
           }`}
         >
-          <Sparkles className="w-3.5 h-3.5 text-amber-400" /> Venke AI Advisor ({aiRecs.length})
+          <Sparkles className="w-3.5 h-3.5 text-amber-400" /> 3. Venke AI Advisor ({aiRecs.length})
         </button>
       </div>
 
@@ -606,7 +727,7 @@ export default function Budgets() {
         <div className="text-center py-16 text-slate-400 text-sm font-semibold">Loading monthly financial planning operating system...</div>
       ) : (
         <>
-          {/* TAB 1 (PRIMARY PLANNING TAB): MONTHLY FINANCIAL PLAN */}
+          {/* TAB 1: MONTHLY FINANCIAL PLAN */}
           {activeTab === 'plan' && (
             <div className="space-y-6">
               {/* PRIMARY PLANNING HEADER CARD */}
@@ -792,30 +913,33 @@ export default function Budgets() {
             </div>
           )}
 
-          {/* TAB 2 (AUTOMATIC LIVE TRACKING): BUDGET TRACKING (ACTUAL VS PLAN) */}
+          {/* TAB 2: BUDGET TRACKING VERTICAL PRIORITY DASHBOARD */}
           {activeTab === 'tracking' && (
             <div className="space-y-6">
-              {/* MONTHLY FINANCIAL SNAPSHOT CARD */}
+              {/* MONTHLY FINANCIAL PROGRESS HEADER CARD */}
               <div className="bg-slate-950/40 border border-slate-850 p-6 rounded-3xl space-y-4">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-900 pb-3">
                   <div>
                     <h2 className="text-sm font-black text-white flex items-center gap-2">
-                      📊 {selectedMonthLabel} {selectedYear} Financial Tracking Overview
+                      📊 Monthly Financial Progress — {selectedMonthLabel} {selectedYear}
                     </h2>
-                    <p className="text-xs text-slate-400 mt-0.5">Live tracking of actual transactions against your monthly planned allocations.</p>
+                    <p className="text-xs text-slate-400 mt-0.5">Automatic live tracking of actual spending from transactions against your monthly planned allocations.</p>
                   </div>
 
                   <div className="flex items-center space-x-2">
+                    <span className={`px-2.5 py-1 rounded-xl border text-xs font-mono font-bold ${healthBadgeColor}`}>
+                      Health: {healthLabel} ({healthScore}/100)
+                    </span>
                     <span className="px-2.5 py-1 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-mono font-bold flex items-center gap-1.5">
-                      <RefreshCw className="w-3.5 h-3.5 text-emerald-400 animate-spin" /> Live Transaction Sync Active
+                      <RefreshCw className="w-3.5 h-3.5 text-emerald-400 animate-spin" /> Auto Sync
                     </span>
                   </div>
                 </div>
 
                 {plannerSummary && (
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3.5 pt-1">
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5 pt-1">
                     <div className="p-3.5 bg-slate-900/40 border border-slate-850 rounded-2xl">
-                      <p className="text-[9px] text-slate-500 font-bold uppercase">Income</p>
+                      <p className="text-[9px] text-slate-500 font-bold uppercase">Income Received</p>
                       <p className="text-sm font-black text-white font-mono mt-1">₹{salaryIncome.toLocaleString('en-IN')}</p>
                     </div>
                     <div className="p-3.5 bg-slate-900/40 border border-slate-850 rounded-2xl">
@@ -823,42 +947,64 @@ export default function Budgets() {
                       <p className="text-sm font-black text-purple-400 font-mono mt-1">₹{totalAllocatedAmount.toLocaleString('en-IN')}</p>
                     </div>
                     <div className="p-3.5 bg-slate-900/40 border border-slate-850 rounded-2xl">
-                      <p className="text-[9px] text-slate-500 font-bold uppercase">Actual Spending</p>
+                      <p className="text-[9px] text-slate-500 font-bold uppercase">Actual Executed</p>
                       <p className="text-sm font-black text-rose-400 font-mono mt-1">₹{plannerSummary.actualExpenses.toLocaleString('en-IN')}</p>
                     </div>
                     <div className="p-3.5 bg-slate-900/40 border border-slate-850 rounded-2xl">
-                      <p className="text-[9px] text-slate-500 font-bold uppercase">Remaining Unspent</p>
-                      <p className="text-sm font-black text-emerald-400 font-mono mt-1">₹{plannerSummary.budgetRemaining.toLocaleString('en-IN')}</p>
-                    </div>
-                    <div className="p-3.5 bg-slate-900/40 border border-slate-850 rounded-2xl">
-                      <p className="text-[9px] text-slate-500 font-bold uppercase">Budget Adherence</p>
-                      <p className="text-sm font-black text-blue-400 font-mono mt-1">
-                        {totalAllocatedAmount > 0 ? Math.round((1 - (plannerSummary.actualExpenses / totalAllocatedAmount)) * 100) : 100}%
-                      </p>
+                      <p className="text-[9px] text-slate-500 font-bold uppercase">Remaining to Execute</p>
+                      <p className="text-sm font-black text-emerald-400 font-mono mt-1">₹{(totalAllocatedAmount - plannerSummary.actualExpenses).toLocaleString('en-IN')}</p>
                     </div>
                     <div className="p-3.5 bg-purple-500/10 border border-purple-500/20 rounded-2xl">
-                      <p className="text-[9px] text-purple-400 font-black uppercase">Health Score</p>
-                      <p className="text-sm font-black text-white font-mono mt-1">{plannerSummary.healthScore} / 100</p>
+                      <p className="text-[9px] text-purple-400 font-black uppercase">Budget Completion</p>
+                      <p className="text-sm font-black text-white font-mono mt-1">
+                        {totalAllocatedAmount > 0 ? Math.min(100, Math.round((plannerSummary.actualExpenses / totalAllocatedAmount) * 100)) : 0}%
+                      </p>
                     </div>
                   </div>
                 )}
               </div>
 
-              {/* FILTERS & CATEGORY CARDS GRID */}
-              <div className="space-y-4">
-                <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
-                  <h2 className="text-xs font-black uppercase text-slate-400 tracking-wider">
-                    Category Live Tracking ({filteredBudgets.length})
-                  </h2>
+              {/* TODAY'S FINANCIAL STATUS & FILTERS BAR */}
+              <div className="bg-slate-950/40 border border-slate-850 p-4.5 rounded-3xl space-y-3.5">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                  <div className="flex items-center space-x-3 flex-wrap gap-2">
+                    <span className="text-xs font-black text-white uppercase tracking-wider">Today's Financial Status:</span>
+                    <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      {statusCounts.completed} Completed
+                    </span>
+                    <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      {statusCounts.onTrack} On Track
+                    </span>
+                    <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase bg-orange-500/10 text-orange-400 border border-orange-500/20">
+                      {statusCounts.nearLimit} Near Limit
+                    </span>
+                    <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                      {statusCounts.overspent} Overspent
+                    </span>
+                    <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase bg-slate-800 text-slate-400 border border-slate-700">
+                      {statusCounts.notStarted} Not Started
+                    </span>
+                  </div>
 
-                  <div className="flex items-center space-x-2">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase">Category Group:</span>
+                  {/* Multi-field Filter Controls */}
+                  <div className="flex items-center space-x-2 flex-wrap gap-2">
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5 pointer-events-none" />
+                      <input
+                        type="text"
+                        placeholder="Search categories..."
+                        value={searchQuery}
+                        onChange={e => setSearchQuery(e.target.value)}
+                        className="bg-slate-900 border border-slate-850 text-xs font-bold text-white rounded-xl py-1 pl-8 pr-2.5 focus:outline-none"
+                      />
+                    </div>
+
                     <select
                       value={filterCategoryGroup}
                       onChange={e => setFilterCategoryGroup(e.target.value)}
-                      className="bg-slate-950 border border-slate-850 text-xs font-bold text-slate-300 rounded-xl px-2.5 py-1.5 focus:outline-none"
+                      className="bg-slate-900 border border-slate-850 text-xs font-bold text-slate-300 rounded-xl px-2.5 py-1 focus:outline-none"
                     >
-                      <option value="all">All Category Groups</option>
+                      <option value="all">All Groups</option>
                       <option value="Expenses">🍽 Expenses</option>
                       <option value="Savings">💰 Savings</option>
                       <option value="Investments">📈 Investments</option>
@@ -867,9 +1013,22 @@ export default function Budgets() {
                     </select>
 
                     <select
+                      value={filterStatus}
+                      onChange={e => setFilterStatus(e.target.value)}
+                      className="bg-slate-900 border border-slate-850 text-xs font-bold text-slate-300 rounded-xl px-2.5 py-1 focus:outline-none"
+                    >
+                      <option value="all">All Statuses</option>
+                      <option value="overspent">Overspent</option>
+                      <option value="nearlimit">Near Limit</option>
+                      <option value="ontrack">On Track</option>
+                      <option value="completed">Completed</option>
+                      <option value="notstarted">Not Started</option>
+                    </select>
+
+                    <select
                       value={filterPriority}
                       onChange={e => setFilterPriority(e.target.value)}
-                      className="bg-slate-950 border border-slate-850 text-xs font-bold text-slate-300 rounded-xl px-2.5 py-1.5 focus:outline-none"
+                      className="bg-slate-900 border border-slate-850 text-xs font-bold text-slate-300 rounded-xl px-2.5 py-1 focus:outline-none"
                     >
                       <option value="all">All Priorities</option>
                       <option value="essential">Essential</option>
@@ -877,214 +1036,75 @@ export default function Budgets() {
                       <option value="optional">Optional</option>
                       <option value="avoid">Avoid / Reduce</option>
                     </select>
+
+                    <select
+                      value={sortBy}
+                      onChange={e => setSortBy(e.target.value as any)}
+                      className="bg-slate-900 border border-slate-850 text-xs font-bold text-purple-400 rounded-xl px-2.5 py-1 focus:outline-none"
+                    >
+                      <option value="priority">Sort: Priority Order</option>
+                      <option value="remaining">Sort: Remaining Amount</option>
+                      <option value="pct">Sort: % Executed</option>
+                      <option value="spent">Sort: Highest Spending</option>
+                      <option value="name">Sort: Alphabetical</option>
+                    </select>
                   </div>
                 </div>
+              </div>
 
-                {/* STATUS LEGEND BAR */}
-                <div className="flex flex-wrap items-center gap-3 bg-slate-950/40 p-2.5 rounded-2xl border border-slate-850 text-[10px] font-bold">
-                  <span className="text-slate-500 uppercase tracking-wider">Status Legend:</span>
-                  <span className="flex items-center gap-1.5 text-slate-400"><span className="w-2 h-2 rounded-full bg-slate-700" /> Not Started</span>
-                  <span className="flex items-center gap-1.5 text-emerald-400"><span className="w-2 h-2 rounded-full bg-emerald-500" /> On Track</span>
-                  <span className="flex items-center gap-1.5 text-orange-400"><span className="w-2 h-2 rounded-full bg-orange-500" /> Near Limit (90-99%)</span>
-                  <span className="flex items-center gap-1.5 text-emerald-400"><span className="w-2 h-2 rounded-full bg-emerald-400" /> Completed</span>
-                  <span className="flex items-center gap-1.5 text-rose-400"><span className="w-2 h-2 rounded-full bg-rose-500" /> Overspent</span>
-                </div>
+              {/* VERTICAL PRIORITY DASHBOARD SECTIONS */}
+              <div className="space-y-6">
+                {/* SECTION 1: FIXED COMMITMENTS & DEBT */}
+                {fixedCommitmentBudgets.length > 0 && (
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center bg-slate-900/60 p-3 rounded-2xl border border-slate-850">
+                      <h3 className="text-xs font-black text-white flex items-center gap-2 uppercase tracking-wider">
+                        <Lock className="w-4 h-4 text-purple-400" /> 🔒 Fixed Commitments & Mandatory Debt ({fixedCommitmentBudgets.length})
+                      </h3>
+                      <div className="flex items-center space-x-3 text-[10px] font-mono font-bold text-slate-400">
+                        <span>Planned: ₹{fixedCommitmentBudgets.reduce((s, b) => s + (b.effectiveLimit || b.limit_amount), 0).toLocaleString('en-IN')}</span>
+                        <span>Executed: ₹{fixedCommitmentBudgets.reduce((s, b) => s + b.spent, 0).toLocaleString('en-IN')}</span>
+                      </div>
+                    </div>
 
-                {filteredBudgets.length === 0 ? (
+                    <div className="space-y-2">
+                      {fixedCommitmentBudgets.map(b => renderCategoryPriorityRow(b))}
+                    </div>
+                  </div>
+                )}
+
+                {/* SECTION 2: VARIABLE EXPENSES & SAVINGS */}
+                {variableBudgets.length > 0 && (
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center bg-slate-900/60 p-3 rounded-2xl border border-slate-850">
+                      <h3 className="text-xs font-black text-white flex items-center gap-2 uppercase tracking-wider">
+                        <ShoppingBag className="w-4 h-4 text-emerald-400" /> 🛒 Variable Expenses & Savings ({variableBudgets.length})
+                      </h3>
+                      <div className="flex items-center space-x-3 text-[10px] font-mono font-bold text-slate-400">
+                        <span>Planned: ₹{variableBudgets.reduce((s, b) => s + (b.effectiveLimit || b.limit_amount), 0).toLocaleString('en-IN')}</span>
+                        <span>Executed: ₹{variableBudgets.reduce((s, b) => s + b.spent, 0).toLocaleString('en-IN')}</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      {variableBudgets.map(b => renderCategoryPriorityRow(b))}
+                    </div>
+                  </div>
+                )}
+
+                {processedBudgets.length === 0 && (
                   <div className="bg-slate-950/40 border border-slate-850 rounded-3xl p-10 text-center space-y-4">
-                    <p className="text-slate-400 text-sm">No active budgets generated for {selectedMonthLabel} {selectedYear}.</p>
+                    <p className="text-slate-400 text-sm">No active budgets match your filters for {selectedMonthLabel} {selectedYear}.</p>
                     <Button onClick={() => setActiveTab('plan')} variant="primary" className="text-xs py-2 bg-purple-600 hover:bg-purple-700">
                       Go to Monthly Financial Plan to Set Allocations
                     </Button>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {filteredBudgets.map(b => {
-                      const effLimit = b.effectiveLimit || b.limit_amount;
-                      const pct = effLimit > 0 ? Math.min(100, (b.spent / effLimit) * 100) : 0;
-                      const isOver = b.spent > effLimit;
-                      const isCompleted = b.spent === effLimit && effLimit > 0;
-                      const isNotStarted = b.spent === 0;
-
-                      let statusBadge = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
-                      let statusText = 'On Track';
-                      let barColor = 'bg-emerald-500';
-
-                      const matchCat = categories.find(c => c.id === b.category_id);
-                      const grp = matchCat ? getCategoryGroup(matchCat) : 'Expenses';
-
-                      if (isNotStarted) {
-                        statusBadge = 'bg-slate-800/80 text-slate-400 border-slate-700';
-                        statusText = 'Not Started';
-                        barColor = 'bg-slate-700';
-                      } else if (isCompleted) {
-                        statusBadge = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
-                        statusText = 'Completed';
-                        barColor = 'bg-emerald-500';
-                      } else if (isOver) {
-                        statusBadge = 'bg-rose-500/10 text-rose-400 border-rose-500/20';
-                        statusText = 'Overspent';
-                        barColor = 'bg-rose-500';
-                      } else if (pct >= 90) {
-                        statusBadge = 'bg-orange-500/10 text-orange-400 border-orange-500/20';
-                        statusText = 'Near Limit';
-                        barColor = 'bg-orange-500';
-                      } else if (grp === 'Savings') {
-                        barColor = 'bg-blue-500';
-                      } else if (grp === 'Investments') {
-                        barColor = 'bg-purple-500';
-                      }
-
-                      const priBadge = PRIORITY_BADGES[b.priority || 'essential'];
-                      const allocItem = salaryAllocations.find(a => a.category_id === b.category_id);
-
-                      // Variance calculation: Planned Limit - Actual Spent
-                      const rawVariance = effLimit - b.spent;
-                      let varianceLabel = 'On Budget (₹0)';
-                      let varianceClass = 'text-emerald-400';
-
-                      if (rawVariance > 0) {
-                        varianceLabel = `Under Budget (+₹${rawVariance.toLocaleString('en-IN')})`;
-                        varianceClass = 'text-emerald-400';
-                      } else if (rawVariance < 0) {
-                        varianceLabel = `Overspent (-₹${Math.abs(rawVariance).toLocaleString('en-IN')})`;
-                        varianceClass = 'text-rose-400';
-                      }
-
-                      return (
-                        <div
-                          key={b.id}
-                          className="bg-slate-950/40 border border-slate-850 p-4.5 rounded-3xl space-y-3.5 dashboard-card-hover transition hover:border-purple-500/30 relative"
-                        >
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <div className="flex items-center space-x-2">
-                                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: b.category_color }} />
-                                <h3 className="font-extrabold text-white text-sm">{b.category_name}</h3>
-                              </div>
-                              <div className="mt-1 flex items-center space-x-1.5 flex-wrap gap-1">
-                                <span className="px-2 py-0.5 rounded text-[8px] font-black uppercase border bg-slate-900 text-slate-300 border-slate-800">
-                                  {grp}
-                                </span>
-                                <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase border ${priBadge.color}`}>
-                                  {priBadge.label}
-                                </span>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center space-x-1">
-                              <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase border ${statusBadge}`}>
-                                {statusText}
-                              </span>
-                              <button onClick={() => openEdit(b)} className="p-1 text-slate-500 hover:text-white transition">
-                                <Pencil className="w-3.5 h-3.5" />
-                              </button>
-                              <button onClick={() => handleDelete(b.id)} className="p-1 text-slate-500 hover:text-rose-400 transition">
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </div>
-
-                          {/* Planned vs Actual vs Remaining vs Variance */}
-                          <div className="grid grid-cols-2 gap-2 bg-slate-900/40 p-2.5 rounded-2xl border border-slate-850/60 text-[10px]">
-                            <div>
-                              <span className="text-slate-500 font-bold uppercase">Planned:</span>
-                              <p className="font-mono text-purple-400 font-black">₹{allocItem ? allocItem.amount.toLocaleString('en-IN') : effLimit.toLocaleString('en-IN')}</p>
-                            </div>
-                            <div>
-                              <span className="text-slate-500 font-bold uppercase">Actual Spent:</span>
-                              <p className="font-mono text-white font-black">₹{b.spent.toLocaleString('en-IN')}</p>
-                            </div>
-                            <div>
-                              <span className="text-slate-500 font-bold uppercase">Remaining:</span>
-                              <p className={`font-mono font-black ${isOver ? 'text-rose-400' : 'text-emerald-400'}`}>
-                                ₹{(effLimit - b.spent).toLocaleString('en-IN')}
-                              </p>
-                            </div>
-                            <div>
-                              <span className="text-slate-500 font-bold uppercase">Variance:</span>
-                              <p className={`font-mono font-black ${varianceClass}`}>
-                                {varianceLabel}
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* Visual Progress Bar */}
-                          <div className="space-y-1">
-                            <div className="h-2.5 w-full bg-slate-900 rounded-full overflow-hidden">
-                              <div
-                                className={`h-full rounded-full transition-all duration-300 ${barColor}`}
-                                style={{ width: `${pct}%` }}
-                              />
-                            </div>
-                            <div className="flex justify-between text-[9px] text-slate-500 font-bold">
-                              <span>{pct.toFixed(0)}% executed</span>
-                              <span>{isCompleted ? '100% Reached' : `${b.spent.toLocaleString('en-IN')} / ${effLimit.toLocaleString('en-IN')}`}</span>
-                            </div>
-                          </div>
-
-                          {/* Forecast / Footer Note */}
-                          <div className="pt-2 border-t border-slate-900/60 flex justify-between items-center text-[10px]">
-                            <span className="text-slate-400 font-medium">Status Note:</span>
-                            {isCompleted ? (
-                              <span className="font-mono font-black text-emerald-400 flex items-center gap-1">
-                                Budget successfully completed ✅
-                              </span>
-                            ) : isOver ? (
-                              <span className="font-mono font-black text-rose-400 flex items-center gap-1">
-                                Overspent by ₹{(b.spent - effLimit).toLocaleString('en-IN')} ⚠️
-                              </span>
-                            ) : isNotStarted ? (
-                              <span className="font-mono font-bold text-slate-500">
-                                No activity yet ⚪
-                              </span>
-                            ) : (
-                              <span className={`font-mono font-black ${b.isForecastOver ? 'text-rose-400' : 'text-slate-300'}`}>
-                                Forecast: ₹{(b.forecastedEnd || 0).toLocaleString('en-IN')} {b.isForecastOver ? '⚠️' : '✅'}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
                   </div>
                 )}
               </div>
             </div>
           )}
 
-          {/* TAB 3: PREDICTIVE SPEND FORECAST */}
-          {activeTab === 'forecast' && (
-            <div className="space-y-6">
-              <div className="bg-slate-950/40 border border-slate-850 p-6 rounded-3xl space-y-4">
-                <h2 className="text-sm font-black text-white flex items-center gap-2">
-                  📈 Month-End Predictive Spend Projection
-                </h2>
-                <p className="text-xs text-slate-400">Based on your daily spending velocity and category limits for {selectedMonthLabel} {selectedYear}.</p>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-                  {budgets.map(b => (
-                    <div key={b.id} className="p-4 bg-slate-900/40 border border-slate-850 rounded-2xl space-y-2">
-                      <div className="flex justify-between items-center">
-                        <span className="font-extrabold text-white text-xs">{b.category_name}</span>
-                        <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded border ${
-                          b.isForecastOver ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                        }`}>
-                          {b.isForecastOver ? 'Over Forecast' : 'Within Limit'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-end text-xs font-mono">
-                        <span className="text-slate-400">Current Spend: ₹{b.spent.toLocaleString('en-IN')}</span>
-                        <span className="text-purple-400 font-bold">Est. Final: ₹{(b.forecastedEnd || 0).toLocaleString('en-IN')}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 4: VENKE AI ADVISOR */}
+          {/* TAB 3: VENKE AI ADVISOR */}
           {activeTab === 'ai' && (
             <div className="space-y-6">
               <div className="bg-slate-950/40 border border-slate-850 p-6 rounded-3xl space-y-4">
@@ -1250,4 +1270,170 @@ export default function Budgets() {
       )}
     </div>
   );
+
+  // Helper render function for vertical category priority row
+  function renderCategoryPriorityRow(b: Budget) {
+    const effLimit = b.effectiveLimit || b.limit_amount;
+    const pct = effLimit > 0 ? Math.min(100, (b.spent / effLimit) * 100) : 0;
+    const isOver = b.spent > effLimit;
+    const isCompleted = b.spent === effLimit && effLimit > 0;
+    const isNotStarted = b.spent === 0;
+    const isExpanded = !!expandedRows[b.id];
+
+    let statusBadge = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+    let statusText = 'On Track';
+    let barColor = 'bg-emerald-500';
+
+    const matchCat = categories.find(c => c.id === b.category_id);
+    const grp = matchCat ? getCategoryGroup(matchCat) : 'Expenses';
+
+    if (isNotStarted) {
+      statusBadge = 'bg-slate-800/80 text-slate-400 border-slate-700';
+      statusText = 'Not Started';
+      barColor = 'bg-slate-700';
+    } else if (isCompleted) {
+      statusBadge = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+      statusText = 'Completed';
+      barColor = 'bg-emerald-500';
+    } else if (isOver) {
+      statusBadge = 'bg-rose-500/10 text-rose-400 border-rose-500/20';
+      statusText = 'Overspent';
+      barColor = 'bg-rose-500';
+    } else if (pct >= 90) {
+      statusBadge = 'bg-orange-500/10 text-orange-400 border-orange-500/20';
+      statusText = 'Near Limit';
+      barColor = 'bg-orange-500';
+    } else if (grp === 'Savings') {
+      barColor = 'bg-blue-500';
+    } else if (grp === 'Investments') {
+      barColor = 'bg-purple-500';
+    }
+
+    const priBadge = PRIORITY_BADGES[b.priority || 'essential'];
+    const allocItem = salaryAllocations.find(a => a.category_id === b.category_id);
+    const remainingAmount = effLimit - b.spent;
+
+    // Filter recent monthly transactions for this category
+    const catTransactions = transactions.filter(t => {
+      if (t.category_id !== b.category_id) return false;
+      if (!t.date) return false;
+      const d = new Date(t.date);
+      return (d.getMonth() + 1) === selectedMonth && d.getFullYear() === selectedYear;
+    }).slice(0, 5);
+
+    return (
+      <div
+        key={b.id}
+        className="bg-slate-950/40 border border-slate-850 rounded-2xl overflow-hidden transition hover:border-purple-500/30"
+      >
+        {/* MAIN HORIZONTAL ROW */}
+        <div
+          onClick={() => toggleRowExpanded(b.id)}
+          className="p-4 cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-3 select-none"
+        >
+          <div className="flex items-center space-x-3">
+            <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: b.category_color }} />
+            <div>
+              <div className="flex items-center space-x-2 flex-wrap gap-1">
+                <h4 className="font-extrabold text-white text-sm">{b.category_name}</h4>
+                <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase border ${statusBadge}`}>
+                  {statusText}
+                </span>
+                <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase border ${priBadge.color}`}>
+                  {priBadge.label}
+                </span>
+              </div>
+              <p className="text-[10px] text-slate-500 mt-0.5 font-medium">
+                {isCompleted ? 'Budget completed ✅' : isOver ? `Exceeded by ₹${(b.spent - effLimit).toLocaleString('en-IN')} ⚠️` : isNotStarted ? 'No activity yet ⚪' : `Expected Completion: ₹${(b.forecastedEnd || 0).toLocaleString('en-IN')}`}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-4 shrink-0">
+            {/* SPENT / PLANNED & REMAINING */}
+            <div className="text-right">
+              <p className="text-xs font-mono font-black text-white">
+                ₹{b.spent.toLocaleString('en-IN')} <span className="text-[10px] text-slate-400 font-semibold">/ ₹{effLimit.toLocaleString('en-IN')}</span>
+              </p>
+              <p className={`text-[10px] font-mono font-extrabold ${remainingAmount >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                {remainingAmount >= 0 ? `₹${remainingAmount.toLocaleString('en-IN')} remaining` : `₹${Math.abs(remainingAmount).toLocaleString('en-IN')} over`}
+              </p>
+            </div>
+
+            {/* PROGRESS BAR & % */}
+            <div className="w-24 space-y-1 hidden sm:block">
+              <div className="h-2 w-full bg-slate-900 rounded-full overflow-hidden">
+                <div className={`h-full rounded-full ${barColor}`} style={{ width: `${pct}%` }} />
+              </div>
+              <p className="text-[9px] font-mono font-bold text-slate-400 text-right">{pct.toFixed(0)}%</p>
+            </div>
+
+            {/* EXPAND TOGGLE BUTTON */}
+            <button className="p-1 text-slate-500 hover:text-white transition">
+              {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+
+        {/* EXPANDED INLINE DETAILS & ACTIONS */}
+        {isExpanded && (
+          <div className="p-4 bg-slate-900/30 border-t border-slate-900 space-y-4 animate-in fade-in slide-in-from-top-1">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs bg-slate-950/60 p-3 rounded-xl border border-slate-850">
+              <div>
+                <span className="text-[9px] text-slate-500 font-bold uppercase">Planned Allocation</span>
+                <p className="font-mono font-black text-purple-400">₹{allocItem ? allocItem.amount.toLocaleString('en-IN') : effLimit.toLocaleString('en-IN')}</p>
+              </div>
+              <div>
+                <span className="text-[9px] text-slate-500 font-bold uppercase">Actual Spent</span>
+                <p className="font-mono font-black text-white">₹{b.spent.toLocaleString('en-IN')}</p>
+              </div>
+              <div>
+                <span className="text-[9px] text-slate-500 font-bold uppercase">Remaining Balance</span>
+                <p className={`font-mono font-black ${remainingAmount >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  ₹{remainingAmount.toLocaleString('en-IN')}
+                </p>
+              </div>
+              <div>
+                <span className="text-[9px] text-slate-500 font-bold uppercase">Automation Mode</span>
+                <p className="font-mono font-bold text-slate-300 uppercase text-[10px]">{allocItem?.mode || 'flexible'}</p>
+              </div>
+            </div>
+
+            {/* RECENT TRANSACTIONS FOR THIS MONTH */}
+            <div className="space-y-2">
+              <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-wider flex items-center justify-between">
+                <span>Recent Monthly Transactions ({catTransactions.length})</span>
+              </h5>
+
+              {catTransactions.length === 0 ? (
+                <p className="text-[10px] text-slate-500 italic p-2 bg-slate-950/40 rounded-xl">No transactions recorded for {b.category_name} in {selectedMonthLabel} {selectedYear}.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {catTransactions.map((t: any) => (
+                    <div key={t.id} className="p-2 bg-slate-950/50 border border-slate-850 rounded-xl flex justify-between items-center text-xs">
+                      <div>
+                        <p className="font-extrabold text-white text-[11px]">{t.notes || t.category_name}</p>
+                        <p className="text-[9px] text-slate-500">{t.date} • {t.payment_method}</p>
+                      </div>
+                      <span className="font-mono font-black text-rose-400">₹{Number(t.amount).toLocaleString('en-IN')}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* FOCUSED QUICK ACTIONS */}
+            <div className="flex items-center space-x-3 pt-2 border-t border-slate-900/60 justify-end">
+              <Button onClick={() => openEdit(b)} variant="ghost" className="text-xs py-1 px-3 border border-slate-800 text-slate-300">
+                <Pencil className="w-3.5 h-3.5 mr-1 text-purple-400" /> Edit Plan
+              </Button>
+              <Button onClick={() => handleDelete(b.id)} variant="ghost" className="text-xs py-1 px-3 border border-slate-800 text-rose-400 hover:text-rose-300">
+                <Trash2 className="w-3.5 h-3.5 mr-1" /> Delete
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 }
