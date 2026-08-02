@@ -34,6 +34,13 @@ export default function ReadOnlyLicAutomationCard({
     try {
       const res = await axios.get(`${API}/records/automation/lic/${policyId}`);
       setData(res.data);
+      console.log('LIC CARD DATA', {
+        nextScheduledPremium: res.data?.nextScheduledPremium,
+        nextInstallment: res.data?.nextInstallment,
+        isCompleted: res.data?.isCompleted,
+        paidInstallments: res.data?.paidInstallments,
+        pendingInstallments: res.data?.pendingInstallments
+      });
     } catch (_) {
     } finally {
       setLoading(false);
@@ -54,6 +61,8 @@ export default function ReadOnlyLicAutomationCard({
 
   const isEnabled = data.settings?.enabled === 1;
   const lastLog = data.logs && data.logs.length > 0 ? data.logs[0] : null;
+  const nextPrem = data.nextScheduledPremium || data.nextInstallment;
+  const isPolicyCompleted = data.isCompleted === true || (monthsRemaining === 0 && monthsRemaining !== undefined);
 
   return (
     <div className="bg-[#0B1228] border border-[#1E2A4A] rounded-3xl p-5 shadow-xl space-y-4 text-xs font-semibold text-slate-300">
@@ -115,18 +124,22 @@ export default function ReadOnlyLicAutomationCard({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-[#101935] p-3 rounded-2xl border border-[#1E2A4A]">
         <div>
           <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Next Scheduled Premium</span>
-          {data.nextInstallment ? (
+          {nextPrem ? (
             <div>
               <p className="text-xs font-extrabold text-white mt-0.5">
-                {data.nextInstallment.monthYearStr || `${new Date(2000, data.nextInstallment.month - 1).toLocaleString('en-US', { month: 'short' })} ${data.nextInstallment.year}`}: <span className="font-mono text-emerald-400">₹{Number(data.nextInstallment.amount || data.nextInstallment.amount_paid || monthlyPremium).toLocaleString('en-IN')}</span>
+                {nextPrem.monthYearStr || `${new Date(2000, nextPrem.month - 1).toLocaleString('en-US', { month: 'short' })} ${nextPrem.year}`}: <span className="font-mono text-emerald-400">₹{Number(nextPrem.amount || nextPrem.amount_paid || monthlyPremium).toLocaleString('en-IN')}</span>
               </p>
               <span className="text-[9px] text-slate-400 font-medium block mt-0.5">
-                Due: {data.nextInstallment.dueDate || `${String(data.nextInstallment.dueDay || dueDay || 5).padStart(2, '0')} ${new Date(2000, data.nextInstallment.month - 1).toLocaleString('en-US', { month: 'short' })} ${data.nextInstallment.year}`}
+                Due: {nextPrem.dueDate || `${String(nextPrem.dueDay || dueDay || 5).padStart(2, '0')} ${new Date(2000, nextPrem.month - 1).toLocaleString('en-US', { month: 'short' })} ${nextPrem.year}`}
               </span>
             </div>
-          ) : (
+          ) : isPolicyCompleted ? (
             <p className="text-xs font-bold text-emerald-400 mt-0.5">
               All Premiums Completed ✓
+            </p>
+          ) : (
+            <p className="text-xs font-bold text-amber-400 mt-0.5 animate-pulse">
+              Loading next premium...
             </p>
           )}
         </div>

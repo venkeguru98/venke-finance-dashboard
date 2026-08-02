@@ -1944,43 +1944,48 @@ router.get('/automation/:moduleType/:entityId', async (req: Request, res: Respon
       [userId, moduleType, entityId]
     );
 
-    let nextInstallment = null;
+    let nextInstallment: any = null;
+    let isCompleted = false;
+    let paidInstallments = 0;
+    let pendingInstallments = 0;
+
     if (moduleType === 'chit') {
       nextInstallment = await get(
         `SELECT * FROM chit_payments WHERE chit_id = ? AND status != 'Paid' ORDER BY year ASC, month ASC LIMIT 1`,
         [entityId]
       );
     } else if (moduleType === 'lic') {
-      nextInstallment = await get(
-        `SELECT * FROM lic_premium_history WHERE policy_id = ? AND status IN ('Pending', 'Overdue', 'Scheduled') ORDER BY year ASC, month ASC LIMIT 1`,
-        [entityId]
-      );
+      const policyIdNum = Number(entityId);
+      nextInstallment = await LicPolicyScheduleService.getNextScheduledPremium(policyIdNum);
 
-      // CONSISTENCY VALIDATION & SELF-HEALING SCHEDULE REBUILD ENGINE
-      if (!nextInstallment) {
-        const paidStats = await get(
-          `SELECT COUNT(*) as count FROM lic_premium_history WHERE policy_id = ? AND status = 'Paid'`,
-          [entityId]
-        );
-        const policy = await get(`SELECT policy_term, monthly_premium, premium_due_day FROM lic_policies WHERE id = ?`, [entityId]);
-        if (policy) {
-          const paidCount = Number(paidStats?.count || 0);
-          const totalPolicyMonths = Number(policy.policy_term || 10) * 12;
-          const remainingMonths = Math.max(0, totalPolicyMonths - paidCount);
+      const policy = await get(`SELECT policy_term, status FROM lic_policies WHERE id = ?`, [policyIdNum]);
+      const paidRes = await get(`SELECT COUNT(*) as count FROM lic_premium_schedule WHERE policy_id = ? AND status = 'Paid'`, [policyIdNum]);
+      const pendingRes = await get(`SELECT COUNT(*) as count FROM lic_premium_schedule WHERE policy_id = ? AND status = 'Pending'`, [policyIdNum]);
 
-          if (remainingMonths > 0) {
-            console.warn(`[LIC Consistency Warning] Policy #${entityId} has ${remainingMonths} remaining months but missing next premium. Auto-rebuilding schedule...`);
-            await backfillLicHistoricalPremiums(Number(entityId));
-            nextInstallment = await get(
-              `SELECT * FROM lic_premium_history WHERE policy_id = ? AND status IN ('Pending', 'Overdue', 'Scheduled') ORDER BY year ASC, month ASC LIMIT 1`,
-              [entityId]
-            );
-          }
-        }
-      }
+      paidInstallments = Number(paidRes?.count || 0);
+      pendingInstallments = Number(pendingRes?.count || 0);
+
+      const totalPolicyMonths = Number(policy?.policy_term || 15) * 12;
+      isCompleted = totalPolicyMonths > 0 && paidInstallments >= totalPolicyMonths;
+
+      console.log('\nLIC API RESPONSE', JSON.stringify({
+        policyId: policyIdNum,
+        paidInstallments,
+        pendingInstallments,
+        isCompleted,
+        nextScheduledPremium: nextInstallment
+      }, null, 2));
     }
 
-    res.json({ settings, logs, nextInstallment });
+    res.json({ 
+      settings, 
+      logs, 
+      nextInstallment, 
+      nextScheduledPremium: nextInstallment, 
+      isCompleted, 
+      paidInstallments, 
+      pendingInstallments 
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
