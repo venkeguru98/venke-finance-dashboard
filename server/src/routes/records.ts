@@ -1585,8 +1585,94 @@ router.post('/mutual-funds/:id/import', async (req: Request, res: Response) => {
 });
 
 // ─── RECURRING AUTOMATION ENDPOINTS ──────────────────────────────────────────
-import { runRecurringAutomation, generateNextMonthForecast, sendTelegramMessage } from '../services/recurringAutomation';
+import { runRecurringAutomation, generateNextMonthForecast, sendTelegramMessage, getGlobalCheetuAutopilotStatus } from '../services/recurringAutomation';
 
+// ─── GLOBAL CHEETTU AUTOPILOT ENDPOINTS (MUST BE BEFORE PARAMETRIC ROUTES) ─────
+router.get('/automation/chit/global-status', async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  try {
+    const status = await getGlobalCheetuAutopilotStatus(userId);
+    res.json(status);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/automation/chit/global-toggle', async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  try {
+    const rules = await query(`SELECT enabled FROM recurring_commitments WHERE user_id = ? AND module_type = 'chit'`, [userId]);
+    const currentEnabled = rules.some(r => r.enabled === 1);
+    const newEnabled = currentEnabled ? 0 : 1;
+
+    // Toggle global commitment record (entity_id = 0) and all active chit commitments
+    await execute(
+      `INSERT INTO recurring_commitments (user_id, module_type, entity_id, enabled, auto_create, auto_mark_paid)
+       VALUES (?, 'chit', 0, ?, 1, 1)
+       ON CONFLICT(module_type, entity_id) DO UPDATE SET enabled = ?`,
+      [userId, newEnabled, newEnabled]
+    );
+
+    const activeChits = await query(`SELECT id FROM chit_funds WHERE user_id = ? AND status = 'Running'`, [userId]);
+    for (const c of activeChits) {
+      await execute(
+        `INSERT INTO recurring_commitments (user_id, module_type, entity_id, enabled, auto_create, auto_mark_paid)
+         VALUES (?, 'chit', ?, ?, 1, 1)
+         ON CONFLICT(module_type, entity_id) DO UPDATE SET enabled = ?`,
+        [userId, c.id, newEnabled, newEnabled]
+      );
+    }
+
+    const status = await getGlobalCheetuAutopilotStatus(userId);
+    res.json({ success: true, enabled: newEnabled, message: newEnabled ? 'Global autopilot resumed successfully.' : 'Global autopilot paused successfully.', status });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/automation/chit/global-sync', async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  try {
+    const syncRes: any = await runRecurringAutomation(userId, true);
+    const status = await getGlobalCheetuAutopilotStatus(userId);
+    res.json({
+      success: true,
+      message: 'Global Cheetu Sync completed.',
+      processedCount: syncRes?.processedCount || 0,
+      updatedCount: syncRes?.updatedCount || 0,
+      skippedCount: syncRes?.skippedCount || 0,
+      failedCount: syncRes?.failedCount || 0,
+      status
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Send Month-End / Heads-up Commitment Forecast Telegram message
+router.post('/automation/forecast/send-telegram', async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const { isHeadsUp } = req.body;
+  try {
+    const user = await get('SELECT telegram_chat_id FROM users WHERE id = ?', [userId]);
+    if (!user || !user.telegram_chat_id) {
+      return res.status(400).json({ error: 'Telegram chat ID not linked.' });
+    }
+
+    const { text, totalCommitments } = await generateNextMonthForecast(userId, !!isHeadsUp);
+    const ok = await sendTelegramMessage(user.telegram_chat_id, text);
+
+    if (ok) {
+      res.json({ success: true, totalCommitments, message: 'Telegram forecast message sent successfully.' });
+    } else {
+      res.status(500).json({ error: 'Failed to send Telegram forecast message.' });
+    }
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── PARAMETRIC AUTOMATION ROUTES ────────────────────────────────────────────
 // Get automation settings and history for a specific entity
 router.get('/automation/:moduleType/:entityId', async (req: Request, res: Response) => {
   const { moduleType, entityId } = req.params;
@@ -1735,77 +1821,6 @@ router.post('/automation/:moduleType/:entityId/pause', async (req: Request, res:
     );
 
     res.json({ success: true, enabled: newEnabled });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Send Month-End / Heads-up Commitment Forecast Telegram message
-router.post('/automation/forecast/send-telegram', async (req: Request, res: Response) => {
-  const userId = req.user!.id;
-  const { isHeadsUp } = req.body;
-  try {
-    const user = await get('SELECT telegram_chat_id FROM users WHERE id = ?', [userId]);
-    if (!user || !user.telegram_chat_id) {
-      return res.status(400).json({ error: 'Telegram chat ID not linked.' });
-    }
-
-    const { text, totalCommitments } = await generateNextMonthForecast(userId, !!isHeadsUp);
-    const ok = await sendTelegramMessage(user.telegram_chat_id, text);
-
-    if (ok) {
-      res.json({ success: true, totalCommitments, message: 'Telegram forecast message sent successfully.' });
-    } else {
-      res.status(500).json({ error: 'Failed to send Telegram forecast message.' });
-    }
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ─── GLOBAL CHEETTU AUTOPILOT ENDPOINTS ──────────────────────────────────────
-import { getGlobalCheetuAutopilotStatus } from '../services/recurringAutomation';
-
-router.get('/automation/chit/global-status', async (req: Request, res: Response) => {
-  const userId = req.user!.id;
-  try {
-    const status = await getGlobalCheetuAutopilotStatus(userId);
-    res.json(status);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-router.post('/automation/chit/global-toggle', async (req: Request, res: Response) => {
-  const userId = req.user!.id;
-  try {
-    const rules = await query(`SELECT enabled FROM recurring_commitments WHERE user_id = ? AND module_type = 'chit'`, [userId]);
-    const currentEnabled = rules.some(r => r.enabled === 1);
-    const newEnabled = currentEnabled ? 0 : 1;
-
-    // Toggle all user chit commitments
-    const activeChits = await query(`SELECT id FROM chit_funds WHERE user_id = ? AND status = 'Running'`, [userId]);
-    for (const c of activeChits) {
-      await execute(
-        `INSERT INTO recurring_commitments (user_id, module_type, entity_id, enabled, auto_create, auto_mark_paid)
-         VALUES (?, 'chit', ?, ?, 1, 1)
-         ON CONFLICT(module_type, entity_id) DO UPDATE SET enabled = ?`,
-        [userId, c.id, newEnabled, newEnabled]
-      );
-    }
-
-    res.json({ success: true, enabled: newEnabled });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-router.post('/automation/chit/global-sync', async (req: Request, res: Response) => {
-  const userId = req.user!.id;
-  try {
-    await runRecurringAutomation(userId, true);
-    const status = await getGlobalCheetuAutopilotStatus(userId);
-    res.json({ success: true, message: 'Global Cheetu Sync completed.', status });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

@@ -40,23 +40,31 @@ export default function GlobalCheetuAutopilotController({ onSyncComplete }: Glob
 
   const handleGlobalToggle = async () => {
     try {
-      await axios.post(`${API}/records/automation/chit/global-toggle`);
-      fetchGlobalStatus();
+      const res = await axios.post(`${API}/records/automation/chit/global-toggle`);
+      if (res.data.status) setData(res.data.status);
+      else fetchGlobalStatus();
       onSyncComplete();
-    } catch (_) {
-      alert('Error toggling global autopilot.');
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Error toggling global autopilot.');
     }
   };
 
   const handleRunManualSync = async () => {
     setSyncing(true);
     try {
-      await axios.post(`${API}/records/automation/chit/global-sync`);
-      alert('Global Cheetu Sync completed across all active chits.');
-      await fetchGlobalStatus();
+      const res = await axios.post(`${API}/records/automation/chit/global-sync`);
+      if (res.data.status) setData(res.data.status);
+      else fetchGlobalStatus();
+      
+      const msg = res.data.message || 'Global Cheetu Sync completed.';
+      const statsStr = res.data.updatedCount !== undefined 
+        ? `\nUpdated: ${res.data.updatedCount}, Skipped: ${res.data.skippedCount || 0}`
+        : '';
+      alert(`${msg}${statsStr}`);
+
       onSyncComplete();
-    } catch (_) {
-      alert('Error running manual sync.');
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Error running manual sync.');
     } finally {
       setSyncing(false);
     }

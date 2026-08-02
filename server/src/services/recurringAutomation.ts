@@ -90,6 +90,11 @@ export async function runRecurringAutomation(userId: number = 1, forceRun: boole
   const currentYear = now.getFullYear();
   const dateStr = now.toISOString().split('T')[0];
 
+  let processedCount = 0;
+  let updatedCount = 0;
+  let skippedCount = 0;
+  let failedCount = 0;
+
   // Fetch user telegram chat ID
   const user = await get('SELECT telegram_chat_id FROM users WHERE id = ?', [userId]);
   const chatId = user?.telegram_chat_id;
@@ -102,14 +107,19 @@ export async function runRecurringAutomation(userId: number = 1, forceRun: boole
 
   for (const rule of rules) {
     const { id, module_type, entity_id, auto_create, auto_mark_paid, telegram_confirm, payment_day, last_executed_month, last_executed_year } = rule;
+    processedCount++;
 
     try {
       if (module_type === 'chit') {
         const chit = await get('SELECT * FROM chit_funds WHERE id = ?', [entity_id]);
-        if (!chit || chit.status === 'Completed' || chit.status === 'Closed') continue;
+        if (!chit || chit.status === 'Completed' || chit.status === 'Closed') {
+          skippedCount++;
+          continue;
+        }
 
         // Safeguard: Check monthly execution state (execute once per chit per month unless forceRun)
         if (!forceRun && last_executed_month === currentMonth && last_executed_year === currentYear) {
+          skippedCount++;
           continue; // Already executed for this month
         }
 
@@ -139,6 +149,7 @@ export async function runRecurringAutomation(userId: number = 1, forceRun: boole
               `UPDATE recurring_commitments SET last_executed_month = ?, last_executed_year = ? WHERE id = ?`,
               [currentMonth, currentYear, id]
             );
+            skippedCount++;
             continue;
           }
 
@@ -154,6 +165,7 @@ export async function runRecurringAutomation(userId: number = 1, forceRun: boole
 
           // 4. Recalculate chit summary metrics
           await recalculateChitMetrics(entity_id);
+          updatedCount++;
 
           // 5. Update execution tracking
           await execute(
@@ -184,10 +196,15 @@ export async function runRecurringAutomation(userId: number = 1, forceRun: boole
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Automated payment schedule row updated & synchronized')`,
             [userId, module_type, entity_id, auto_mark_paid ? 'Auto-marked Paid' : 'Auto-updated', amt, existing.month, existing.year, telegramSent]
           );
+        } else {
+          skippedCount++;
         }
       } else if (module_type === 'gold') {
         const gold = await get('SELECT * FROM digital_gold WHERE id = ?', [entity_id]);
-        if (!gold) continue;
+        if (!gold) {
+          skippedCount++;
+          continue;
+        }
 
         const existing = await get(
           'SELECT * FROM digital_gold_transactions WHERE gold_id = ? AND month = ? AND year = ?',
@@ -202,6 +219,7 @@ export async function runRecurringAutomation(userId: number = 1, forceRun: boole
               [userId, module_type, entity_id, existing.amount, currentMonth, currentYear]
             );
           }
+          skippedCount++;
           continue;
         }
 
@@ -212,6 +230,7 @@ export async function runRecurringAutomation(userId: number = 1, forceRun: boole
              VALUES (?, ?, ?, ?, 'Auto-generated recurring purchase')`,
             [entity_id, currentMonth, currentYear, amt]
           );
+          updatedCount++;
 
           await execute(
             `UPDATE recurring_commitments SET last_run_date = ?, last_executed_month = ?, last_executed_year = ? WHERE id = ?`,
@@ -238,10 +257,15 @@ export async function runRecurringAutomation(userId: number = 1, forceRun: boole
              VALUES (?, ?, ?, 'Auto-marked Purchased', ?, ?, ?, ?, 'Automated gold purchase entry')`,
             [userId, module_type, entity_id, amt, currentMonth, currentYear, telegramSent]
           );
+        } else {
+          skippedCount++;
         }
       } else if (module_type === 'lic') {
         const policy = await get('SELECT * FROM lic_policies WHERE id = ?', [entity_id]);
-        if (!policy || policy.status === 'Completed') continue;
+        if (!policy || policy.status === 'Completed') {
+          skippedCount++;
+          continue;
+        }
 
         const existing = await get(
           'SELECT * FROM lic_premium_history WHERE policy_id = ? AND month = ? AND year = ?',
@@ -256,6 +280,7 @@ export async function runRecurringAutomation(userId: number = 1, forceRun: boole
               [userId, module_type, entity_id, existing.amount_paid, currentMonth, currentYear]
             );
           }
+          skippedCount++;
           continue;
         }
 
@@ -268,6 +293,7 @@ export async function runRecurringAutomation(userId: number = 1, forceRun: boole
              VALUES (?, ?, ?, ?, ?, ?, 'Auto-generated recurring premium')`,
             [entity_id, currentMonth, currentYear, amt, dateStr, status]
           );
+          updatedCount++;
 
           await execute(
             `UPDATE recurring_commitments SET last_run_date = ?, last_executed_month = ?, last_executed_year = ? WHERE id = ?`,
@@ -292,12 +318,17 @@ export async function runRecurringAutomation(userId: number = 1, forceRun: boole
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Automated premium entry generated')`,
             [userId, module_type, entity_id, auto_mark_paid ? 'Auto-marked Paid' : 'Auto-created', amt, currentMonth, currentYear, telegramSent]
           );
+        } else {
+          skippedCount++;
         }
       }
     } catch (err: any) {
+      failedCount++;
       console.error(`[Automation Error] Module: ${module_type}, ID: ${entity_id}`, err);
     }
   }
+
+  return { processedCount, updatedCount, skippedCount, failedCount };
 }
 
 // ─── GENERATE NEXT MONTH COMMITMENT FORECAST (TELEGRAM) ────────────────────
@@ -432,8 +463,11 @@ export async function generateNextMonthForecast(userId: number = 1, isHeadsUp: b
 
 // ─── GLOBAL CHEETTU AUTOPILOT STATUS HELPER ────────────────────────────────
 export async function getGlobalCheetuAutopilotStatus(userId: number = 1) {
-  const activeChits = await query(`SELECT * FROM chit_funds WHERE user_id = ? AND status = 'Running'`, [userId]);
-  const activeCount = activeChits.length;
+  let activeChits = await query(`SELECT * FROM chit_funds WHERE user_id = ? AND (status = 'Running' OR status IS NULL OR status != 'Completed')`, [userId]);
+  if (!activeChits || activeChits.length === 0) {
+    activeChits = await query(`SELECT * FROM chit_funds WHERE user_id = ?`, [userId]);
+  }
+  const activeCount = activeChits ? activeChits.length : 0;
 
   const rules = await query(`SELECT * FROM recurring_commitments WHERE user_id = ? AND module_type = 'chit'`, [userId]);
   const isEnabled = rules.some(r => r.enabled === 1);
