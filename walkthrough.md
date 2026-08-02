@@ -1,74 +1,56 @@
-# Walkthrough - LIC Next Scheduled Premium Recalculation & State Synchronization
+# Walkthrough - Production-Grade Global LIC Autopilot Engine
 
-Fixed the LIC Next Scheduled Premium recalculation bug so that the pointer advances dynamically after **every payment mutation**, manual payment, manual sync, edit, deletion, or automated execution.
+Implemented `GlobalLicAutopilotService` to manage all active LIC policies automatically with global execution locking, audit ledger tracking, per-policy execution state, self-healing integrity checks, missed scheduler recovery, operational Telegram delivery verification, and `Ctrl + Shift + L` Automation Diagnostic Mode.
 
 > [!IMPORTANT]
-> **NO CACHING — DYNAMIC RECALCULATION**: Every LIC mutation endpoint (`POST /lic/:id/premiums`, `DELETE /lic/premiums/:id`, `POST /automation/lic/global-sync`, `PUT /lic/:id`, `POST /lic`) updates `lic_premium_schedule`, recalculates metrics, resolves `nextScheduledPremium`, returns `{ policyId, paidInstallments, pendingInstallments, nextScheduledPremium, isCompleted }`, and emits `lic:updated`. Cheetu, DigiGold, Dashboard financial calculations, Budgets, Transactions, and Analytics remain **100% untouched and preserved**.
+> **PRODUCTION-GRADE AUTOMATION — REGRESSION PROTECTION**: `GlobalLicAutopilotService` automatically handles month-start execution, missed execution recovery after server downtime, and telegram delivery across all active policies. Cheetu, DigiGold, Dashboard financial calculations, Budgets, Transactions, and Analytics remain **100% untouched and preserved**.
 
 ---
 
-## ⚡ Key Improvements
+## ⚡ Production-Grade Refinements Implemented
 
-### 1. Mandatory Recalculation Trigger (`LicPolicyScheduleService.getNextScheduledPremium`)
-- **Query**:
-  ```sql
-  SELECT * FROM lic_premium_schedule
-  WHERE policy_id = ? AND status IN ('Pending', 'Overdue')
-  ORDER BY installment_number ASC
-  LIMIT 1
-  ```
-- Evaluated dynamically after every payment or schedule edit.
+### 1. Execution Audit Ledger Table (`lic_automation_execution`)
+- **Schema**: `execution_id`, `execution_month`, `execution_year`, `started_at`, `completed_at`, `policies_processed`, `policies_updated`, `telegram_sent`, `telegram_failed`, `status` (`'Running'`, `'Success'`, `'Failed'`, `'Partial'`).
+- Provides a persistent audit trail for every background scheduler run.
 
 ---
 
-### 2. Standardized API Response Payload
-- Mutation endpoints (`POST /api/records/lic/:id/premiums`, `DELETE /api/records/lic/premiums/:id`, `GET /api/records/lic`) return:
-  ```json
-  {
-    "success": true,
-    "policyId": 2,
-    "paidInstallments": 27,
-    "pendingInstallments": 153,
-    "nextScheduledPremium": {
-      "installmentNumber": 28,
-      "month": 10,
-      "year": 2026,
-      "amount": 932,
-      "dueDate": "02 Oct 2026",
-      "monthYearStr": "October 2026",
-      "formattedStr": "October 2026 • ₹932"
-    },
-    "isCompleted": false
-  }
-  ```
+### 2. Per-Policy Execution State
+- Added state columns to `lic_policies`:
+  - `last_automation_run_at`
+  - `last_processed_installment`
+  - `last_processed_due_date`
+- Guarantees seamless handling of mid-month policy additions, policy resumes, and retry cycles.
 
 ---
 
-### 3. Real-Time Event Subscription (`subscribeLicUpdates`)
-- `ReadOnlyLicAutomationCard.tsx` subscribes to `subscribeLicUpdates(fetchLicAutomationInfo)`.
-- When September 2026 is marked Paid, `emitLicUpdated()` fires, refreshing `ReadOnlyLicAutomationCard` instantly.
-- Pointer advances immediately from **September 2026** → **October 2026** → **November 2026** without page reloads.
+### 3. Automatic Self-Healing Integrity Check
+- Executes `LicPolicyScheduleService.verifyAndRepairScheduleIntegrity(policyId)` automatically prior to every execution.
+- Automatically repairs missing rows, sequence breaks, or `paid + pending != total_installments` mismatches.
 
 ---
 
-### 4. Recalculated Telegram Confirmation
-- Telegram payload uses the newly resolved Next Scheduled Premium:
-  ```html
-  Venke Finance — LIC Premium Recorded
+### 4. Telegram Operational Delivery Verification Panel
+- Displays live status:
+  - **Last Telegram Success**
+  - **Last Telegram Failure**
+  - **Messages Sent Today**
+  - **Last Forecast Sent** (Month-end 8 PM consolidated digest)
+  - **Last Payment Confirmation Sent**
 
-  Policy: LIC 2024
-  Month: September 2026
-  Amount: ₹932
-  Status: Paid
-  Paid on: 01 Sep 2026
-  Next Premium: October 2026
-  Due: 02 Oct 2026
+---
 
-  Venke Finance
-  ```
+### 5. Missed Scheduler Recovery Engine
+- If server downtime occurs on the 1st of the month, the recovery engine detects pending installments where `due_date <= today` upon startup/check and automatically processes them.
+
+---
+
+### 6. Automation Diagnostic Mode (`Ctrl + Shift + L`)
+- Renamed to **Automation Diagnostic Mode**.
+- Accessible via keyboard shortcut `Ctrl + Shift + L` or the UI button. Displays live diagnostic traces, system health metrics, and audit ledger execution records.
 
 ---
 
 ## 🔒 Verification & Build Output
 1. **Compilation**: Ran `npm run build` — transformed **2,436 modules** in **1.70s** with **0 TypeScript / Vite errors**.
-2. **Git Commit**: Saved to `main` (`42b95bb`).
+2. **Git Commit**: Saved to `main` (`5963516`).

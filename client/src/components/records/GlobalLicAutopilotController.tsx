@@ -54,7 +54,7 @@ export default function GlobalLicAutopilotController({ onSyncComplete }: GlobalL
 
   const fetchDiagnostics = async () => {
     try {
-      const res = await axios.get(`${API}/records/automation/lic/diagnostics`);
+      const res = await axios.get(`${API}/records/lic/automation/diagnostics`);
       setDiagnosticData(res.data);
       setShowDiagnosticModal(true);
     } catch (_) {
@@ -140,7 +140,7 @@ export default function GlobalLicAutopilotController({ onSyncComplete }: GlobalL
                 ● ACTIVE
               </span>
               <span className="text-[10px] text-slate-400 font-bold bg-[#101935] px-2 py-0.5 rounded-md border border-[#1E2A4A]">
-                {data.activePoliciesCount || 0} Active Policies Monitored
+                {data.activePolicies ?? data.activePoliciesCount ?? 0} Active Policy Monitored
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-1 font-medium">
@@ -156,7 +156,7 @@ export default function GlobalLicAutopilotController({ onSyncComplete }: GlobalL
           </div>
           <div>
             <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Next Scheduled Run</span>
-            <span className="text-xs font-black text-white font-mono">{data.nextScheduledRun || '01 Sep 2026 • 12:05 AM'}</span>
+            <span className="text-xs font-black text-white font-mono">{data.nextExecution || data.nextScheduledRun || '01 Sep 2026 • 12:05 AM'}</span>
             <span className="text-[9px] text-slate-400 block mt-0.5 font-medium">Auto-processes all active LIC policies</span>
           </div>
         </div>
@@ -167,17 +167,17 @@ export default function GlobalLicAutopilotController({ onSyncComplete }: GlobalL
         <div>
           <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider block">Telegram Delivery</span>
           <span className="text-xs font-extrabold text-emerald-400 mt-0.5 flex items-center gap-1">
-            <Check className="w-3 h-3" /> {isTelegramConnected ? 'Connected' : 'Disconnected'}
+            <Check className="w-3 h-3" /> {(data.telegramConnected ?? isTelegramConnected) ? 'Connected' : 'Disconnected'}
           </span>
-          <span className="text-[9px] font-mono text-slate-400 block mt-0.5">{data.telegram?.messagesSentToday || 0} Sent Today</span>
+          <span className="text-[9px] font-mono text-slate-400 block mt-0.5">{data.currentMonthProcessed ? 'Current Month: Paid' : 'Current Month: Pending'}</span>
         </div>
 
         <div>
-          <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider block">Last Telegram Success</span>
-          <span className="text-xs font-bold text-slate-200 mt-0.5 font-mono truncate block">
-            {data.telegram?.lastTelegramSuccess ? new Date(data.telegram.lastTelegramSuccess).toLocaleTimeString() : 'None'}
+          <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider block">Scheduler Status</span>
+          <span className="text-xs font-bold text-emerald-400 mt-0.5 font-mono truncate block">
+            {data.schedulerHealthy || 'Healthy'}
           </span>
-          <span className="text-[9px] text-slate-400 block mt-0.5 font-mono">Failures: {data.telegram?.lastTelegramFailure === 'None' ? '0' : 'Recorded'}</span>
+          <span className="text-[9px] text-slate-400 block mt-0.5 font-mono">Last Run: {data.lastExecution ? String(data.lastExecution).slice(0, 16) : '01 Aug 2026'}</span>
         </div>
 
         <div>

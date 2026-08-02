@@ -316,6 +316,16 @@ router.get('/lic', async (req: Request, res: Response) => {
       const monthsRemaining = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24 * 30.4375)));
       const completionPct = Math.min(100, Math.round((countPaid / totalInstallments) * 100));
 
+      const currM = today.getMonth() + 1;
+      const currY = today.getFullYear();
+
+      // Current month installment status strictly from lic_premium_schedule
+      const currMonthRow = await get(
+        `SELECT status FROM lic_premium_schedule WHERE policy_id = ? AND month = ? AND year = ?`,
+        [p.id, currM, currY]
+      );
+      const currentMonthStatus = currMonthRow?.status || 'Pending';
+
       const isCompleted = totalInstallments > 0 && countPaid >= totalInstallments;
       const nextScheduledPremium = await LicPolicyScheduleService.getNextScheduledPremium(p.id);
 
@@ -323,6 +333,7 @@ router.get('/lic', async (req: Request, res: Response) => {
         policyId: p.id,
         paidInstallments: countPaid,
         pendingInstallments: remainingInstallments,
+        currentMonthStatus,
         isCompleted,
         nextScheduledPremium
       }, null, 2));
@@ -340,9 +351,10 @@ router.get('/lic', async (req: Request, res: Response) => {
         monthsRemaining,
         completionPct,
         isCompleted,
+        currentMonthStatus,
         nextScheduledPremium,
         nextInstallment: nextScheduledPremium,
-        isPremiumPending: !isCompleted && isPolicyActive(p)
+        isPremiumPending: currentMonthStatus !== 'Paid' && !isCompleted && isPolicyActive(p)
       });
     }
 
@@ -1807,12 +1819,34 @@ router.post('/lic/repair-all-schedules', async (req: Request, res: Response) => 
 });
 
 import { GlobalLicAutopilotService } from '../services/GlobalLicAutopilotService';
+import { LicAutomationEngine } from '../services/LicAutomationEngine';
+
+// ─── UNIFIED LIC AUTOMATION ENGINE ENDPOINTS ──────────────────────────────────
+router.get('/lic/automation/state', async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  try {
+    const state = await LicAutomationEngine.getLicAutomationState(userId);
+    res.json(state);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/lic/automation/diagnostics', async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  try {
+    const state = await LicAutomationEngine.getLicAutomationState(userId);
+    res.json(state);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ─── GLOBAL LIC AUTOPILOT ENDPOINTS ──────────────────────────────────────────
 router.get('/automation/lic/global-status', async (req: Request, res: Response) => {
   const userId = req.user!.id;
   try {
-    const status = await GlobalLicAutopilotService.getOperationalMetrics(userId);
+    const status = await LicAutomationEngine.getLicAutomationState(userId);
     res.json(status);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -1823,7 +1857,7 @@ router.post('/automation/lic/global-sync', async (req: Request, res: Response) =
   const userId = req.user!.id;
   try {
     const syncRes: any = await GlobalLicAutopilotService.runGlobalAutopilotExecution(userId, true, 'manual_sync');
-    const status = await GlobalLicAutopilotService.getOperationalMetrics(userId);
+    const status = await LicAutomationEngine.getLicAutomationState(userId);
     res.json({
       success: true,
       message: 'Global LIC Autopilot sync completed.',
@@ -1840,7 +1874,7 @@ router.post('/automation/lic/global-sync', async (req: Request, res: Response) =
 router.get('/automation/lic/diagnostics', async (req: Request, res: Response) => {
   const userId = req.user!.id;
   try {
-    const diag = await GlobalLicAutopilotService.runAutomationDiagnosticSuite(userId);
+    const diag = await LicAutomationEngine.getLicAutomationState(userId);
     res.json(diag);
   } catch (err: any) {
     res.status(500).json({ error: err.message });

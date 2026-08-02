@@ -289,10 +289,18 @@ export default function LicModule({ onBack }: LicModuleProps) {
                         <h3 className="font-bold text-sm text-white">{p.policy_name}</h3>
                         <p className="text-[10px] text-slate-400 font-semibold mt-0.5">No: {p.policy_number}</p>
                       </div>
-                      <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
-                        p.status === 'Completed' ? 'bg-green-500/10 text-green-400' : 'bg-cyan-500/10 text-cyan-400'
+                      <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${
+                        p.currentMonthStatus === 'Paid'
+                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                          : p.currentMonthStatus === 'Overdue'
+                          ? 'bg-red-500/10 text-red-400 border-red-500/20'
+                          : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
                       }`}>
-                        {p.status}
+                        {p.currentMonthStatus === 'Paid'
+                          ? '● Premium Paid'
+                          : p.currentMonthStatus === 'Overdue'
+                          ? '⚠ Premium Overdue'
+                          : '○ Premium Pending'}
                       </span>
                     </div>
 
