@@ -5,6 +5,7 @@ import Button from '../ui/Button';
 import CsvImportModal from './CsvImportModal';
 import GlobalCheetuAutopilotController from './GlobalCheetuAutopilotController';
 import ReadOnlyChitAutomationCard from './ReadOnlyChitAutomationCard';
+import CheetuDeveloperTestConsole from './CheetuDeveloperTestConsole';
 import { formatDisplayDate } from '../../utils/date';
 
 const API = window.location.port === '5173' ? 'http://localhost:5000/api' : '/api';
@@ -22,6 +23,29 @@ export default function ChitModule({ onBack }: ChitModuleProps) {
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [isDetailCollapsed, setIsDetailCollapsed] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+
+  // Developer Test Mode secret gesture
+  const [showDevConsole, setShowDevConsole] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        setShowDevConsole(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  const clickCountRef = React.useRef(0);
+  const handleTitleClick = () => {
+    clickCountRef.current += 1;
+    if (clickCountRef.current >= 7) {
+      setShowDevConsole(true);
+      clickCountRef.current = 0;
+    }
+  };
 
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
@@ -196,7 +220,7 @@ export default function ChitModule({ onBack }: ChitModuleProps) {
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
-            <h1 className="text-xl font-bold text-white flex items-center gap-2">
+            <h1 onClick={handleTitleClick} className="text-xl font-bold text-white flex items-center gap-2 cursor-pointer select-none" title="Triple-click/7-click for Developer Test Console (Ctrl+Shift+A)">
               <Landmark className="w-6 h-6 text-purple-400" /> Chit Fund (Cheetu) Management
             </h1>
             <p className="text-xs text-slate-400 mt-0.5">Manage multiple auction groups, flexible installment amounts, and dividend history logs</p>
@@ -206,6 +230,14 @@ export default function ChitModule({ onBack }: ChitModuleProps) {
           <Plus className="w-4 h-4 mr-1.5" /> Create Chit Group
         </Button>
       </div>
+
+      {/* DEVELOPER TEST CONSOLE MODAL */}
+      {showDevConsole && (
+        <CheetuDeveloperTestConsole
+          onClose={() => setShowDevConsole(false)}
+          onRefreshData={fetchChits}
+        />
+      )}
 
       {/* GLOBAL CHEETTU AUTOPILOT CONTROLLER */}
       <GlobalCheetuAutopilotController onSyncComplete={fetchChits} />

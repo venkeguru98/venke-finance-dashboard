@@ -1585,9 +1585,43 @@ router.post('/mutual-funds/:id/import', async (req: Request, res: Response) => {
 });
 
 // ─── RECURRING AUTOMATION ENDPOINTS ──────────────────────────────────────────
-import { runRecurringAutomation, generateNextMonthForecast, sendTelegramMessage, getGlobalCheetuAutopilotStatus } from '../services/recurringAutomation';
+import { 
+  runRecurringAutomation, 
+  generateNextMonthForecast, 
+  sendTelegramMessage, 
+  getGlobalCheetuAutopilotStatus,
+  runDeveloperAutomationSimulation,
+  runFullAutomationValidationSuite 
+} from '../services/recurringAutomation';
 
 // ─── GLOBAL CHEETTU AUTOPILOT ENDPOINTS (MUST BE BEFORE PARAMETRIC ROUTES) ─────
+router.post('/automation/chit/developer-simulate', async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const { simDate, actionType, commitChanges, sendTelegram } = req.body;
+  try {
+    const result = await runDeveloperAutomationSimulation(
+      userId,
+      simDate,
+      actionType || 'month-start',
+      !!commitChanges,
+      !!sendTelegram
+    );
+    res.json({ success: true, result });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/automation/chit/developer-validate', async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  try {
+    const report = await runFullAutomationValidationSuite(userId);
+    res.json({ success: true, report });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/automation/chit/global-status', async (req: Request, res: Response) => {
   const userId = req.user!.id;
   try {
