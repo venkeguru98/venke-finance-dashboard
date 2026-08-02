@@ -167,6 +167,126 @@ export async function recalculateLicMetrics(policyId: number) {
   }
 }
 
+// ─── SHARED LIC MODULE SUMMARY AGGREGATION SERVICE ─────────────────────────
+export async function getLicModuleSummary(userId: number = 1) {
+  // Strict active policy filter: status IN ('Running', 'Active') OR status IS NULL
+  const allPolicies = await query(`SELECT * FROM lic_policies WHERE user_id = ?`, [userId]);
+  const activePoliciesList = allPolicies.filter((p: any) => 
+    p.status === 'Running' || p.status === 'Active' || !p.status || p.status === null
+  );
+
+  const activePolicies = activePoliciesList.length;
+  const totalPolicies = allPolicies.length;
+
+  let totalPremiumPaid = 0;
+  let totalRemainingPremium = 0;
+  let monthlyPremiumTotal = 0;
+  let totalCoverage = 0;
+  let paidThisYear = 0;
+  let completionPercentageSum = 0;
+
+  const currentYear = new Date().getFullYear();
+  const today = new Date();
+
+  let earliestMaturityDate: Date | null = null;
+
+  for (const p of allPolicies) {
+    const isPolicyActive = p.status === 'Running' || p.status === 'Active' || !p.status || p.status === null;
+    const monthlyAmt = Number(p.monthly_premium || 0);
+    if (isPolicyActive) {
+      monthlyPremiumTotal += monthlyAmt;
+    }
+    totalCoverage += Number(p.sum_assured || 0);
+
+    const paidRes = await get(
+      `SELECT COUNT(*) as count, SUM(amount_paid) as total 
+       FROM lic_premium_history WHERE policy_id = ? AND status = 'Paid'`,
+      [p.id]
+    );
+
+    const yearPaidRes = await get(
+      `SELECT SUM(amount_paid) as total 
+       FROM lic_premium_history WHERE policy_id = ? AND status = 'Paid' AND year = ?`,
+      [p.id, currentYear]
+    );
+
+    const paidCount = Number(paidRes?.count || 0);
+    const paidSum = Number(paidRes?.total || 0);
+    totalPremiumPaid += paidSum;
+    paidThisYear += Number(yearPaidRes?.total || 0);
+
+    const termYears = Number(p.policy_term || 10);
+    const totalPolicyMonths = termYears * 12;
+    const monthsRemaining = Math.max(0, totalPolicyMonths - paidCount);
+    if (isPolicyActive) {
+      totalRemainingPremium += (monthsRemaining * monthlyAmt);
+    }
+
+    const pct = totalPolicyMonths > 0 ? Math.min(100, Math.round((paidCount / totalPolicyMonths) * 100)) : 0;
+    completionPercentageSum += pct;
+
+    if (p.maturity_date && isPolicyActive) {
+      const matDate = new Date(p.maturity_date);
+      if (!earliestMaturityDate || matDate < earliestMaturityDate) {
+        earliestMaturityDate = matDate;
+      }
+    }
+  }
+
+  const completionPercentage = totalPolicies > 0 ? Math.round(completionPercentageSum / totalPolicies) : 0;
+
+  let maturityCountdownDays = 0;
+  if (earliestMaturityDate) {
+    const diff = earliestMaturityDate.getTime() - today.getTime();
+    maturityCountdownDays = Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+  }
+
+  // Next Premium Due Query (Earliest unpaid across all active policies)
+  const nextUnpaidRow = await get(
+    `SELECT h.*, p.policy_name, p.premium_due_day 
+     FROM lic_premium_history h
+     JOIN lic_policies p ON h.policy_id = p.id
+     WHERE p.user_id = ? 
+       AND (p.status = 'Running' OR p.status = 'Active' OR p.status IS NULL)
+       AND h.status IN ('Pending', 'Scheduled', 'Overdue')
+     ORDER BY h.year ASC, h.month ASC, p.premium_due_day ASC
+     LIMIT 1`,
+    [userId]
+  );
+
+  let upcomingPremiumDue = 'No upcoming premiums';
+  let nextPremiumDate = null;
+  let nextPremiumAmount = 0;
+  let nextPremiumDueDate = null;
+
+  if (nextUnpaidRow) {
+    const monthName = new Date(2000, nextUnpaidRow.month - 1).toLocaleString('en-US', { month: 'short' });
+    const dueDay = String(nextUnpaidRow.premium_due_day || 5).padStart(2, '0');
+    upcomingPremiumDue = `${nextUnpaidRow.policy_name} — ₹${Number(nextUnpaidRow.amount_paid).toLocaleString('en-IN')} (Due: ${dueDay} ${monthName} ${nextUnpaidRow.year})`;
+    nextPremiumDate = `${monthName} ${nextUnpaidRow.year}`;
+    nextPremiumAmount = Number(nextUnpaidRow.amount_paid || 0);
+    nextPremiumDueDate = `${dueDay} ${monthName} ${nextUnpaidRow.year}`;
+  } else if (activePolicies > 0) {
+    upcomingPremiumDue = 'All Premiums Completed ✓';
+  }
+
+  return {
+    activePolicies,
+    totalPolicies,
+    totalPremiumPaid,
+    totalRemainingPremium,
+    monthlyPremiumTotal,
+    upcomingPremiumDue,
+    nextPremiumDate,
+    nextPremiumAmount,
+    nextPremiumDueDate,
+    paidThisYear,
+    completionPercentage,
+    maturityCountdownDays,
+    totalCoverage
+  };
+}
+
 // ─── RUN AUTOMATION ENGINE (GLOBAL CHETTU & LIC SCHEDULER) ──────────────────
 export async function runRecurringAutomation(userId: number = 1, forceRun: boolean = false) {
   const now = new Date();
@@ -472,7 +592,7 @@ export async function generateNextMonthForecast(userId: number = 1, isHeadsUp: b
       }
     } else if (rule.module_type === 'lic') {
       const policy = await get('SELECT * FROM lic_policies WHERE id = ?', [rule.entity_id]);
-      if (policy && policy.status === 'Running') {
+      if (policy && (policy.status === 'Running' || policy.status === 'Active' || !policy.status)) {
         const amt = Number(policy.monthly_premium) || 0;
         const dueDay = policy.premium_due_day || rule.payment_day || 12;
         licItems.push({ name: policy.policy_name, amount: amt, dueDay });
@@ -579,15 +699,17 @@ export async function getGlobalCheetuAutopilotStatus(userId: number = 1) {
 
 // ─── GLOBAL LIC AUTOPILOT STATUS HELPER & ATOMIC POLICY SNAPSHOT ─────────
 export async function getGlobalLicAutopilotStatus(userId: number = 1) {
-  let activePolicies = await query(`SELECT * FROM lic_policies WHERE user_id = ? AND (status = 'Running' OR status IS NULL OR status != 'Completed')`, [userId]);
-  if (!activePolicies || activePolicies.length === 0) {
-    activePolicies = await query(`SELECT * FROM lic_policies WHERE user_id = ?`, [userId]);
-  }
-  const activeCount = activePolicies ? activePolicies.length : 0;
+  const summary = await getLicModuleSummary(userId);
+
+  const allPolicies = await query(`SELECT * FROM lic_policies WHERE user_id = ?`, [userId]);
+  const activePoliciesList = allPolicies.filter((p: any) => 
+    p.status === 'Running' || p.status === 'Active' || !p.status || p.status === null
+  );
+  const activeCount = activePoliciesList.length;
 
   // Enrich each policy with next unpaid premium using explicit unpaid-status query
   const policySnapshots = [];
-  for (const p of activePolicies) {
+  for (const p of activePoliciesList) {
     const nextUnpaid = await get(
       `SELECT * FROM lic_premium_history 
        WHERE policy_id = ? AND status IN ('Pending', 'Overdue', 'Scheduled') 
@@ -662,6 +784,7 @@ export async function getGlobalLicAutopilotStatus(userId: number = 1) {
     nextRunStr,
     isTelegramLinked,
     health: isEnabled ? 'Healthy' : 'Paused',
+    summary,
     policySnapshots,
     logs
   };

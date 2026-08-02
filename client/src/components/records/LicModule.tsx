@@ -6,6 +6,7 @@ import CsvImportModal from './CsvImportModal';
 import GlobalLicAutopilotController from './GlobalLicAutopilotController';
 import ReadOnlyLicAutomationCard from './ReadOnlyLicAutomationCard';
 import { formatDisplayDate } from '../../utils/date';
+import { emitLicUpdated, subscribeLicUpdates } from '../../utils/licEvents';
 
 const API = window.location.port === '5173' ? 'http://localhost:5000/api' : '/api';
 
@@ -94,6 +95,10 @@ export default function LicModule({ onBack }: LicModuleProps) {
 
   useEffect(() => {
     fetchPolicies();
+    const unsubscribe = subscribeLicUpdates(() => {
+      fetchPolicies();
+    });
+    return () => unsubscribe();
   }, []);
 
   const handleSelectPolicy = (p: any) => {
@@ -154,6 +159,7 @@ export default function LicModule({ onBack }: LicModuleProps) {
         await axios.post(`${API}/records/lic`, data);
       }
       setShowPolicyModal(false);
+      emitLicUpdated();
       fetchPolicies();
     } catch (_) {
       alert('Error saving policy.');
@@ -165,6 +171,7 @@ export default function LicModule({ onBack }: LicModuleProps) {
     try {
       await axios.delete(`${API}/records/lic/${id}`);
       setActivePolicy(null);
+      emitLicUpdated();
       fetchPolicies();
     } catch (_) {
       alert('Error deleting policy.');
@@ -197,6 +204,7 @@ export default function LicModule({ onBack }: LicModuleProps) {
     try {
       await axios.post(`${API}/records/lic/${activePolicy.id}/premiums`, data);
       setShowPremiumModal(false);
+      emitLicUpdated();
       fetchPolicies(); // refresh policy computed details
     } catch (_) {
       alert('Error logging premium.');
@@ -207,6 +215,7 @@ export default function LicModule({ onBack }: LicModuleProps) {
     if (!confirm('Are you sure you want to delete this premium history log?')) return;
     try {
       await axios.delete(`${API}/records/lic/premiums/${premiumId}`);
+      emitLicUpdated();
       fetchPolicies(); // refresh policy details
     } catch (_) {
       alert('Error deleting premium log.');

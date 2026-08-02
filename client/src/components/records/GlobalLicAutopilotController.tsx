@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { ShieldCheck, Pause, Calendar, History, CheckCircle2, RefreshCw, Zap } from 'lucide-react';
+import { emitLicUpdated } from '../../utils/licEvents';
 
 const API = window.location.port === '5173' ? 'http://localhost:5000/api' : '/api';
 
@@ -30,6 +31,7 @@ export default function GlobalLicAutopilotController({ onSyncComplete }: GlobalL
       if (res.data.status) setData(res.data.status);
       else fetchGlobalStatus();
       alert(res.data.message || 'Repaired full LIC schedules successfully.');
+      emitLicUpdated();
       onSyncComplete();
     } catch (err: any) {
       alert(err.response?.data?.error || 'Error repairing LIC schedules.');
@@ -58,6 +60,7 @@ export default function GlobalLicAutopilotController({ onSyncComplete }: GlobalL
       const res = await axios.post(`${API}/records/automation/lic/global-toggle`);
       if (res.data.status) setData(res.data.status);
       else fetchGlobalStatus();
+      emitLicUpdated();
       onSyncComplete();
     } catch (err: any) {
       alert(err.response?.data?.error || 'Error toggling global LIC autopilot.');
@@ -77,6 +80,7 @@ export default function GlobalLicAutopilotController({ onSyncComplete }: GlobalL
         : '';
       alert(`${msg}${statsStr}`);
 
+      emitLicUpdated();
       onSyncComplete();
     } catch (err: any) {
       alert(err.response?.data?.error || 'Error running manual sync.');

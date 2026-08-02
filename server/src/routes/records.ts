@@ -16,28 +16,14 @@ router.get('/dashboard', async (req: Request, res: Response) => {
   const currentDay = today.getDate();
 
   try {
-    // 1.1 Summary Stats
-    const activeLicCount = await get(
-      `SELECT COUNT(*) as count FROM lic_policies WHERE user_id = ? AND status = 'Running'`,
-      [userId]
-    );
-
-    // LIC Premium Due (sum of running policies not paid this month)
+    // 1.1 Summary Stats via Shared LIC Aggregation Service
+    const licSummary = await getLicModuleSummary(userId);
+    const activeLicCount = { count: licSummary.activePolicies };
+    const licPremiumDue = licSummary.nextPremiumAmount || licSummary.monthlyPremiumTotal;
     const runningPolicies = await query(
-      `SELECT id, monthly_premium, premium_due_day FROM lic_policies WHERE user_id = ? AND status = 'Running'`,
+      `SELECT id, monthly_premium, premium_due_day FROM lic_policies WHERE user_id = ? AND (status = 'Running' OR status = 'Active' OR status IS NULL)`,
       [userId]
     );
-    let licPremiumDue = 0;
-    for (const policy of runningPolicies) {
-      const paidThisMonth = await get(
-        `SELECT COUNT(*) as count FROM lic_premium_history 
-         WHERE policy_id = ? AND month = ? AND year = ? AND status = 'Paid'`,
-        [policy.id, currentMonth, currentYear]
-      );
-      if (paidThisMonth.count === 0) {
-        licPremiumDue += policy.monthly_premium;
-      }
-    }
 
     const goldInvested = await get(
       `SELECT SUM(amount) as total FROM digital_gold_transactions t 
@@ -373,8 +359,9 @@ router.post('/lic', async (req: Request, res: Response) => {
     
     // Automatically backfill historical premium records (Past: Paid, Current/Future: Pending)
     await backfillLicHistoricalPremiums(policyId);
+    const licSummary = await getLicModuleSummary(req.user!.id);
 
-    res.json({ id: policyId, success: true });
+    res.json({ id: policyId, success: true, licSummary });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -389,7 +376,9 @@ router.put('/lic/:id', async (req: Request, res: Response) => {
        WHERE id=? AND user_id=?`,
       [policy_name, policy_number, monthly_premium, start_date, maturity_date, premium_due_day, policy_term, sum_assured, expected_maturity_amount, status, req.params.id, req.user!.id]
     );
-    res.json({ success: true });
+    await recalculateLicMetrics(Number(req.params.id));
+    const licSummary = await getLicModuleSummary(req.user!.id);
+    res.json({ success: true, licSummary });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -398,7 +387,8 @@ router.put('/lic/:id', async (req: Request, res: Response) => {
 router.delete('/lic/:id', async (req: Request, res: Response) => {
   try {
     await execute(`DELETE FROM lic_policies WHERE id=? AND user_id=?`, [req.params.id, req.user!.id]);
-    res.json({ success: true });
+    const licSummary = await getLicModuleSummary(req.user!.id);
+    res.json({ success: true, licSummary });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -1615,11 +1605,23 @@ import {
   sendTelegramMessage, 
   getGlobalCheetuAutopilotStatus,
   getGlobalLicAutopilotStatus,
+  getLicModuleSummary,
   backfillLicHistoricalPremiums,
   recalculateLicMetrics,
   runDeveloperAutomationSimulation,
   runFullAutomationValidationSuite 
 } from '../services/recurringAutomation';
+
+// ─── LIC SUMMARY AGGREGATION ENDPOINT ─────────────────────────────────────
+router.get('/lic/summary', async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  try {
+    const summary = await getLicModuleSummary(userId);
+    res.json(summary);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ─── REPAIR LIC SCHEDULE ONE-TIME MIGRATION ENDPOINT ───────────────────────
 router.post('/lic/:id/repair-schedule', async (req: Request, res: Response) => {

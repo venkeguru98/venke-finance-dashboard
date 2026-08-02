@@ -5,6 +5,7 @@ import {
   Shield, Landmark, Bell, AlertTriangle, ChevronRight,
   TrendingUp, Coins, Wallet, CreditCard, ArrowUpRight, CheckCircle2, Layers, Activity
 } from 'lucide-react';
+import { subscribeLicUpdates } from '../utils/licEvents';
 
 // Lazy load sub-modules for extreme performance
 const LicModule = lazy(() => import('../components/records/LicModule'));
@@ -80,6 +81,10 @@ export default function FinancialRecords() {
     if (subView === null) {
       fetchDashboardData();
     }
+    const unsubscribe = subscribeLicUpdates(() => {
+      fetchDashboardData();
+    });
+    return () => unsubscribe();
   }, [subView]);
 
   if (subView !== null) {
