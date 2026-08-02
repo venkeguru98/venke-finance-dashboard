@@ -1619,43 +1619,82 @@ import {
   runFullAutomationValidationSuite 
 } from '../services/recurringAutomation';
 
-// ─── LIC DEBUG ENDPOINT FOR ROOT-CAUSE TRACING ──────────────────────────────
+import { LicPolicyScheduleService } from '../services/LicPolicyScheduleService';
+
+// ─── LIC DEBUG ENDPOINT FOR CONTRACT SCHEDULER TRACING ─────────────────────
 router.get('/debug/lic/:policyId', async (req: Request, res: Response) => {
   const policyId = Number(req.params.policyId);
   try {
     const policy = await get(`SELECT * FROM lic_policies WHERE id = ?`, [policyId]);
     if (!policy) return res.status(404).json({ error: 'Policy not found' });
 
-    const totalScheduleRows = await get(`SELECT COUNT(*) as count FROM lic_premium_history WHERE policy_id = ?`, [policyId]);
-    const paidRows = await get(`SELECT COUNT(*) as count FROM lic_premium_history WHERE policy_id = ? AND LOWER(status) = 'paid'`, [policyId]);
-    const pendingRows = await get(`SELECT COUNT(*) as count FROM lic_premium_history WHERE policy_id = ? AND LOWER(status) = 'pending'`, [policyId]);
-    const overdueRows = await get(`SELECT COUNT(*) as count FROM lic_premium_history WHERE policy_id = ? AND LOWER(status) = 'overdue'`, [policyId]);
-    const scheduledRows = await get(`SELECT COUNT(*) as count FROM lic_premium_history WHERE policy_id = ? AND LOWER(status) = 'scheduled'`, [policyId]);
-    const nullStatusRows = await get(`SELECT COUNT(*) as count FROM lic_premium_history WHERE policy_id = ? AND status IS NULL`, [policyId]);
+    const totalInstallments = Number(policy.policy_term || 10) * 12;
+    const countRes = await get(`SELECT COUNT(*) as count FROM lic_premium_schedule WHERE policy_id = ?`, [policyId]);
+    const paidRes = await get(`SELECT COUNT(*) as count FROM lic_premium_schedule WHERE policy_id = ? AND status = 'Paid'`, [policyId]);
+    const pendingRes = await get(`SELECT COUNT(*) as count FROM lic_premium_schedule WHERE policy_id = ? AND status = 'Pending'`, [policyId]);
+    const overdueRes = await get(`SELECT COUNT(*) as count FROM lic_premium_schedule WHERE policy_id = ? AND status = 'Overdue'`, [policyId]);
 
-    const nextPendingRow = await LicAutomationScheduler.resolveNextPremium(policyId);
-    const first10FutureRows = await query(`SELECT * FROM lic_premium_history WHERE policy_id = ? AND (status IS NULL OR LOWER(status) != 'paid') ORDER BY year ASC, month ASC LIMIT 10`, [policyId]);
-    const last10Rows = await query(`SELECT * FROM lic_premium_history WHERE policy_id = ? ORDER BY year DESC, month DESC LIMIT 10`, [policyId]);
+    const nextScheduledPremium = await LicPolicyScheduleService.getNextScheduledPremium(policyId);
+    const nextFivePremiums = await query(
+      `SELECT * FROM lic_premium_schedule WHERE policy_id = ? AND status IN ('Pending','Overdue') ORDER BY installment_number ASC LIMIT 5`,
+      [policyId]
+    );
+
+    const user = await get(`SELECT telegram_chat_id FROM users WHERE id = ?`, [policy.user_id || 1]);
+
+    const schedulerState = {
+      scheduleGeneratedAt: policy.schedule_generated_at || 'Not Generated',
+      lastAutomationRun: policy.last_automation_run_month ? `${policy.last_automation_run_month}/${policy.last_automation_run_year}` : 'None',
+      status: policy.status
+    };
+
+    const telegramState = {
+      isLinked: !!(user && user.telegram_chat_id),
+      chatId: user?.telegram_chat_id || null
+    };
 
     const calculationTrace = [
-      `Policy #${policyId} (${policy.policy_name}) total tenure: ${policy.policy_term * 12} months`,
-      `Total schedule rows in DB: ${totalScheduleRows?.count || 0}`,
-      `Paid rows: ${paidRows?.count || 0}, Pending: ${pendingRows?.count || 0}, Overdue: ${overdueRows?.count || 0}, Scheduled: ${scheduledRows?.count || 0}, NULL status: ${nullStatusRows?.count || 0}`,
-      `Resolved next premium pointer: ${nextPendingRow ? nextPendingRow.formattedStr : 'NONE (All Paid)'}`
+      `Policy #${policyId} (${policy.policy_name}): start_date=${policy.start_date}, term=${policy.policy_term}y (${totalInstallments} total installments)`,
+      `Contract schedule rows in DB: ${countRes?.count || 0}`,
+      `Paid: ${paidRes?.count || 0}, Pending: ${pendingRes?.count || 0}, Overdue: ${overdueRes?.count || 0}`,
+      `Next Scheduled Premium pointer: ${nextScheduledPremium ? `#${nextScheduledPremium.installmentNumber} (${nextScheduledPremium.monthYearStr} • ₹${nextScheduledPremium.amount})` : 'NONE (100% Completed)'}`
     ];
 
     res.json({
-      policy,
-      totalScheduleRows: Number(totalScheduleRows?.count || 0),
-      paidRows: Number(paidRows?.count || 0),
-      pendingRows: Number(pendingRows?.count || 0),
-      overdueRows: Number(overdueRows?.count || 0),
-      scheduledRows: Number(scheduledRows?.count || 0),
-      nullStatusRows: Number(nullStatusRows?.count || 0),
-      nextPendingRow,
-      first10FutureRows,
-      last10Rows,
+      totalInstallments,
+      paidInstallments: Number(paidRes?.count || 0),
+      pendingInstallments: Number(pendingRes?.count || 0),
+      overdueInstallments: Number(overdueRes?.count || 0),
+      nextScheduledPremium,
+      nextFivePremiums,
+      schedulerState,
+      telegramState,
       calculationTrace
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/automation/lic/global-sync', async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  try {
+    const activePolicies = await query(`SELECT id FROM lic_policies WHERE user_id = ?`, [userId]);
+    for (const p of activePolicies) {
+      await LicPolicyScheduleService.generateFullContractSchedule(p.id);
+    }
+
+    const syncRes: any = await LicPolicyScheduleService.processManualSync(userId);
+    const status = await getGlobalLicAutopilotStatus(userId);
+    res.json({
+      success: true,
+      message: 'Global LIC Sync completed.',
+      processedCount: syncRes?.processedCount || 0,
+      updatedCount: syncRes?.updatedCount || 0,
+      skippedCount: syncRes?.skippedCount || 0,
+      failedCount: syncRes?.failedCount || 0,
+      traces: syncRes?.traces || [],
+      status
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

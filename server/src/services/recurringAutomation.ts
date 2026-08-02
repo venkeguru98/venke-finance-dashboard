@@ -1,17 +1,17 @@
 import { query, execute, get } from '../database';
-import { LicAutomationScheduler } from './licAutomationScheduler';
+import { LicPolicyScheduleService } from './LicPolicyScheduleService';
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 
-// Re-export LicAutomationScheduler methods for backwards compatibility
-export const getLicModuleSummary = LicAutomationScheduler.getSummary;
-export const isPolicyActive = LicAutomationScheduler.isPolicyActive;
-export const backfillLicHistoricalPremiums = LicAutomationScheduler.generateFullSchedule;
-export const recalculateLicMetrics = LicAutomationScheduler.recalculateMetrics;
+// Re-export LicPolicyScheduleService methods for backwards compatibility
+export const getLicModuleSummary = LicPolicyScheduleService.getSummary;
+export const isPolicyActive = LicPolicyScheduleService.isPolicyActive;
+export const backfillLicHistoricalPremiums = LicPolicyScheduleService.generateFullContractSchedule;
+export const recalculateLicMetrics = LicPolicyScheduleService.recalculateMetrics;
 
 // Send Telegram Message Helper
 export async function sendTelegramMessage(chatId: string | number, text: string) {
-  return await LicAutomationScheduler.sendTelegram(chatId, text);
+  return await LicPolicyScheduleService.sendTelegram(chatId, text);
 }
 
 // Single Source Helper for Available Balance calculation
@@ -76,7 +76,7 @@ export async function recalculateChitMetrics(chitId: number) {
 
 // ─── RUN AUTOMATION ENGINE (GLOBAL CHETTU & LIC SCHEDULER) ──────────────────
 export async function runRecurringAutomation(userId: number = 1, forceRun: boolean = false) {
-  const licRes = await LicAutomationScheduler.processMonthStartAutoPayment(userId, forceRun);
+  const licRes = await LicPolicyScheduleService.processMonthStartAutoPayment(userId, forceRun);
 
   const now = new Date();
   const currentMonth = now.getMonth() + 1;
@@ -257,12 +257,12 @@ export async function runRecurringAutomation(userId: number = 1, forceRun: boole
 
 // ─── GENERATE NEXT MONTH COMMITMENT FORECAST (TELEGRAM) ────────────────────
 export async function generateNextMonthForecast(userId: number = 1, isHeadsUp: boolean = false): Promise<{ text: string; totalCommitments: number }> {
-  return await LicAutomationScheduler.generateMonthEndForecast(userId);
+  return await LicPolicyScheduleService.generateMonthEndForecast(userId);
 }
 
 // ─── AUTONOMOUS SCHEDULER DAEMON (LIC RECURRING AUTOMATION SERVICE) ─────────
 export function startLicAutomationScheduler(userId: number = 1) {
-  console.log('[LicAutomationScheduler Daemon] Initializing autonomous background scheduler...');
+  console.log('[LicPolicyScheduleService Daemon] Initializing autonomous background scheduler...');
 
   const INTERVAL_MS = 60 * 60 * 1000;
 
@@ -284,13 +284,13 @@ export function startLicAutomationScheduler(userId: number = 1) {
         );
 
         if (!monthStartRan) {
-          console.log(`[LicAutomationScheduler] Running Month-Start Auto-Payment for ${currMonth}/${currYear}...`);
-          await LicAutomationScheduler.processMonthStartAutoPayment(userId, true, 'automation');
+          console.log(`[LicPolicyScheduleService] Running Month-Start Auto-Payment for ${currMonth}/${currYear}...`);
+          await LicPolicyScheduleService.processMonthStartAutoPayment(userId, false, 'automation');
         }
       }
 
       // 2. 3-DAY DUE DATE REMINDERS (Daily check)
-      await LicAutomationScheduler.processDueReminders(userId);
+      await LicPolicyScheduleService.processDueReminders(userId);
 
       // 3. MONTH-END FORECAST (Last calendar day at >= 8:00 PM)
       const lastDayOfMonth = new Date(currYear, currMonth, 0).getDate();
@@ -305,8 +305,8 @@ export function startLicAutomationScheduler(userId: number = 1) {
         if (!forecastSent) {
           const user = await get('SELECT telegram_chat_id FROM users WHERE id = ?', [userId]);
           if (user && user.telegram_chat_id) {
-            const forecast = await LicAutomationScheduler.generateMonthEndForecast(userId);
-            const ok = await LicAutomationScheduler.sendTelegram(user.telegram_chat_id, forecast.text);
+            const forecast = await LicPolicyScheduleService.generateMonthEndForecast(userId);
+            const ok = await LicPolicyScheduleService.sendTelegram(user.telegram_chat_id, forecast.text);
             await execute(
               `INSERT INTO recurring_automation_logs (user_id, module_type, entity_id, action, amount, period_month, period_year, telegram_sent, details)
                VALUES (?, 'lic', 0, 'Forecast Sent', ?, ?, ?, ?, 'Month-end commitment forecast sent via Telegram')`,
@@ -317,7 +317,7 @@ export function startLicAutomationScheduler(userId: number = 1) {
       }
 
     } catch (err: any) {
-      console.error('[LicAutomationScheduler Tick Error]', err.message);
+      console.error('[LicPolicyScheduleService Tick Error]', err.message);
     }
   };
 
@@ -367,19 +367,19 @@ export async function getGlobalCheetuAutopilotStatus(userId: number = 1) {
 
 // ─── GLOBAL LIC AUTOPILOT STATUS HELPER & ATOMIC POLICY SNAPSHOT ─────────
 export async function getGlobalLicAutopilotStatus(userId: number = 1) {
-  const summary = await LicAutomationScheduler.getSummary(userId);
+  const summary = await LicPolicyScheduleService.getSummary(userId);
 
   const allPolicies = await query(`SELECT * FROM lic_policies WHERE user_id = ?`, [userId]);
-  const activePoliciesList = allPolicies.filter((p: any) => LicAutomationScheduler.isPolicyActive(p));
+  const activePoliciesList = allPolicies.filter((p: any) => LicPolicyScheduleService.isPolicyActive(p));
   const activeCount = activePoliciesList.length;
 
   const policySnapshots = [];
   for (const p of activePoliciesList) {
-    const nextUnpaid = await LicAutomationScheduler.getNextScheduledPremium(p.id);
+    const nextUnpaid = await LicPolicyScheduleService.getNextScheduledPremium(p.id);
 
     const paidStats = await get(
-      `SELECT COUNT(*) as count, SUM(amount_paid) as total 
-       FROM lic_premium_history WHERE policy_id = ? AND status = 'Paid'`,
+      `SELECT COUNT(*) as count, SUM(premium_amount) as total 
+       FROM lic_premium_schedule WHERE policy_id = ? AND status = 'Paid'`,
       [p.id]
     );
 
@@ -407,9 +407,10 @@ export async function getGlobalLicAutopilotStatus(userId: number = 1) {
       completionPct,
       nextScheduledPremium: nextUnpaid ? {
         id: nextUnpaid.id,
+        installmentNumber: nextUnpaid.installmentNumber,
         month: nextUnpaid.month,
         year: nextUnpaid.year,
-        amount: nextUnpaid.amount_paid,
+        amount: nextUnpaid.amount,
         status: nextUnpaid.status,
         dueDay: p.premium_due_day || 5
       } : null

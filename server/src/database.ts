@@ -708,6 +708,55 @@ export const initializeDatabase = async () => {
           )
         `);
       }
+      // Initialize Contract-Driven LIC Schedule Table
+      try {
+        if (isPg) {
+          await execute(`
+            CREATE TABLE IF NOT EXISTS lic_premium_schedule (
+              id SERIAL PRIMARY KEY,
+              policy_id INTEGER NOT NULL REFERENCES lic_policies(id) ON DELETE CASCADE,
+              installment_number INTEGER NOT NULL,
+              due_date DATE NOT NULL,
+              month INTEGER NOT NULL,
+              year INTEGER NOT NULL,
+              premium_amount NUMERIC NOT NULL,
+              status VARCHAR(20) DEFAULT 'Pending',
+              paid_date DATE NULL,
+              payment_source VARCHAR(30) NULL,
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              UNIQUE(policy_id, installment_number)
+            )
+          `);
+          await execute(`ALTER TABLE lic_policies ADD COLUMN IF NOT EXISTS schedule_generated_at TIMESTAMP NULL`);
+          await execute(`ALTER TABLE lic_policies ADD COLUMN IF NOT EXISTS last_automation_run_month INTEGER NULL`);
+          await execute(`ALTER TABLE lic_policies ADD COLUMN IF NOT EXISTS last_automation_run_year INTEGER NULL`);
+        } else {
+          await execute(`
+            CREATE TABLE IF NOT EXISTS lic_premium_schedule (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              policy_id INTEGER NOT NULL,
+              installment_number INTEGER NOT NULL,
+              due_date DATE NOT NULL,
+              month INTEGER NOT NULL,
+              year INTEGER NOT NULL,
+              premium_amount REAL NOT NULL,
+              status TEXT DEFAULT 'Pending',
+              paid_date DATE NULL,
+              payment_source TEXT NULL,
+              created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+              UNIQUE(policy_id, installment_number),
+              FOREIGN KEY(policy_id) REFERENCES lic_policies(id) ON DELETE CASCADE
+            )
+          `);
+          try { await execute(`ALTER TABLE lic_policies ADD COLUMN schedule_generated_at TEXT NULL`); } catch (_) {}
+          try { await execute(`ALTER TABLE lic_policies ADD COLUMN last_automation_run_month INTEGER NULL`); } catch (_) {}
+          try { await execute(`ALTER TABLE lic_policies ADD COLUMN last_automation_run_year INTEGER NULL`); } catch (_) {}
+        }
+        console.log('Contract-Driven LIC Schedule table verified/created.');
+      } catch (licSchErr) {
+        console.error('Migration failed for lic_premium_schedule table:', licSchErr);
+      }
+
       console.log('Recurring commitment automation database tables verified/created.');
     } catch (rErr) {
       console.error('Migration failed for recurring commitment automation tables:', rErr);
