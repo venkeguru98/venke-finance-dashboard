@@ -43,40 +43,31 @@ export class LicSchedulerEventDispatcher {
         case 'AUTO_PAYMENT_COMPLETED':
           actionLog = 'Auto-marked Paid';
           message = 
-            `<b>Venke Finance — LIC Autopilot Executed</b>\n\n` +
-            `Scheduler completed successfully.\n\n` +
+            `<b>Venke Finance — LIC Premium Recorded</b>\n\n` +
             `Policy: <b>${payload.policyName || `Policy #${payload.policyId}`}</b>\n` +
             `Installment: <b>${payload.installmentNumber}</b>\n` +
             `Amount: <b>₹${(payload.premiumAmount || 0).toLocaleString('en-IN')}</b>\n` +
-            `Status: <b>Auto Paid</b>\n` +
             `Paid Date: <b>${payload.paidDate}</b>\n` +
             `Next Premium: <b>${payload.nextDueMonth || 'N/A'}</b>\n` +
-            `Execution Time: <b>${execTime}</b>\n` +
-            `Scheduler: <b>Success</b>\n\n` +
+            `Execution Status: <b>Success</b>\n` +
+            `Execution Time: <b>${execTime}</b>\n\n` +
             `Venke Finance`;
           break;
 
         case 'RECONCILIATION_REPAIRED':
           actionLog = 'Reconciliation Repaired';
-          message = 
-            `<b>Venke Finance — LIC Autopilot Reconciled</b>\n\n` +
-            `A missing premium record was restored automatically.\n\n` +
-            `Policy: <b>${payload.policyName || `Policy #${payload.policyId}`}</b>\n` +
-            `Installment: <b>${payload.installmentNumber}</b>\n` +
-            `Result: <b>Repaired Successfully</b>\n` +
-            `Execution Time: <b>${execTime}</b>\n\n` +
-            `Venke Finance`;
+          // Technical maintenance event -> SILENT (No Telegram, No toast)
+          message = '';
           break;
 
         case 'MONTH_END_FORECAST_GENERATED':
           actionLog = 'Forecast Sent';
           message = 
-            `<b>Venke Finance — LIC Forecast Generated</b>\n\n` +
-            `Next Month Forecast\n` +
+            `<b>Venke Finance — LIC Forecast</b>\n\n` +
+            `Forecast Period: <b>${payload.forecastPeriod || 'Next Month'}</b>\n` +
             `Total Active Policies: <b>${payload.totalActivePolicies || 0}</b>\n` +
             `Total Commitment: <b>₹${(payload.nextMonthCommitment || 0).toLocaleString('en-IN')}</b>\n` +
-            `Forecast Period: <b>${payload.forecastPeriod || 'Next Month'}</b>\n` +
-            `Scheduler: <b>Success</b>\n` +
+            `Execution Status: <b>Success</b>\n` +
             `Execution Time: <b>${execTime}</b>\n\n` +
             `Venke Finance`;
           break;
@@ -94,18 +85,20 @@ export class LicSchedulerEventDispatcher {
           break;
       }
 
-      // Retry delivery loop (30s, 2m, 10m)
+      // Retry delivery loop (30s, 2m, 10m) - Only for messages requiring Telegram dispatch
       let sent = false;
-      const retryDelays = [0, 30000, 120000, 600000];
+      if (message) {
+        const retryDelays = [0, 30000, 120000, 600000];
 
-      for (let attempt = 0; attempt < retryDelays.length; attempt++) {
-        if (attempt > 0) {
-          console.log(`[LicSchedulerEventDispatcher] Retrying Telegram dispatch for ${eventType} (Attempt ${attempt}/3)...`);
-          await new Promise((r) => setTimeout(r, retryDelays[attempt]));
+        for (let attempt = 0; attempt < retryDelays.length; attempt++) {
+          if (attempt > 0) {
+            console.log(`[LicSchedulerEventDispatcher] Retrying Telegram dispatch for ${eventType} (Attempt ${attempt}/3)...`);
+            await new Promise((r) => setTimeout(r, retryDelays[attempt]));
+          }
+
+          sent = await LicPolicyScheduleService.sendTelegram(chatId, message);
+          if (sent) break;
         }
-
-        sent = await LicPolicyScheduleService.sendTelegram(chatId, message);
-        if (sent) break;
       }
 
       // Log dispatch status

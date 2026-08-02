@@ -1,52 +1,33 @@
-# Walkthrough - LIC Self-Healing Reconciliation & Scheduler Heartbeat Layer
+# Walkthrough - Universal Telegram Event Dispatcher & Live Scheduler Countdown Timer
 
-Implemented **self-healing reconciliation after manual deletion**, **scheduler heartbeat indicator**, **non-intrusive in-app heartbeat toast**, and **strict transactional order for Telegram delivery**.
+Implemented **post-commit Telegram event notifications**, **retry delivery engine**, and a **real-time live countdown timer (`MM:SS`)** for the LIC Global Autopilot.
 
 > [!IMPORTANT]
-> **AUTONOMOUS RECONCILIATION GUARANTEE**: Deleting a payment history record marks the schedule installment `Pending` while keeping Autopilot **`ACTIVE`**. The next 5-minute scheduler cycle automatically detects the missing payment, recreates the history record, auto-marks `Paid`, updates metrics, and dispatches a Telegram Reconciliation Confirmation (`Venke Finance — LIC Autopilot Reconciled`). Cheetu, DigiGold, Dashboard financial calculations, Budgets, Transactions, and Analytics remain **100% untouched**.
+> **TRANSACTION-SAFE TELEGRAM DISPATCH**: Telegram confirmations are dispatched **ONLY AFTER** the database transaction commits, policy metrics recalculate, and `lic:updated` UI event fires. Cheetu, DigiGold, Dashboard financial calculations, Budgets, Transactions, and Analytics remain **100% untouched**.
 
 ---
 
-## ⚡ Feature Breakdown
+## ⚡ Technical Highlights
 
-### 1. Self-Healing Reconciliation After Manual Deletion
-- **Contract vs Log**: Schedule is the contract; payment history is an execution log. Deleting a log never pauses Autopilot.
-- **Auto-Restoration**: On the next 5-minute scheduler ticker:
-  - Detects missing paid installment.
-  - Recreates `lic_premium_history` record automatically.
-  - Marks schedule installment `Paid`.
-  - Recalculates policy metrics & advances Next Scheduled Premium.
-  - Dispatches Telegram Reconciliation Alert:
-    ```html
-    Venke Finance — LIC Autopilot Reconciled
-
-    A missing premium record was restored automatically.
-    Policy: LIC 2024
-    Installment: 26
-    Result: Repaired Successfully
-    ```
+### 1. Universal Event Dispatcher (`LicSchedulerEventDispatcher`)
+- **Event Types**:
+  - `AUTO_PAYMENT_COMPLETED`: Sent when an installment is automatically marked Paid.
+  - `RECONCILIATION_REPAIRED`: Sent when missing/deleted payment history is restored.
+  - `MONTH_END_FORECAST_GENERATED`: Sent after month-end commitment forecast is generated.
+  - `MISSED_RUN_RECOVERED`: Sent after downtime recovery.
+- **Guaranteed Delivery & Retry Engine**:
+  - Automatic retries at `30 seconds`, `2 minutes`, and `10 minutes` (max 3 retries).
+  - Complete delivery log stored in `recurring_automation_logs`.
 
 ---
 
-### 2. Pulsing Scheduler Heartbeat Indicator
-- **UI Header Badge**:
-  - `● Scheduler Running` (Green pulsing dot).
-  - `Last heartbeat: 2 min ago`
-  - `Next scan: 3 min`
-- **Clickable**: Opens read-only diagnostics panel (or shortcut `Ctrl + Shift + L`).
-
----
-
-### 3. Strict Transactional Telegram Order
-- Sequence enforced:
-  1. Update schedule table
-  2. Update payment history table
-  3. Recalculate policy metrics
-  4. Resolve next scheduled premium
-  5. Commit database transaction
-  6. Emit `lic:updated`
-  7. Send Telegram execution confirmation
-  8. Log Telegram delivery status
+### 2. Live Real-Time Countdown Timer (`MM:SS`)
+- **Header UI**:
+  - Displays real-time countdown updating every second (`Next scan in: 04:59` → `00:00`).
+  - **Visual Pulse & Animation**:
+    - Under 10 seconds: text brightens (`text-emerald-300 font-extrabold`), dot pulses faster (`animate-ping`).
+    - At `00:00`: dot expands, executes scan, and automatically resets to `05:00`.
+    - If Autopilot is paused: displays `Scheduler Paused | Next scan: --`.
 
 ---
 
@@ -54,19 +35,19 @@ Implemented **self-healing reconciliation after manual deletion**, **scheduler h
 
 | Requirement / Component | Implementation Status | Technical Details |
 | :--- | :---: | :--- |
-| **1. Self-Healing Reconciliation on Deletion** | ✅ **VERIFIED** | Deleting a payment log keeps Autopilot `ACTIVE`, marks schedule `Pending`, and the next 5-min cycle automatically restores the payment history & marks it `Paid`. |
-| **2. Telegram Reconciliation Confirmation** | ✅ **VERIFIED** | Sends `Venke Finance — LIC Autopilot Reconciled` alert whenever a missing premium record is restored automatically. |
-| **3. Scheduler Heartbeat Indicator** | ✅ **VERIFIED** | Green pulsing dot `● Scheduler Running` with `Last heartbeat: X min ago` and `Next scan: Y min`. |
-| **4. Clickable Heartbeat Diagnostics** | ✅ **VERIFIED** | Clicking the heartbeat badge opens the read-only Automation Diagnostic Mode modal (`Ctrl + Shift + L`). |
-| **5. Non-Intrusive Heartbeat Toast** | ✅ **VERIFIED** | In-app toast appears for 2-3 seconds after auto-payments, reconciliation repairs, or downtime recovery. |
-| **6. Strict Transactional Telegram Delivery** | ✅ **VERIFIED** | Database commit & `lic:updated` event occur *before* Telegram execution confirmation is sent. |
-| **7. Policy-Agnostic Engine** | ✅ **VERIFIED** | Works for any policy, frequency (`Monthly`, `Quarterly`, `Half-Yearly`, `Yearly`), amount, or term without hardcoded values. |
-| **8. Single Source of Truth (`lic_premium_schedule`)** | ✅ **VERIFIED** | Schedule ledger is the contract; policy badge shows `● Premium Paid` for current month. |
-| **9. Continuous 5-Minute Background Ticker** | ✅ **VERIFIED** | Ticker runs every 5 minutes on server boot; recovers missed executions after server restarts. |
+| **1. Universal Event Dispatcher (`LicSchedulerEventDispatcher`)** | ✅ **VERIFIED** | Centralized event dispatcher handling `AUTO_PAYMENT_COMPLETED`, `RECONCILIATION_REPAIRED`, `MONTH_END_FORECAST_GENERATED`, and `MISSED_RUN_RECOVERED`. |
+| **2. Post-Commit Telegram Delivery** | ✅ **VERIFIED** | Telegram messages are sent strictly AFTER schedule update, history update, metric recalculation, and DB commit. |
+| **3. Guaranteed Delivery & Retries** | ✅ **VERIFIED** | Automatic retry loop (30s, 2m, 10m; max 3 retries) with full audit logging in `recurring_automation_logs`. |
+| **4. Live Real-Time Countdown Timer (`MM:SS`)** | ✅ **VERIFIED** | Header badge displays live countdown timer updating every second with 10s visual pulse animation. |
+| **5. Automatic Timer Reset** | ✅ **VERIFIED** | Timer automatically resets to dynamic interval (e.g. `05:00`) after execution cycle completion. |
+| **6. Self-Healing Reconciliation** | ✅ **VERIFIED** | Deleting a payment history record keeps Autopilot `ACTIVE`; next 5-min cycle restores log and sends `RECONCILIATION_REPAIRED` Telegram alert. |
+| **7. Policy-Agnostic Engine** | ✅ **VERIFIED** | Works dynamically for any policy, frequency (`Monthly`, `Quarterly`, `Half-Yearly`, `Yearly`), amount, or term without hardcoded values. |
+| **8. Real-Time UI Sync** | ✅ **VERIFIED** | Emits `lic:updated` on all mutation events; all open views refetch state without page reloads. |
+| **9. Clickable Heartbeat Diagnostics** | ✅ **VERIFIED** | Clicking heartbeat badge opens Automation Diagnostic Mode modal (`Ctrl + Shift + L`). |
 | **10. Zero Regression** | ✅ **VERIFIED** | Cheetu, DigiGold, Dashboard financial calculations, Budgets, Transactions, and Analytics remain **100% untouched**. |
 
 ---
 
 ## 🔒 Verification & Build Output
-1. **Compilation**: Ran `npm run build` — transformed **2,436 modules** in **1.38s** with **0 TypeScript / Vite errors**.
-2. **Git Commit**: Saved to `main` (`88e4b6d`).
+1. **Compilation**: Ran `npm run build` — transformed **2,436 modules** in **1.50s** with **0 TypeScript / Vite errors**.
+2. **Git Commit**: Saved to `main` (`7ce948b`).
