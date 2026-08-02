@@ -296,6 +296,12 @@ router.get('/lic', async (req: Request, res: Response) => {
     const today = new Date();
     
     for (const p of policies) {
+      // Check if history schedule exists; if 0 rows, generate full 180-month schedule once
+      const rowCheck = await get(`SELECT COUNT(*) as count FROM lic_premium_history WHERE policy_id = ?`, [p.id]);
+      if (Number(rowCheck?.count || 0) === 0) {
+        await backfillLicHistoricalPremiums(p.id);
+      }
+
       // Premium Paid Details
       const paidHist = await query(
         `SELECT SUM(amount_paid) as total, COUNT(*) as count 
@@ -337,7 +343,7 @@ router.get('/lic', async (req: Request, res: Response) => {
         daysRemaining,
         monthsRemaining,
         completionPct,
-        isPremiumPending: paidThisMonth.count === 0 && p.status === 'Running'
+        isPremiumPending: paidThisMonth.count === 0 && isPolicyActive(p)
       });
     }
 
@@ -1606,6 +1612,7 @@ import {
   getGlobalCheetuAutopilotStatus,
   getGlobalLicAutopilotStatus,
   getLicModuleSummary,
+  isPolicyActive,
   backfillLicHistoricalPremiums,
   recalculateLicMetrics,
   runDeveloperAutomationSimulation,
