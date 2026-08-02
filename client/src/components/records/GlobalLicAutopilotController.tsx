@@ -41,6 +41,8 @@ export default function GlobalLicAutopilotController({ onSyncComplete }: GlobalL
     logs: []
   });
 
+  const [countdownSeconds, setCountdownSeconds] = useState(300); // Default 5 minutes (300s)
+
   const fetchGlobalStatus = async () => {
     setLoading(true);
     try {
@@ -50,6 +52,26 @@ export default function GlobalLicAutopilotController({ onSyncComplete }: GlobalL
     } finally {
       setLoading(false);
     }
+  };
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCountdownSeconds((prev) => {
+        if (prev <= 1) {
+          fetchGlobalStatus();
+          return 300;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  const formatCountdown = (totalSecs: number) => {
+    const mins = Math.floor(totalSecs / 60);
+    const secs = totalSecs % 60;
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
 
   const fetchDiagnostics = async () => {
@@ -137,13 +159,17 @@ export default function GlobalLicAutopilotController({ onSyncComplete }: GlobalL
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-base font-extrabold text-white tracking-tight">LIC Global Autopilot</h2>
               
-              {/* CLICKABLE PULSING SCHEDULER HEARTBEAT INDICATOR */}
+              {/* CLICKABLE PULSING SCHEDULER HEARTBEAT INDICATOR WITH REAL-TIME COUNTDOWN */}
               <button
                 onClick={fetchDiagnostics}
-                className="px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase border bg-emerald-500/10 text-emerald-400 border-emerald-500/20 flex items-center gap-1.5 hover:bg-emerald-500/20 transition cursor-pointer"
+                className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase border transition cursor-pointer flex items-center gap-1.5 ${
+                  countdownSeconds <= 10 
+                    ? 'bg-emerald-500/25 text-emerald-300 border-emerald-400 font-extrabold shadow-sm shadow-emerald-500/50 scale-105' 
+                    : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20'
+                }`}
                 title="Click to view Scheduler Heartbeat & Diagnostics (Ctrl + Shift + L)"
               >
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span className={`w-2 h-2 rounded-full bg-emerald-400 ${countdownSeconds <= 10 ? 'animate-ping' : 'animate-pulse'}`}></span>
                 <span>● Scheduler Running</span>
               </button>
 
@@ -152,11 +178,11 @@ export default function GlobalLicAutopilotController({ onSyncComplete }: GlobalL
               </span>
             </div>
             
-            {/* HEARTBEAT TIMING INFO */}
+            {/* HEARTBEAT REAL-TIME COUNTDOWN INFO */}
             <div className="flex items-center gap-3 text-[10px] text-slate-400 mt-1 font-medium">
               <span>Last heartbeat: <strong className="text-slate-200">{data.heartbeat?.lastHeartbeatFormatted || 'Just now'}</strong></span>
               <span>•</span>
-              <span>Next scan: <strong className="text-cyan-400">{data.heartbeat?.nextScanFormatted || '5 min'}</strong></span>
+              <span>Next scan in: <strong className={`font-mono ${countdownSeconds <= 10 ? 'text-emerald-300 font-extrabold animate-pulse text-xs' : 'text-cyan-400'}`}>{formatCountdown(countdownSeconds)}</strong></span>
             </div>
           </div>
         </div>

@@ -1,5 +1,6 @@
 import { query, execute, get } from '../database';
 import { LicPolicyScheduleService } from './LicPolicyScheduleService';
+import { LicSchedulerEventDispatcher } from './LicSchedulerEventDispatcher';
 
 export class GlobalLicAutopilotService {
   private static isExecutionLocked: boolean = false;
@@ -254,46 +255,36 @@ export class GlobalLicAutopilotService {
 
           const nextRow = await LicPolicyScheduleService.getNextScheduledPremium(policy.id);
           let nextPremStr = 'All Premiums Completed ✓';
-          let nextDueStr = 'N/A';
           if (nextRow) {
             nextPremStr = `${nextRow.monthYearStr}`;
-            nextDueStr = `${nextRow.dueDate}`;
           }
 
-          const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-          const monthName = monthNames[currentMonth - 1];
           const dayStr = String(now.getDate()).padStart(2, '0');
           const shortMonth = now.toLocaleString('en-US', { month: 'short' });
           const formattedPaidDate = `${dayStr} ${shortMonth} ${currentYear}`;
 
-          let telegramSent = 0;
-          if (chatId) {
-            const msg = `<b>Venke Finance — LIC Premium Recorded</b>\n\n` +
-              `Policy: <b>${policy.policy_name}</b>\n` +
-              `Paid Installment: <b>${scheduleRow.installment_number} / ${(policy.policy_term || 15) * 12}</b>\n` +
-              `Amount: <b>₹${amt.toLocaleString('en-IN')}</b>\n` +
-              `Paid on: <b>${formattedPaidDate}</b>\n` +
-              `Next Premium: <b>${nextPremStr}</b>\n` +
-              `Due: <b>${nextDueStr}</b>\n\n` +
-              `Venke Finance`;
+          // POST-COMMIT DISPATCH VIA LicSchedulerEventDispatcher
+          const isRepair = scheduleRow.payment_source === 'reconciliation_repair';
+          const eventType = isRepair ? 'RECONCILIATION_REPAIRED' : 'AUTO_PAYMENT_COMPLETED';
 
-            const ok = await LicPolicyScheduleService.sendTelegram(chatId, msg);
-            if (ok) {
-              telegramSent = 1;
-              telegramSentCount++;
-            } else {
-              telegramFailedCount++;
-            }
-          }
-
-          const structuredLog = `[SCHEDULER] Policy ID: ${policy.id} | Installment: ${scheduleRow.installment_number} | Target Month: ${monthName} ${currentYear} | Marked Paid: Success | Source: ${source} | Next Premium: ${nextPremStr} | Telegram: ${telegramSent ? 'Success' : 'Skipped'}`;
-          traces.push(`Policy #${policy.id} (${policy.policy_name}): Installment #${scheduleRow.installment_number} marked Paid. Next Premium: ${nextPremStr}.`);
-
-          await execute(
-            `INSERT INTO recurring_automation_logs (user_id, module_type, entity_id, action, amount, period_month, period_year, telegram_sent, details)
-             VALUES (?, 'lic', ?, 'Auto-marked Paid', ?, ?, ?, ?, ?)`,
-            [userId, policy.id, amt, currentMonth, currentYear, telegramSent, structuredLog]
+          const ok = await LicSchedulerEventDispatcher.dispatch(
+            eventType,
+            {
+              policyId: policy.id,
+              policyName: policy.policy_name,
+              installmentNumber: scheduleRow.installment_number,
+              premiumAmount: amt,
+              paidDate: formattedPaidDate,
+              nextDueMonth: nextPremStr,
+              executionTime: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
+            },
+            userId
           );
+
+          if (ok) telegramSentCount++;
+          else telegramFailedCount++;
+
+          traces.push(`Policy #${policy.id} (${policy.policy_name}): Installment #${scheduleRow.installment_number} processed. Telegram: ${ok ? 'Success' : 'Retried/Skipped'}.`);
         }
       }
 
