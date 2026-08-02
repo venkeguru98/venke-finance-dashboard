@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
-import { Plus, Search, RefreshCw, Flame, LayoutGrid, CheckCircle2, Target, AlertTriangle, TrendingUp, Info, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Search, RefreshCw, Flame, LayoutGrid, CheckCircle2, Target, AlertTriangle, TrendingUp, Info, X, ChevronLeft, ChevronRight, ArrowRightLeft } from 'lucide-react';
 import axios from 'axios';
 import Button from '../components/ui/Button';
 
@@ -1033,7 +1033,39 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="flex items-center space-x-2 self-center">
+        <div className="flex items-center space-x-2 self-center flex-wrap gap-y-2">
+          {/* Enhancement 1: Transaction Activity Badge */}
+          <button
+            onClick={() => navigate('/transactions')}
+            className="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-white/80 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800 hover:border-primary/50 transition-all duration-150 hover:-translate-y-0.5 active:scale-[0.97] group cursor-pointer backdrop-blur-md shadow-sm"
+            title={`View ${transactions.filter(t => t.date.startsWith(formatLocalYYYYMM(now))).length} transactions for ${currentMonthLabel}`}
+          >
+            <div className="p-1 rounded-lg bg-primary/10 text-primary group-hover:bg-primary group-hover:text-white transition-colors">
+              <ArrowRightLeft className="w-3.5 h-3.5" />
+            </div>
+            <div className="text-left leading-tight">
+              <div className="flex items-center space-x-1">
+                <span className="font-extrabold text-xs text-slate-900 dark:text-white">
+                  {transactions.filter(t => t.date.startsWith(formatLocalYYYYMM(now))).length} Tx
+                </span>
+                {(() => {
+                  const currCount = transactions.filter(t => t.date.startsWith(formatLocalYYYYMM(now))).length;
+                  const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                  const prevPrefix = formatLocalYYYYMM(prevDate);
+                  const prevCount = transactions.filter(t => t.date.startsWith(prevPrefix)).length;
+                  const diff = currCount - prevCount;
+                  if (prevCount === 0 || diff === 0) return null;
+                  return (
+                    <span className={`text-[9px] font-bold px-1 rounded ${diff > 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-slate-500/10 text-slate-400'}`}>
+                      {diff > 0 ? `+${diff}` : diff}
+                    </span>
+                  );
+                })()}
+              </div>
+              <span className="text-[9px] text-slate-400 font-semibold block truncate max-w-[80px]">{currentMonthLabel}</span>
+            </div>
+          </button>
+
           <button 
             onClick={() => setIsCustomizing(!isCustomizing)}
             className="flex items-center space-x-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900 transition-all duration-150 hover:-translate-y-0.5 active:scale-[0.97]"
@@ -1369,12 +1401,13 @@ export default function Dashboard() {
             <div className="flex justify-between items-center mb-6">
               <div>
                 <h3 className="text-base font-bold text-slate-900 dark:text-white">Cash Flow Trends</h3>
-                <p className="text-xs text-slate-500 mt-0.5 font-medium">Income Received, Living Expenses, and Net Savings against Planned Savings Target</p>
+                <p className="text-xs text-slate-500 mt-0.5 font-medium">Income Received, Living Expenses, Savings Commitments, and Net Monthly Savings</p>
               </div>
-              <div className="flex items-center space-x-3 text-[10px] font-bold">
+              <div className="flex items-center flex-wrap gap-x-3 gap-y-1 text-[10px] font-bold">
                 <span className="flex items-center text-emerald-400"><span className="w-2 h-2 rounded-full bg-emerald-500 mr-1"></span> Income Received</span>
                 <span className="flex items-center text-rose-400"><span className="w-2 h-2 rounded-full bg-rose-500 mr-1"></span> Living Expenses</span>
-                <span className="flex items-center text-blue-400"><span className="w-2 h-2 rounded-full bg-blue-500 mr-1"></span> Net Savings</span>
+                <span className="flex items-center text-purple-400"><span className="w-2 h-2 rounded-full bg-purple-500 mr-1"></span> Savings Commitments</span>
+                <span className="flex items-center text-blue-400"><span className="w-2 h-2 rounded-full bg-blue-500 mr-1"></span> Net Monthly Savings</span>
               </div>
             </div>
 
@@ -1401,6 +1434,10 @@ export default function Dashboard() {
                         <stop offset="5%" stopColor="#F43F5E" stopOpacity={0.25}/>
                         <stop offset="95%" stopColor="#F43F5E" stopOpacity={0}/>
                       </linearGradient>
+                      <linearGradient id="colorSavCommit" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#A855F7" stopOpacity={0.2}/>
+                        <stop offset="95%" stopColor="#A855F7" stopOpacity={0}/>
+                      </linearGradient>
                       <linearGradient id="colorSav" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.25}/>
                         <stop offset="95%" stopColor="#3B82F6" stopOpacity={0}/>
@@ -1412,7 +1449,8 @@ export default function Dashboard() {
                     <Tooltip content={<StandardChartTooltip />} />
                     <Area type="monotone" dataKey="incomeReceived" name="Income Received" stroke="#10B981" strokeWidth={2.5} fillOpacity={1} fill="url(#colorInc)"/>
                     <Area type="monotone" dataKey="livingExpenses" name="Living Expenses" stroke="#F43F5E" strokeWidth={2.5} fillOpacity={1} fill="url(#colorExp)"/>
-                    <Area type="monotone" dataKey="netMonthlySavings" name="Net Savings" stroke="#3B82F6" strokeWidth={2.5} fillOpacity={1} fill="url(#colorSav)"/>
+                    <Area type="monotone" dataKey="savingsCommitments" name="Savings Commitments" stroke="#A855F7" strokeWidth={2.0} fillOpacity={1} fill="url(#colorSavCommit)"/>
+                    <Area type="monotone" dataKey="netMonthlySavings" name="Net Monthly Savings" stroke="#3B82F6" strokeWidth={2.5} fillOpacity={1} fill="url(#colorSav)"/>
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
