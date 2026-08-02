@@ -58,13 +58,28 @@ export async function getAvailableBalance(userId: number, monthPrefix: string): 
   }
 }
 
-// Case-Insensitive Active Policy Helper
+// Case-Insensitive & Self-Healing Active Policy Helper
 export function isPolicyActive(p: any): boolean {
   if (!p) return false;
   const s = (p.status || '').toString().trim().toLowerCase();
-  if (['completed', 'cancelled', 'closed', 'matured', 'terminated', 'paused'].includes(s)) {
+
+  if (['cancelled', 'closed', 'terminated', 'paused'].includes(s)) {
     return false;
   }
+
+  // If marked 'completed' or 'matured', verify if there are remaining unpaid months
+  if (s === 'completed' || s === 'matured') {
+    const paidCount = Number(p.premiumsPaid || p.monthsPaid || 0);
+    const totalMonths = Number(p.totalInstallments || (p.policy_term ? p.policy_term * 12 : 0));
+    // If paidCount < totalMonths (e.g. 25 / 180), it is NOT completed — it is ACTIVE!
+    if (totalMonths > 0 && paidCount < totalMonths) {
+      return true;
+    }
+    if (totalMonths > 0 && paidCount >= totalMonths) {
+      return false;
+    }
+  }
+
   return true;
 }
 
@@ -166,11 +181,11 @@ export async function recalculateLicMetrics(policyId: number) {
 
     await execute(`UPDATE lic_policies SET total_paid = ? WHERE id = ?`, [totalPaid, policyId]);
 
-    // Completion Lock: ONLY if all 180 premiums are paid -> Completed
-    if (paidCount >= totalPolicyMonths && totalPolicyMonths > 0) {
+    // Completion Lock: ONLY if all 180 premiums are paid -> Completed; otherwise Running!
+    if (totalPolicyMonths > 0 && paidCount >= totalPolicyMonths) {
       await execute(`UPDATE lic_policies SET status = 'Completed' WHERE id = ?`, [policyId]);
     } else {
-      await execute(`UPDATE lic_policies SET status = 'Running' WHERE id = ? AND (status IS NULL OR status = 'Completed')`, [policyId]);
+      await execute(`UPDATE lic_policies SET status = 'Running' WHERE id = ?`, [policyId]);
     }
   } catch (err) {
     console.error('[LIC Metrics Recalculation Error]', err);
@@ -180,6 +195,26 @@ export async function recalculateLicMetrics(policyId: number) {
 // ─── SHARED LIC MODULE SUMMARY AGGREGATION SERVICE ─────────────────────────
 export async function getLicModuleSummary(userId: number = 1) {
   const allPolicies = await query(`SELECT * FROM lic_policies WHERE user_id = ?`, [userId]);
+
+  // Self-Healing Database Repair: Fix policies erroneously marked 'Completed' when paidCount < totalPolicyMonths
+  for (const p of allPolicies) {
+    const paidRes = await get(
+      `SELECT COUNT(*) as count FROM lic_premium_history WHERE policy_id = ? AND status = 'Paid'`,
+      [p.id]
+    );
+    const paidCount = Number(paidRes?.count || 0);
+    const termYears = Number(p.policy_term || 10);
+    const totalPolicyMonths = termYears * 12;
+
+    if (totalPolicyMonths > 0 && paidCount < totalPolicyMonths && (p.status === 'Completed' || p.status === 'completed')) {
+      await execute(`UPDATE lic_policies SET status = 'Running' WHERE id = ?`, [p.id]);
+      p.status = 'Running';
+    } else if (totalPolicyMonths > 0 && paidCount >= totalPolicyMonths && p.status !== 'Completed') {
+      await execute(`UPDATE lic_policies SET status = 'Completed' WHERE id = ?`, [p.id]);
+      p.status = 'Completed';
+    }
+  }
+
   const activePoliciesList = allPolicies.filter((p: any) => isPolicyActive(p));
 
   const activePolicies = activePoliciesList.length;
@@ -316,6 +351,10 @@ export async function runRecurringAutomation(userId: number = 1, forceRun: boole
 
   // Process ALL active LIC policies directly to guarantee sync execution across all user policies
   const allLicPolicies = await query(`SELECT * FROM lic_policies WHERE user_id = ?`, [userId]);
+
+  // Run self-healing database check first
+  await getLicModuleSummary(userId);
+
   const activeLicPolicies = allLicPolicies.filter((p: any) => isPolicyActive(p));
 
   for (const policy of activeLicPolicies) {
