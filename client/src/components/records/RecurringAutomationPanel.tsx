@@ -37,6 +37,7 @@ export default function RecurringAutomationPanel({
   });
 
   const [logs, setLogs] = useState<any[]>([]);
+  const [nextInstallment, setNextInstallment] = useState<any | null>(null);
 
   const fetchAutomationData = async () => {
     setLoading(true);
@@ -44,6 +45,7 @@ export default function RecurringAutomationPanel({
       const res = await axios.get(`${API}/records/automation/${moduleType}/${entityId}`);
       if (res.data.settings) setSettings(res.data.settings);
       if (res.data.logs) setLogs(res.data.logs);
+      if (res.data.nextInstallment) setNextInstallment(res.data.nextInstallment);
     } catch (_) {
     } finally {
       setLoading(false);
@@ -129,8 +131,12 @@ export default function RecurringAutomationPanel({
         <div className="flex items-center space-x-2 bg-[#101935] px-3 py-1.5 rounded-xl border border-[#1E2A4A] shrink-0">
           <Calendar className="w-3.5 h-3.5 text-[#635BFF]" />
           <div>
-            <span className="text-[9px] text-slate-400 block font-bold">Next Month ({nextMonthName})</span>
-            <span className="text-xs font-black text-white font-mono">₹{defaultAmount.toLocaleString('en-IN')}</span>
+            <span className="text-[9px] text-slate-400 block font-bold">
+              {nextInstallment ? `Next Scheduled (${new Date(2000, nextInstallment.month - 1).toLocaleString('en-US', { month: 'short' })} ${nextInstallment.year})` : `Next Month (${nextMonthName})`}
+            </span>
+            <span className="text-xs font-black text-white font-mono">
+              ₹{(nextInstallment ? nextInstallment.installment_amount : defaultAmount).toLocaleString('en-IN')}
+            </span>
           </div>
         </div>
       </div>

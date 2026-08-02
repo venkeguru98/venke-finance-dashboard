@@ -1621,7 +1621,15 @@ router.get('/automation/:moduleType/:entityId', async (req: Request, res: Respon
       [userId, moduleType, entityId]
     );
 
-    res.json({ settings, logs });
+    let nextInstallment = null;
+    if (moduleType === 'chit') {
+      nextInstallment = await get(
+        `SELECT * FROM chit_payments WHERE chit_id = ? AND status != 'Paid' ORDER BY year ASC, month ASC LIMIT 1`,
+        [entityId]
+      );
+    }
+
+    res.json({ settings, logs, nextInstallment });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

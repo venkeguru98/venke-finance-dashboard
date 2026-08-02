@@ -83,33 +83,39 @@ export async function runRecurringAutomation(userId: number = 1, forceRun: boole
         const chit = await get('SELECT * FROM chit_funds WHERE id = ?', [entity_id]);
         if (!chit || chit.status === 'Completed' || chit.status === 'Closed') continue;
 
-        // Check if payment already exists for current month/year
-        const existing = await get(
+        // Query payment schedule for current month/year
+        let existing = await get(
           'SELECT * FROM chit_payments WHERE chit_id = ? AND month = ? AND year = ?',
           [entity_id, currentMonth, currentYear]
         );
 
-        if (existing) {
-          // Manual override check
-          if (!existing.remarks?.includes('Auto-generated')) {
-            await execute(
-              `INSERT INTO recurring_automation_logs (user_id, module_type, entity_id, action, amount, period_month, period_year, details)
-               VALUES (?, ?, ?, 'Manual override detected', ?, ?, ?, 'User manually logged chit installment')`,
-              [userId, module_type, entity_id, existing.installment_amount, currentMonth, currentYear]
-            );
-          }
-          continue;
+        if (!existing) {
+          // Find next pending installment from payment schedule
+          existing = await get(
+            'SELECT * FROM chit_payments WHERE chit_id = ? AND status != ? ORDER BY year ASC, month ASC LIMIT 1',
+            [entity_id, 'Paid']
+          );
         }
 
-        if (auto_create) {
-          const status = auto_mark_paid ? 'Paid' : 'Pending';
-          const pDate = dateStr;
-          const amt = Number(chit.monthly_installment) || 0;
+        if (existing) {
+          // Manual override check: if already paid manually
+          if (existing.status === 'Paid' && !existing.remarks?.includes('Auto-generated')) {
+            await execute(
+              `INSERT INTO recurring_automation_logs (user_id, module_type, entity_id, action, amount, period_month, period_year, details)
+               VALUES (?, ?, ?, 'Manual override detected', ?, ?, ?, 'User manually paid chit installment')`,
+              [userId, module_type, entity_id, existing.installment_amount, existing.month, existing.year]
+            );
+            continue;
+          }
 
+          const amt = Number(existing.installment_amount) || Number(chit.monthly_installment) || 0;
+          const status = auto_mark_paid ? 'Paid' : (existing.status || 'Pending');
+          const pDate = dateStr;
+
+          // UPDATE existing chit_payments schedule row
           await execute(
-            `INSERT INTO chit_payments (chit_id, month, year, installment_amount, status, payment_date, remarks)
-             VALUES (?, ?, ?, ?, ?, ?, 'Auto-generated recurring installment')`,
-            [entity_id, currentMonth, currentYear, amt, status, auto_mark_paid ? pDate : null]
+            `UPDATE chit_payments SET status = ?, payment_date = ?, remarks = 'Auto-generated recurring installment' WHERE id = ?`,
+            [status, auto_mark_paid ? pDate : existing.payment_date, existing.id]
           );
 
           await execute(
@@ -119,14 +125,14 @@ export async function runRecurringAutomation(userId: number = 1, forceRun: boole
 
           let telegramSent = 0;
           if (telegram_confirm && chatId) {
-            const monthName = now.toLocaleString('en-US', { month: 'long' });
-            const msg = `<b>Cheetu payment recorded</b>\n\n` +
-              `Cheetu: ${chit.chit_name}\n` +
-              `Month: ${monthName} ${currentYear}\n` +
+            const instMonthName = new Date(2000, existing.month - 1).toLocaleString('en-US', { month: 'short' });
+            const msg = `<b>Cheetu installment completed</b>\n\n` +
+              `Chit: ${chit.chit_name}\n` +
+              `Installment: ${instMonthName} ${existing.year}\n` +
               `Amount: ₹${amt.toLocaleString('en-IN')}\n` +
-              `Payment Date: ${pDate}\n` +
-              `Status: ${status}\n` +
-              `Reference: Auto-generated recurring installment\n\n` +
+              `Due: ${String(payment_day || 5).padStart(2, '0')} ${instMonthName} ${existing.year}\n` +
+              `Paid: ${pDate}\n` +
+              `Status: ${status}\n\n` +
               `Venke Finance`;
 
             const ok = await sendTelegramMessage(chatId, msg);
@@ -135,8 +141,8 @@ export async function runRecurringAutomation(userId: number = 1, forceRun: boole
 
           await execute(
             `INSERT INTO recurring_automation_logs (user_id, module_type, entity_id, action, amount, period_month, period_year, telegram_sent, details)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Automated installment generated')`,
-            [userId, module_type, entity_id, auto_mark_paid ? 'Auto-marked Paid' : 'Auto-created', amt, currentMonth, currentYear, telegramSent]
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Automated payment schedule row updated')`,
+            [userId, module_type, entity_id, auto_mark_paid ? 'Auto-marked Paid' : 'Auto-updated', amt, existing.month, existing.year, telegramSent]
           );
         }
       } else if (module_type === 'gold') {
@@ -284,7 +290,11 @@ export async function generateNextMonthForecast(userId: number = 1, isHeadsUp: b
     if (rule.module_type === 'chit') {
       const chit = await get('SELECT * FROM chit_funds WHERE id = ?', [rule.entity_id]);
       if (chit && chit.status === 'Running') {
-        const amt = Number(chit.monthly_installment) || 0;
+        const nextPayment = await get(
+          "SELECT * FROM chit_payments WHERE chit_id = ? AND status != 'Paid' ORDER BY year ASC, month ASC LIMIT 1",
+          [rule.entity_id]
+        );
+        const amt = Number(nextPayment?.installment_amount) || Number(chit.monthly_installment) || 0;
         const dueDay = rule.payment_day || 5;
         cheetuItems.push({ name: chit.chit_name, amount: amt, dueDay });
         cheetuTotal += amt;
