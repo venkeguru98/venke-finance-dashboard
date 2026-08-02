@@ -58,7 +58,32 @@ export async function getAvailableBalance(userId: number, monthPrefix: string): 
   }
 }
 
-// ─── RUN AUTOMATION ENGINE ──────────────────────────────────────────────────
+// ─── RECALCULATE CHIT METRICS HELPER ───────────────────────────────────────
+export async function recalculateChitMetrics(chitId: number) {
+  try {
+    const paidRes = await get(
+      `SELECT COUNT(*) as count, SUM(installment_amount) as total 
+       FROM chit_payments WHERE chit_id = ? AND status = 'Paid'`,
+      [chitId]
+    );
+
+    const chit = await get(`SELECT monthly_installment, total_months FROM chit_funds WHERE id = ?`, [chitId]);
+    if (!chit) return;
+
+    const monthsPaid = Number(paidRes?.count || 0);
+    const totalPaid = Number(paidRes?.total || 0);
+
+    // Keep chit_funds table synchronized
+    await execute(
+      `UPDATE chit_funds SET total_paid = ? WHERE id = ?`,
+      [totalPaid, chitId]
+    );
+  } catch (err) {
+    console.error('[Chit Metrics Recalculation Error]', err);
+  }
+}
+
+// ─── RUN AUTOMATION ENGINE (GLOBAL CHETTU SCHEDULER) ──────────────────────
 export async function runRecurringAutomation(userId: number = 1, forceRun: boolean = false) {
   const now = new Date();
   const currentMonth = now.getMonth() + 1;
@@ -76,34 +101,43 @@ export async function runRecurringAutomation(userId: number = 1, forceRun: boole
   );
 
   for (const rule of rules) {
-    const { id, module_type, entity_id, auto_create, auto_mark_paid, telegram_confirm, payment_day } = rule;
+    const { id, module_type, entity_id, auto_create, auto_mark_paid, telegram_confirm, payment_day, last_executed_month, last_executed_year } = rule;
 
     try {
       if (module_type === 'chit') {
         const chit = await get('SELECT * FROM chit_funds WHERE id = ?', [entity_id]);
         if (!chit || chit.status === 'Completed' || chit.status === 'Closed') continue;
 
-        // Query payment schedule for current month/year
+        // Safeguard: Check monthly execution state (execute once per chit per month unless forceRun)
+        if (!forceRun && last_executed_month === currentMonth && last_executed_year === currentYear) {
+          continue; // Already executed for this month
+        }
+
+        // 1. Find next unpaid payment schedule row
         let existing = await get(
           'SELECT * FROM chit_payments WHERE chit_id = ? AND month = ? AND year = ?',
           [entity_id, currentMonth, currentYear]
         );
 
         if (!existing) {
-          // Find next pending installment from payment schedule
           existing = await get(
-            'SELECT * FROM chit_payments WHERE chit_id = ? AND status != ? ORDER BY year ASC, month ASC LIMIT 1',
-            [entity_id, 'Paid']
+            "SELECT * FROM chit_payments WHERE chit_id = ? AND status != 'Paid' ORDER BY year ASC, month ASC LIMIT 1",
+            [entity_id]
           );
         }
 
         if (existing) {
-          // Manual override check: if already paid manually
+          // 2. Check manual override
           if (existing.status === 'Paid' && !existing.remarks?.includes('Auto-generated')) {
             await execute(
               `INSERT INTO recurring_automation_logs (user_id, module_type, entity_id, action, amount, period_month, period_year, details)
                VALUES (?, ?, ?, 'Manual override detected', ?, ?, ?, 'User manually paid chit installment')`,
               [userId, module_type, entity_id, existing.installment_amount, existing.month, existing.year]
+            );
+
+            await execute(
+              `UPDATE recurring_commitments SET last_executed_month = ?, last_executed_year = ? WHERE id = ?`,
+              [currentMonth, currentYear, id]
             );
             continue;
           }
@@ -112,17 +146,22 @@ export async function runRecurringAutomation(userId: number = 1, forceRun: boole
           const status = auto_mark_paid ? 'Paid' : (existing.status || 'Pending');
           const pDate = dateStr;
 
-          // UPDATE existing chit_payments schedule row
+          // 3. Mark payment paid & update payment date
           await execute(
             `UPDATE chit_payments SET status = ?, payment_date = ?, remarks = 'Auto-generated recurring installment' WHERE id = ?`,
             [status, auto_mark_paid ? pDate : existing.payment_date, existing.id]
           );
 
+          // 4. Recalculate chit summary metrics
+          await recalculateChitMetrics(entity_id);
+
+          // 5. Update execution tracking
           await execute(
-            `UPDATE recurring_commitments SET last_run_date = ? WHERE id = ?`,
-            [dateStr, id]
+            `UPDATE recurring_commitments SET last_run_date = ?, last_executed_month = ?, last_executed_year = ? WHERE id = ?`,
+            [dateStr, currentMonth, currentYear, id]
           );
 
+          // 6. Send Telegram confirmation
           let telegramSent = 0;
           if (telegram_confirm && chatId) {
             const instMonthName = new Date(2000, existing.month - 1).toLocaleString('en-US', { month: 'short' });
@@ -139,9 +178,10 @@ export async function runRecurringAutomation(userId: number = 1, forceRun: boole
             if (ok) telegramSent = 1;
           }
 
+          // 7. Log audit entry
           await execute(
             `INSERT INTO recurring_automation_logs (user_id, module_type, entity_id, action, amount, period_month, period_year, telegram_sent, details)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Automated payment schedule row updated')`,
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Automated payment schedule row updated & synchronized')`,
             [userId, module_type, entity_id, auto_mark_paid ? 'Auto-marked Paid' : 'Auto-updated', amt, existing.month, existing.year, telegramSent]
           );
         }
@@ -174,8 +214,8 @@ export async function runRecurringAutomation(userId: number = 1, forceRun: boole
           );
 
           await execute(
-            `UPDATE recurring_commitments SET last_run_date = ? WHERE id = ?`,
-            [dateStr, id]
+            `UPDATE recurring_commitments SET last_run_date = ?, last_executed_month = ?, last_executed_year = ? WHERE id = ?`,
+            [dateStr, currentMonth, currentYear, id]
           );
 
           let telegramSent = 0;
@@ -230,8 +270,8 @@ export async function runRecurringAutomation(userId: number = 1, forceRun: boole
           );
 
           await execute(
-            `UPDATE recurring_commitments SET last_run_date = ? WHERE id = ?`,
-            [dateStr, id]
+            `UPDATE recurring_commitments SET last_run_date = ?, last_executed_month = ?, last_executed_year = ? WHERE id = ?`,
+            [dateStr, currentMonth, currentYear, id]
           );
 
           let telegramSent = 0;
@@ -388,4 +428,42 @@ export async function generateNextMonthForecast(userId: number = 1, isHeadsUp: b
   text += `Venke Finance`;
 
   return { text, totalCommitments: totalNextCommitment };
+}
+
+// ─── GLOBAL CHEETTU AUTOPILOT STATUS HELPER ────────────────────────────────
+export async function getGlobalCheetuAutopilotStatus(userId: number = 1) {
+  const activeChits = await query(`SELECT * FROM chit_funds WHERE user_id = ? AND status = 'Running'`, [userId]);
+  const activeCount = activeChits.length;
+
+  const rules = await query(`SELECT * FROM recurring_commitments WHERE user_id = ? AND module_type = 'chit'`, [userId]);
+  const isEnabled = rules.some(r => r.enabled === 1);
+
+  const lastLog = await get(
+    `SELECT * FROM recurring_automation_logs WHERE user_id = ? AND module_type = 'chit' ORDER BY created_at DESC LIMIT 1`,
+    [userId]
+  );
+
+  const user = await get(`SELECT telegram_chat_id FROM users WHERE id = ?`, [userId]);
+  const isTelegramLinked = !!(user && user.telegram_chat_id);
+
+  // Compute next global run date (1st of next month at 12:05 AM)
+  const now = new Date();
+  const nextMonthDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const nextRunStr = `01 ${nextMonthDate.toLocaleString('en-US', { month: 'short' })} ${nextMonthDate.getFullYear()} • 12:05 AM`;
+
+  const logs = await query(
+    `SELECT * FROM recurring_automation_logs WHERE user_id = ? AND module_type = 'chit' ORDER BY created_at DESC LIMIT 15`,
+    [userId]
+  );
+
+  return {
+    enabled: isEnabled ? 1 : 0,
+    activeCount,
+    lastRunDate: lastLog ? lastLog.created_at : null,
+    lastAction: lastLog ? lastLog.action : 'No runs yet',
+    nextRunStr,
+    isTelegramLinked,
+    health: isEnabled ? 'Healthy' : 'Paused',
+    logs
+  };
 }

@@ -1763,4 +1763,52 @@ router.post('/automation/forecast/send-telegram', async (req: Request, res: Resp
   }
 });
 
+// ─── GLOBAL CHEETTU AUTOPILOT ENDPOINTS ──────────────────────────────────────
+import { getGlobalCheetuAutopilotStatus } from '../services/recurringAutomation';
+
+router.get('/automation/chit/global-status', async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  try {
+    const status = await getGlobalCheetuAutopilotStatus(userId);
+    res.json(status);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/automation/chit/global-toggle', async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  try {
+    const rules = await query(`SELECT enabled FROM recurring_commitments WHERE user_id = ? AND module_type = 'chit'`, [userId]);
+    const currentEnabled = rules.some(r => r.enabled === 1);
+    const newEnabled = currentEnabled ? 0 : 1;
+
+    // Toggle all user chit commitments
+    const activeChits = await query(`SELECT id FROM chit_funds WHERE user_id = ? AND status = 'Running'`, [userId]);
+    for (const c of activeChits) {
+      await execute(
+        `INSERT INTO recurring_commitments (user_id, module_type, entity_id, enabled, auto_create, auto_mark_paid)
+         VALUES (?, 'chit', ?, ?, 1, 1)
+         ON CONFLICT(module_type, entity_id) DO UPDATE SET enabled = ?`,
+        [userId, c.id, newEnabled, newEnabled]
+      );
+    }
+
+    res.json({ success: true, enabled: newEnabled });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/automation/chit/global-sync', async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  try {
+    await runRecurringAutomation(userId, true);
+    const status = await getGlobalCheetuAutopilotStatus(userId);
+    res.json({ success: true, message: 'Global Cheetu Sync completed.', status });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;

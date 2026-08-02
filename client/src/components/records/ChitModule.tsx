@@ -3,7 +3,8 @@ import axios from 'axios';
 import { Plus, Edit2, Trash2, ArrowLeft, Landmark, Calendar, AlertCircle, ChevronRight } from 'lucide-react';
 import Button from '../ui/Button';
 import CsvImportModal from './CsvImportModal';
-import RecurringAutomationPanel from './RecurringAutomationPanel';
+import GlobalCheetuAutopilotController from './GlobalCheetuAutopilotController';
+import ReadOnlyChitAutomationCard from './ReadOnlyChitAutomationCard';
 import { formatDisplayDate } from '../../utils/date';
 
 const API = window.location.port === '5173' ? 'http://localhost:5000/api' : '/api';
@@ -206,6 +207,9 @@ export default function ChitModule({ onBack }: ChitModuleProps) {
         </Button>
       </div>
 
+      {/* GLOBAL CHEETTU AUTOPILOT CONTROLLER */}
+      <GlobalCheetuAutopilotController onSyncComplete={fetchChits} />
+
       {loading ? (
         <div className="text-center py-12 text-slate-400 text-sm font-semibold">Loading chit groups...</div>
       ) : chits.length === 0 ? (
@@ -369,13 +373,10 @@ export default function ChitModule({ onBack }: ChitModuleProps) {
                 )}
               </div>
 
-                {/* RECURRING AUTOMATION PANEL */}
-                <RecurringAutomationPanel
-                  moduleType="chit"
-                  entityId={activeChit.id}
-                  entityName={activeChit.chit_name}
+                {/* READ ONLY CHIT AUTOMATION CARD */}
+                <ReadOnlyChitAutomationCard
+                  chitId={activeChit.id}
                   defaultAmount={activeChit.monthly_installment}
-                  dueDay={5}
                 />
 
                 {/* SCHEDULE DETAIL */}
