@@ -4,6 +4,7 @@ import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer, BarChart, Bar } f
 import { Plus, Edit2, Trash2, ArrowLeft, Coins, ChevronRight } from 'lucide-react';
 import Button from '../ui/Button';
 import CsvImportModal from './CsvImportModal';
+import RecurringAutomationPanel from './RecurringAutomationPanel';
 import { formatDisplayDate } from '../../utils/date';
 
 const API = window.location.port === '5173' ? 'http://localhost:5000/api' : '/api';
@@ -339,6 +340,15 @@ export default function GoldModule({ onBack }: GoldModuleProps) {
                     <p className="text-md font-black text-slate-350 mt-1">{transactions.length} buys</p>
                   </div>
                 </div>
+
+                {/* RECURRING AUTOMATION PANEL */}
+                <RecurringAutomationPanel
+                  moduleType="gold"
+                  entityId={activeGold.id}
+                  entityName={activeGold.investment_name}
+                  defaultAmount={activeGold.monthly_amount || 1000}
+                  dueDay={1}
+                />
 
                 {/* CHARTS CONTAINER */}
                 {transactions.length > 0 && (

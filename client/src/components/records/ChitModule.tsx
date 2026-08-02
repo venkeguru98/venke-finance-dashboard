@@ -3,6 +3,7 @@ import axios from 'axios';
 import { Plus, Edit2, Trash2, ArrowLeft, Landmark, Calendar, AlertCircle, ChevronRight } from 'lucide-react';
 import Button from '../ui/Button';
 import CsvImportModal from './CsvImportModal';
+import RecurringAutomationPanel from './RecurringAutomationPanel';
 import { formatDisplayDate } from '../../utils/date';
 
 const API = window.location.port === '5173' ? 'http://localhost:5000/api' : '/api';
@@ -368,7 +369,16 @@ export default function ChitModule({ onBack }: ChitModuleProps) {
                 )}
               </div>
 
-              {/* SCHEDULE DETAIL */}
+                {/* RECURRING AUTOMATION PANEL */}
+                <RecurringAutomationPanel
+                  moduleType="chit"
+                  entityId={activeChit.id}
+                  entityName={activeChit.chit_name}
+                  defaultAmount={activeChit.monthly_installment}
+                  dueDay={5}
+                />
+
+                {/* SCHEDULE DETAIL */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {/* YEARLY SUMMARY LIST */}
                 <div className="bg-slate-950/40 border border-slate-850 p-5 rounded-3xl space-y-4">

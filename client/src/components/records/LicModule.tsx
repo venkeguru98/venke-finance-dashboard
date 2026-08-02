@@ -3,6 +3,7 @@ import axios from 'axios';
 import { Plus, Edit2, Trash2, Calendar, Shield, AlertCircle, ArrowLeft, ChevronRight } from 'lucide-react';
 import Button from '../ui/Button';
 import CsvImportModal from './CsvImportModal';
+import RecurringAutomationPanel from './RecurringAutomationPanel';
 import { formatDisplayDate } from '../../utils/date';
 
 const API = window.location.port === '5173' ? 'http://localhost:5000/api' : '/api';
@@ -414,6 +415,15 @@ export default function LicModule({ onBack }: LicModuleProps) {
                   </div>
                 </div>
               </div>
+
+              {/* RECURRING AUTOMATION PANEL */}
+              <RecurringAutomationPanel
+                moduleType="lic"
+                entityId={activePolicy.id}
+                entityName={activePolicy.policy_name}
+                defaultAmount={activePolicy.monthly_premium}
+                dueDay={activePolicy.premium_due_day || 12}
+              />
 
               {/* YEARLY PAYMENTS CARD */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

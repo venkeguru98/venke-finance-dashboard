@@ -1584,4 +1584,175 @@ router.post('/mutual-funds/:id/import', async (req: Request, res: Response) => {
   }
 });
 
+// ─── RECURRING AUTOMATION ENDPOINTS ──────────────────────────────────────────
+import { runRecurringAutomation, generateNextMonthForecast, sendTelegramMessage } from '../services/recurringAutomation';
+
+// Get automation settings and history for a specific entity
+router.get('/automation/:moduleType/:entityId', async (req: Request, res: Response) => {
+  const { moduleType, entityId } = req.params;
+  const userId = req.user!.id;
+
+  try {
+    let settings = await get(
+      `SELECT * FROM recurring_commitments WHERE user_id = ? AND module_type = ? AND entity_id = ?`,
+      [userId, moduleType, entityId]
+    );
+
+    if (!settings) {
+      settings = {
+        module_type: moduleType,
+        entity_id: Number(entityId),
+        enabled: 0,
+        auto_create: 1,
+        auto_mark_paid: 0,
+        telegram_confirm: 1,
+        telegram_reminder: 1,
+        payment_day: 1,
+        reminder_days_before: 3,
+        frequency: 'monthly',
+        last_run_date: null
+      };
+    }
+
+    const logs = await query(
+      `SELECT * FROM recurring_automation_logs 
+       WHERE user_id = ? AND module_type = ? AND entity_id = ?
+       ORDER BY created_at DESC LIMIT 20`,
+      [userId, moduleType, entityId]
+    );
+
+    res.json({ settings, logs });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Save or Update automation settings
+router.post('/automation/:moduleType/:entityId', async (req: Request, res: Response) => {
+  const { moduleType, entityId } = req.params;
+  const userId = req.user!.id;
+  const {
+    enabled,
+    auto_create,
+    auto_mark_paid,
+    telegram_confirm,
+    telegram_reminder,
+    payment_day,
+    reminder_days_before,
+    frequency
+  } = req.body;
+
+  try {
+    const existing = await get(
+      `SELECT id FROM recurring_commitments WHERE user_id = ? AND module_type = ? AND entity_id = ?`,
+      [userId, moduleType, entityId]
+    );
+
+    if (existing) {
+      await execute(
+        `UPDATE recurring_commitments SET
+          enabled = ?,
+          auto_create = ?,
+          auto_mark_paid = ?,
+          telegram_confirm = ?,
+          telegram_reminder = ?,
+          payment_day = ?,
+          reminder_days_before = ?,
+          frequency = ?
+         WHERE id = ?`,
+        [
+          enabled ? 1 : 0,
+          auto_create ? 1 : 0,
+          auto_mark_paid ? 1 : 0,
+          telegram_confirm ? 1 : 0,
+          telegram_reminder ? 1 : 0,
+          payment_day || 1,
+          reminder_days_before || 3,
+          frequency || 'monthly',
+          existing.id
+        ]
+      );
+    } else {
+      await execute(
+        `INSERT INTO recurring_commitments 
+         (user_id, module_type, entity_id, enabled, auto_create, auto_mark_paid, telegram_confirm, telegram_reminder, payment_day, reminder_days_before, frequency)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          userId,
+          moduleType,
+          entityId,
+          enabled ? 1 : 0,
+          auto_create ? 1 : 0,
+          auto_mark_paid ? 1 : 0,
+          telegram_confirm ? 1 : 0,
+          telegram_reminder ? 1 : 0,
+          payment_day || 1,
+          reminder_days_before || 3,
+          frequency || 'monthly'
+        ]
+      );
+    }
+
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Run automation manually for user
+router.post('/automation/:moduleType/:entityId/run', async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  try {
+    await runRecurringAutomation(userId, true);
+    res.json({ success: true, message: 'Automation executed successfully.' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Toggle Pause / Resume automation
+router.post('/automation/:moduleType/:entityId/pause', async (req: Request, res: Response) => {
+  const { moduleType, entityId } = req.params;
+  const userId = req.user!.id;
+  try {
+    const setting = await get(
+      `SELECT enabled FROM recurring_commitments WHERE user_id = ? AND module_type = ? AND entity_id = ?`,
+      [userId, moduleType, entityId]
+    );
+    const newEnabled = setting?.enabled === 1 ? 0 : 1;
+
+    await execute(
+      `UPDATE recurring_commitments SET enabled = ? WHERE user_id = ? AND module_type = ? AND entity_id = ?`,
+      [newEnabled, userId, moduleType, entityId]
+    );
+
+    res.json({ success: true, enabled: newEnabled });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Send Month-End / Heads-up Commitment Forecast Telegram message
+router.post('/automation/forecast/send-telegram', async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const { isHeadsUp } = req.body;
+  try {
+    const user = await get('SELECT telegram_chat_id FROM users WHERE id = ?', [userId]);
+    if (!user || !user.telegram_chat_id) {
+      return res.status(400).json({ error: 'Telegram chat ID not linked.' });
+    }
+
+    const { text, totalCommitments } = await generateNextMonthForecast(userId, !!isHeadsUp);
+    const ok = await sendTelegramMessage(user.telegram_chat_id, text);
+
+    if (ok) {
+      res.json({ success: true, totalCommitments, message: 'Telegram forecast message sent successfully.' });
+    } else {
+      res.status(500).json({ error: 'Failed to send Telegram forecast message.' });
+    }
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;

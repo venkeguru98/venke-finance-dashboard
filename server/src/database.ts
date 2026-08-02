@@ -633,6 +633,86 @@ export const initializeDatabase = async () => {
       console.error('Migration failed for wellness tables:', wErr);
     }
 
+    // Initialize Recurring Commitments & Automation Audit tables
+    try {
+      if (isPg) {
+        await execute(`
+          CREATE TABLE IF NOT EXISTS recurring_commitments (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL DEFAULT 1,
+            module_type VARCHAR(20) NOT NULL,
+            entity_id INTEGER NOT NULL,
+            enabled INTEGER DEFAULT 0,
+            auto_create INTEGER DEFAULT 1,
+            auto_mark_paid INTEGER DEFAULT 0,
+            telegram_confirm INTEGER DEFAULT 1,
+            telegram_reminder INTEGER DEFAULT 1,
+            payment_day INTEGER DEFAULT 1,
+            reminder_days_before INTEGER DEFAULT 3,
+            frequency VARCHAR(20) DEFAULT 'monthly',
+            last_run_date DATE NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(module_type, entity_id)
+          )
+        `);
+        await execute(`
+          CREATE TABLE IF NOT EXISTS recurring_automation_logs (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL DEFAULT 1,
+            module_type VARCHAR(20) NOT NULL,
+            entity_id INTEGER NOT NULL,
+            action VARCHAR(50) NOT NULL,
+            amount NUMERIC DEFAULT 0,
+            period_month INTEGER NOT NULL,
+            period_year INTEGER NOT NULL,
+            telegram_sent INTEGER DEFAULT 0,
+            details TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+      } else {
+        await execute(`
+          CREATE TABLE IF NOT EXISTS recurring_commitments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL DEFAULT 1,
+            module_type TEXT CHECK(module_type IN ('chit', 'gold', 'lic')) NOT NULL,
+            entity_id INTEGER NOT NULL,
+            enabled INTEGER DEFAULT 0,
+            auto_create INTEGER DEFAULT 1,
+            auto_mark_paid INTEGER DEFAULT 0,
+            telegram_confirm INTEGER DEFAULT 1,
+            telegram_reminder INTEGER DEFAULT 1,
+            payment_day INTEGER DEFAULT 1,
+            reminder_days_before INTEGER DEFAULT 3,
+            frequency TEXT DEFAULT 'monthly',
+            last_run_date DATE NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(module_type, entity_id),
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+          )
+        `);
+        await execute(`
+          CREATE TABLE IF NOT EXISTS recurring_automation_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL DEFAULT 1,
+            module_type TEXT CHECK(module_type IN ('chit', 'gold', 'lic')) NOT NULL,
+            entity_id INTEGER NOT NULL,
+            action TEXT NOT NULL,
+            amount REAL DEFAULT 0,
+            period_month INTEGER NOT NULL,
+            period_year INTEGER NOT NULL,
+            telegram_sent INTEGER DEFAULT 0,
+            details TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+          )
+        `);
+      }
+      console.log('Recurring commitment automation database tables verified/created.');
+    } catch (rErr) {
+      console.error('Migration failed for recurring commitment automation tables:', rErr);
+    }
+
   } catch (error) {
     console.error('Failed to initialize database schema', error);
   }
