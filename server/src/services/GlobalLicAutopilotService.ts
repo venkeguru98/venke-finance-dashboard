@@ -289,8 +289,8 @@ export class GlobalLicAutopilotService {
         await execute(
           `UPDATE lic_automation_execution 
            SET completed_at = CURRENT_TIMESTAMP, policies_processed = ?, policies_updated = ?, telegram_sent = ?, telegram_failed = ?, status = 'Success' 
-           WHERE execution_id = ?`,
-          [processedCount, updatedCount, telegramSentCount, telegramFailedCount, executionId]
+           WHERE (id = ? OR execution_id = ?)`,
+          [processedCount, updatedCount, telegramSentCount, telegramFailedCount, executionId, executionId]
         );
       }
 
@@ -298,8 +298,8 @@ export class GlobalLicAutopilotService {
     } catch (err: any) {
       if (executionId) {
         await execute(
-          `UPDATE lic_automation_execution SET completed_at = CURRENT_TIMESTAMP, status = 'Failed' WHERE execution_id = ?`,
-          [executionId]
+          `UPDATE lic_automation_execution SET completed_at = CURRENT_TIMESTAMP, status = 'Failed' WHERE (id = ? OR execution_id = ?)`,
+          [executionId, executionId]
         );
       }
       console.error('[GlobalLicAutopilotService Execution Error]', err);

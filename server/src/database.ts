@@ -83,13 +83,15 @@ export const query = async (sql: string, params: any[] = []): Promise<any[]> => 
 export const execute = async (sql: string, params: any[] = []): Promise<any> => {
   const converted = convertSql(sql);
   if (isPg && pgPool) {
-    // For INSERT statements, add RETURNING id to get the inserted row's ID
+    // For INSERT statements, add RETURNING * to get the inserted row's ID regardless of column name
     let pgSql = converted;
     if (/^\s*INSERT/i.test(pgSql) && !/RETURNING/i.test(pgSql)) {
-      pgSql = pgSql.replace(/;?\s*$/, ' RETURNING id');
+      pgSql = pgSql.replace(/;?\s*$/, ' RETURNING *');
     }
     const result = await pgPool.query(pgSql, params);
-    return { lastID: result.rows[0]?.id || null, changes: result.rowCount };
+    const row = result.rows[0];
+    const lastID = row ? (row.id ?? row.execution_id ?? Object.values(row)[0]) : null;
+    return { lastID, changes: result.rowCount };
   } else if (sqliteDb) {
     return new Promise((resolve, reject) => {
       sqliteDb.run(converted, params, function (this: any, err: any) {
@@ -763,7 +765,8 @@ export const initializeDatabase = async () => {
         if (isPg) {
           await execute(`
             CREATE TABLE IF NOT EXISTS lic_automation_execution (
-              execution_id SERIAL PRIMARY KEY,
+              id SERIAL PRIMARY KEY,
+              execution_id INTEGER NULL,
               execution_month INTEGER NOT NULL,
               execution_year INTEGER NOT NULL,
               started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -775,10 +778,12 @@ export const initializeDatabase = async () => {
               status VARCHAR(20) DEFAULT 'Running'
             )
           `);
+          try { await execute(`ALTER TABLE lic_automation_execution ADD COLUMN IF NOT EXISTS id SERIAL`); } catch (_) {}
         } else {
           await execute(`
             CREATE TABLE IF NOT EXISTS lic_automation_execution (
-              execution_id INTEGER PRIMARY KEY AUTOINCREMENT,
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              execution_id INTEGER NULL,
               execution_month INTEGER NOT NULL,
               execution_year INTEGER NOT NULL,
               started_at DATETIME DEFAULT CURRENT_TIMESTAMP,

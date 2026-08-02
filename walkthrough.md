@@ -1,67 +1,35 @@
-# Walkthrough - LIC Stabilization & Unified State Authority Sprint
+# Walkthrough - Policy-Agnostic LIC Autonomous Automation Engine
 
-Stabilized the LIC module by creating `LicAutomationEngine` (`server/src/services/LicAutomationEngine.ts`) as the **single source of truth** for all LIC policy badges, active policy counts, diagnostic endpoints, autopilot banners, and real-time state synchronization.
+Implemented a **completely policy-agnostic, contract-driven LIC autonomous automation engine**. The system derives all schedule generation, payment reconciliation, next-premium resolution, and Telegram dispatches dynamically from policy contract fields without hardcoding policy names, dates, amounts, or terms.
 
 > [!IMPORTANT]
-> **UNIFIED AUTOMATION ENGINE — STABILIZATION COMPLETE**: Every LIC component, card, badge, and diagnostic route now consumes `LicAutomationEngine.getLicAutomationState(userId)`. Cheetu, DigiGold, Dashboard financial calculations, Budgets, Transactions, and Analytics remain **100% untouched and preserved**.
+> **REGRESSION PROTECTION**: Cheetu, DigiGold, Dashboard financial calculations, Budgets, Transactions, and Analytics remain **100% untouched and preserved**.
 
 ---
 
-## ⚡ Key Fixes & Architecture
+## ⚡ Core Engine Capabilities
 
-### 1. Unified Single Source of Truth (`LicAutomationEngine`)
-- **API Endpoint**: `GET /api/records/lic/automation/state` & `GET /api/records/lic/automation/diagnostics`
-- **Returned Payload**:
-  ```json
-  {
-    "schedulerHealthy": "Healthy",
-    "activePolicies": 1,
-    "currentMonthPaid": 1,
-    "currentMonthPending": 0,
-    "currentMonthProcessed": true,
-    "nextPremium": {
-      "installmentNumber": 27,
-      "month": 9,
-      "year": 2026,
-      "amount": 932,
-      "dueDate": "02 Sep 2026",
-      "monthYearStr": "September 2026"
-    },
-    "lastExecution": "01 Aug 2026 12:05 AM",
-    "nextExecution": "01 Sep 2026 12:05 AM",
-    "telegramConnected": true,
-    "executionSuccessRate": "100%",
-    "scheduleIntegrity": "Healthy"
-  }
-  ```
+1. **Universal Schedule Generation & Frequency Calculation**
+   - Supports `Monthly`, `Quarterly`, `Half-Yearly`, and `Yearly` policy frequencies.
+   - Calculates exact installment counts (`termYears * (12 / stepMonths)`).
 
----
+2. **Universal Historical Backfill & Immediate Reconciliation**
+   - Past installments auto-backfill as `Paid`.
+   - Current month installment reconciles automatically upon policy creation.
 
-### 2. Fixed Policy Badge (`currentMonthStatus`)
-- Derived strictly from the current month installment status in `lic_premium_schedule`:
-  - **August 2026 Paid**: Displays `● Premium Paid` (emerald green badge).
-  - **Pending**: Displays `○ Premium Pending` (amber badge).
-  - **Overdue**: Displays `⚠ Premium Overdue` (red badge).
-- Never derived from policy status or payment history.
+3. **15-Minute Continuous Background Scheduler Ticker**
+   - `GlobalLicAutopilotService.start15MinuteTicker(1)` evaluates active policies every 15 minutes.
+   - Automatically processes pending installments where `due_date <= TODAY`.
 
----
+4. **Missed-Run Recovery Engine**
+   - Reconciles missed executions automatically upon server startup.
 
-### 3. Fixed Active Policy Count (Global Autopilot)
-- Directly queries database for active policies:
-  ```sql
-  SELECT COUNT(*) FROM lic_policies
-  WHERE user_id = ? AND (status IN ('Running','Active') OR status IS NULL);
-  ```
-- Banner now correctly displays `1 Active Policy Monitored` for the active policy.
-
----
-
-### 4. Connected Automation Diagnostics
-- `/api/records/lic/automation/diagnostics` returns unified diagnostic state from `LicAutomationEngine`.
-- Displays real-time operational status, next premium per policy, and audit execution logs.
+5. **Single Source of Truth (`lic_premium_schedule`)**
+   - Dynamic Next Premium: First unpaid installment ordered by `installment_number ASC`.
+   - Policy Badge: Current installment status strictly from `lic_premium_schedule`.
 
 ---
 
 ## 🔒 Verification & Build Output
-1. **Compilation**: Ran `npm run build` — transformed **2,436 modules** in **1.77s** with **0 TypeScript / Vite errors**.
-2. **Git Commit**: Saved to `main` (`bf1874f`).
+1. **Compilation**: Ran `npm run build` — transformed **2,436 modules** in **1.69s** with **0 TypeScript / Vite errors**.
+2. **Git Commit**: Saved to `main` (`8f7925d`).
