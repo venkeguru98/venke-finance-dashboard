@@ -124,10 +124,16 @@ export default function ReadOnlyLicAutomationCard({
                 Due: {String(dueDay || 12).padStart(2, '0')} {new Date(2000, data.nextInstallment.month - 1).toLocaleString('en-US', { month: 'short' })} {data.nextInstallment.year}
               </span>
             </div>
-          ) : (
+          ) : monthsRemaining === 0 ? (
             <p className="text-xs font-bold text-emerald-400 mt-0.5">
               All Premiums Completed ✓
             </p>
+          ) : (
+            <div>
+              <p className="text-xs font-extrabold text-amber-400 mt-0.5">
+                Calculating Next Premium...
+              </p>
+            </div>
           )}
         </div>
 

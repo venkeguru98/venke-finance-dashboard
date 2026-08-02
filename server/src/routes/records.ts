@@ -1882,6 +1882,29 @@ router.get('/automation/:moduleType/:entityId', async (req: Request, res: Respon
         `SELECT * FROM lic_premium_history WHERE policy_id = ? AND status IN ('Pending', 'Overdue', 'Scheduled') ORDER BY year ASC, month ASC LIMIT 1`,
         [entityId]
       );
+
+      // CONSISTENCY VALIDATION & SELF-HEALING SCHEDULE REBUILD ENGINE
+      if (!nextInstallment) {
+        const paidStats = await get(
+          `SELECT COUNT(*) as count FROM lic_premium_history WHERE policy_id = ? AND status = 'Paid'`,
+          [entityId]
+        );
+        const policy = await get(`SELECT policy_term, monthly_premium, premium_due_day FROM lic_policies WHERE id = ?`, [entityId]);
+        if (policy) {
+          const paidCount = Number(paidStats?.count || 0);
+          const totalPolicyMonths = Number(policy.policy_term || 10) * 12;
+          const remainingMonths = Math.max(0, totalPolicyMonths - paidCount);
+
+          if (remainingMonths > 0) {
+            console.warn(`[LIC Consistency Warning] Policy #${entityId} has ${remainingMonths} remaining months but missing next premium. Auto-rebuilding schedule...`);
+            await backfillLicHistoricalPremiums(Number(entityId));
+            nextInstallment = await get(
+              `SELECT * FROM lic_premium_history WHERE policy_id = ? AND status IN ('Pending', 'Overdue', 'Scheduled') ORDER BY year ASC, month ASC LIMIT 1`,
+              [entityId]
+            );
+          }
+        }
+      }
     }
 
     res.json({ settings, logs, nextInstallment });
