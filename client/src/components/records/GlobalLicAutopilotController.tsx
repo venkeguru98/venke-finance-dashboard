@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
-import { ShieldCheck, Zap, ChevronDown, History, CheckCircle2, RefreshCw, Terminal, Activity, Check } from 'lucide-react';
+import { ShieldCheck, Zap, X, RefreshCw, Terminal, Activity, Check } from 'lucide-react';
 import { emitLicUpdated } from '../../utils/licEvents';
 
 const API = window.location.port === '5173' ? 'http://localhost:5000/api' : '/api';
@@ -15,6 +15,8 @@ export default function GlobalLicAutopilotController({ onSyncComplete }: GlobalL
   const [showLogs, setShowLogs] = useState(false);
   const [showDiagnosticModal, setShowDiagnosticModal] = useState(false);
   const [diagnosticData, setDiagnosticData] = useState<any>(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const popoverRef = useRef<HTMLDivElement>(null);
 
   const [data, setData] = useState<any>({
     status: 'ACTIVE',
@@ -41,7 +43,7 @@ export default function GlobalLicAutopilotController({ onSyncComplete }: GlobalL
     logs: []
   });
 
-  const [countdownSeconds, setCountdownSeconds] = useState(300); // Default 5 minutes (300s)
+  const [countdownSeconds, setCountdownSeconds] = useState(300);
 
   const fetchGlobalStatus = async () => {
     setLoading(true);
@@ -87,16 +89,30 @@ export default function GlobalLicAutopilotController({ onSyncComplete }: GlobalL
   useEffect(() => {
     fetchGlobalStatus();
 
-    // Keyboard shortcut: Ctrl + Shift + L triggers Automation Diagnostic Mode
+    // ESC key closes popover & Ctrl + Shift + L triggers Diagnostic Mode
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsOpen(false);
+      }
       if (e.ctrlKey && e.shiftKey && (e.key === 'L' || e.key === 'l')) {
         e.preventDefault();
         fetchDiagnostics();
       }
     };
 
+    // Click outside closes popover
+    const handleClickOutside = (e: MouseEvent) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
   }, []);
 
   const handleRunManualSync = async () => {
@@ -107,10 +123,7 @@ export default function GlobalLicAutopilotController({ onSyncComplete }: GlobalL
       else fetchGlobalStatus();
 
       const msg = res.data.message || 'Global LIC Autopilot sync completed.';
-      const statsStr = res.data.updatedCount !== undefined
-        ? `\nProcessed: ${res.data.processedCount || 0}, Updated: ${res.data.updatedCount}`
-        : '';
-      alert(`${msg}${statsStr}`);
+      alert(msg);
 
       emitLicUpdated();
       onSyncComplete();
@@ -137,47 +150,44 @@ export default function GlobalLicAutopilotController({ onSyncComplete }: GlobalL
     }
   };
 
-  const [isPanelExpanded, setIsPanelExpanded] = useState(false);
+  const isTelegramConnected = data.telegram?.isConnected ?? true;
 
   if (loading) {
     return (
-      <div className="bg-[#0B1228] p-4 rounded-3xl border border-[#1E2A4A] text-slate-400 text-xs font-semibold animate-pulse">
-        Loading LIC Global Autopilot Engine...
+      <div className="p-2.5 rounded-2xl bg-[#101935] border border-[#1E2A4A] text-slate-400 animate-pulse">
+        <ShieldCheck className="w-5 h-5" />
       </div>
     );
   }
 
-  const isTelegramConnected = data.telegram?.isConnected ?? true;
-
   return (
-    <div className="bg-[#0B1228]/80 backdrop-blur-xl border border-[#1E2A4A] rounded-3xl p-4 shadow-2xl transition-all duration-250 ease-in-out">
-      {/* DEFAULT COLLAPSED VIEW: Minimalist & Premium */}
-      <div 
-        onClick={() => setIsPanelExpanded(!isPanelExpanded)} 
-        className="flex items-center justify-between cursor-pointer group"
+    <div className="relative inline-block" ref={popoverRef}>
+      {/* COMPACT TOP-RIGHT AUTOMATION ICON BUTTON WITH GREEN STATUS DOT */}
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="p-2.5 rounded-2xl bg-[#101935] hover:bg-[#1A264D] border border-[#1E2A4A] hover:border-cyan-500/40 text-cyan-400 transition cursor-pointer relative flex items-center gap-1.5 shadow-md group"
+        title="LIC Global Autopilot Controls & Diagnostics"
       >
-        <div className="flex items-center space-x-3">
-          <div className="p-2.5 rounded-2xl border bg-cyan-500/15 border-cyan-500/30 text-cyan-400 group-hover:scale-105 transition">
-            <Zap className="w-5 h-5 fill-cyan-400 animate-pulse" />
-          </div>
-          <div>
+        <ShieldCheck className="w-5 h-5 group-hover:scale-110 transition" />
+        <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse border-2 border-[#0B1228]"></span>
+      </button>
+
+      {/* EXPANDABLE SLIDE-OUT GLASS POPOVER PANEL */}
+      {isOpen && (
+        <div className="absolute right-0 top-12 z-50 w-80 sm:w-96 bg-[#0B1228]/95 backdrop-blur-2xl border border-[#1E2A4A] rounded-3xl shadow-2xl p-5 space-y-4 text-xs font-semibold text-slate-300 animate-fadeIn duration-200">
+          {/* POPOVER HEADER */}
+          <div className="flex items-center justify-between border-b border-[#1E2A4A] pb-3">
             <div className="flex items-center gap-2">
-              <h2 className="text-sm font-extrabold text-white tracking-tight">⚡ LIC Autopilot Active</h2>
-              <span className="px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase border bg-emerald-500/10 text-emerald-400 border-emerald-500/20">
-                ● Active • {data.activePolicies ?? data.activePoliciesCount ?? 0} Policies
-              </span>
+              <Zap className="w-4 h-4 text-cyan-400 fill-cyan-400 animate-pulse" />
+              <h2 className="text-sm font-extrabold text-white tracking-tight">LIC Global Autopilot</h2>
             </div>
+            <button
+              onClick={() => setIsOpen(false)}
+              className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-[#101935] transition cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
-        </div>
-
-        <button className="p-2 rounded-xl bg-[#101935] border border-[#1E2A4A] text-slate-400 hover:text-white group-hover:border-cyan-500/40 transition">
-          <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isPanelExpanded ? 'rotate-180 text-cyan-400' : ''}`} />
-        </button>
-      </div>
-
-      {/* EXPANDED VIEW: Glass Panel with 4 Diagnostic & Control Sections */}
-      {isPanelExpanded && (
-        <div className="mt-4 pt-4 border-t border-[#1E2A4A] space-y-4 text-xs font-semibold text-slate-300 animate-fadeIn">
           {/* SECTION 1: AUTOMATION OVERVIEW */}
           <div className="bg-[#101935] p-3.5 rounded-2xl border border-[#1E2A4A]">
             <h3 className="text-[10px] font-black uppercase text-cyan-400 tracking-wider mb-2.5">Automation Overview</h3>
@@ -378,7 +388,7 @@ export default function GlobalLicAutopilotController({ onSyncComplete }: GlobalL
             onClick={() => setShowLogs(!showLogs)}
             className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-[#0B1228] border border-[#1E2A4A] text-slate-300 hover:text-white transition text-xs font-bold"
           >
-            <History className="w-3.5 h-3.5 text-cyan-400" />
+            <Terminal className="w-3.5 h-3.5 text-cyan-400" />
             <span>Execution Audit Trail ({data.logs?.length || 0})</span>
           </button>
         </div>
@@ -389,7 +399,7 @@ export default function GlobalLicAutopilotController({ onSyncComplete }: GlobalL
         <div className="bg-[#101935] p-4 rounded-2xl border border-[#1E2A4A] space-y-3 animate-in fade-in duration-200">
           <div className="flex justify-between items-center border-b border-[#1E2A4A] pb-2">
             <h4 className="text-xs font-extrabold text-white uppercase tracking-wider flex items-center gap-1.5">
-              <History className="w-3.5 h-3.5 text-cyan-400" /> Global LIC Execution Audit Trail
+              <Terminal className="w-3.5 h-3.5 text-cyan-400" /> Global LIC Execution Audit Trail
             </h4>
             <span className="text-[10px] text-slate-400 font-bold">{data.logs?.length || 0} Audit Records</span>
           </div>
@@ -420,7 +430,7 @@ export default function GlobalLicAutopilotController({ onSyncComplete }: GlobalL
                     <span className="text-slate-400 block">{new Date(l.created_at).toLocaleString()}</span>
                     {l.telegram_sent === 1 && (
                       <span className="text-emerald-400 font-bold flex items-center gap-1 justify-end">
-                        <CheckCircle2 className="w-3 h-3" /> Telegram Sent
+                        <Check className="w-3 h-3" /> Telegram Sent
                       </span>
                     )}
                   </div>

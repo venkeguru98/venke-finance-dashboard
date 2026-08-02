@@ -244,13 +244,13 @@ export default function LicModule({ onBack }: LicModuleProps) {
             <p className="text-xs text-slate-400 mt-0.5">Track multiple insurance policies, premium histories, and maturity calendars</p>
           </div>
         </div>
-        <Button onClick={handleOpenAddPolicy} variant="primary" className="text-xs font-bold py-2.5 px-4.5">
-          <Plus className="w-4 h-4 mr-1.5" /> Add Policy
-        </Button>
+        <div className="flex items-center gap-3">
+          <GlobalLicAutopilotController onSyncComplete={fetchPolicies} />
+          <Button onClick={handleOpenAddPolicy} variant="primary" className="text-xs font-bold py-2.5 px-4.5">
+            <Plus className="w-4 h-4 mr-1.5" /> Add Policy
+          </Button>
+        </div>
       </div>
-
-      {/* GLOBAL LIC AUTOPILOT CONTROLLER */}
-      <GlobalLicAutopilotController onSyncComplete={fetchPolicies} />
 
       {loading ? (
         <div className="text-center py-12 text-slate-400 text-sm font-semibold">Loading policies data...</div>
