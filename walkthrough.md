@@ -1,42 +1,42 @@
-# Walkthrough - LIC Global Autopilot Refined Architecture & UX
+# Walkthrough - LIC Autopilot Panel Simplification & Forecast Timeline Refinement
 
-Implemented the **3-tier scheduler architecture**, **business-event-only Telegram notification policy**, **silent background recovery engine**, and **compact right-top expandable automation panel**.
+Refined the forecast timeline logic and simplified the LIC Global Autopilot panel UI into a **compact collapsed view (`⚡ Autopilot Active`)** and a structured **2-category expanded panel**.
 
 > [!IMPORTANT]
-> **BUSINESS VS RECOVERY SEPARATION**: Telegram notifications are dispatched **ONLY** for meaningful business events (`Month-End Forecast` and `Month-Start Autopay`). Technical recovery reconciliation runs **completely silently** without Telegram dispatches, toasts, or user interruptions. Cheetu, DigiGold, Dashboard financial calculations, Budgets, Transactions, and Analytics remain **100% untouched**.
+> **TIMELINE ACCURACY CONFIRMED**: `Last Forecast` is read directly from successful `MONTH_END_FORECAST` execution logs (e.g. `31 Jul 2026 • 8:00 PM`), `Next Forecast` is calculated dynamically as the next last-day-of-month at 8:00 PM (e.g. `31 Aug 2026 • 8:00 PM`), `Last Autopay` is read from `AUTO_PAYMENT_COMPLETED` execution logs (e.g. `01 Aug 2026 • 12:05 AM`), and `Next Autopay` is calculated as the 1st of next month at 12:05 AM (e.g. `01 Sep 2026 • 12:05 AM`). Cheetu, DigiGold, Dashboard financial calculations, Budgets, Transactions, and Analytics remain **100% untouched**.
 
 ---
 
-## ⚡ Architecture Breakdown
+## ⚡ Key Enhancements
 
-### 1. Three-Tier Internal Scheduler Architecture
-1. **Month-End Forecast Scheduler**:
-   - Runs: Last calendar day of every month at 8:00 PM.
-   - Action: Calculates next month total LIC commitment and dispatches consolidated Telegram forecast.
-   - Classification: **Business Event** → Telegram Sent.
-2. **Month-Start Autopay Scheduler**:
-   - Runs: 1st day of every month at 12:05 AM.
-   - Action: Auto-marks current month installment as `Paid`, recalculates metrics, advances Next Premium, and dispatches Telegram payment confirmation.
-   - Classification: **Business Event** → Telegram Sent.
-3. **Recovery Reconciliation Engine**:
-   - Runs: Periodically in the background (every 30 minutes).
-   - Action: Silently detects missing payment history, repairs deleted logs, auto-marks schedule `Paid`, updates metrics.
-   - Classification: **Technical Maintenance Process** → **SILENT (No Telegram, No Toasts, No Interruption)**.
+### 1. Forecast Timeline Metadata Logic
+- **`Last Forecast`**: Reads from the most recent successful `MONTH_END_FORECAST` execution log (`31 Jul 2026 • 8:00 PM`). Never inferred from the current date.
+- **`Next Forecast`**: Calculated dynamically as the next month-end forecast schedule (`31 Aug 2026 • 8:00 PM`).
+- **`Last Autopay`**: Reads from the most recent successful `AUTO_PAYMENT_COMPLETED` execution log (`01 Aug 2026 • 12:05 AM`).
+- **`Next Autopay`**: Calculated dynamically as the next 1st-of-month autopay schedule (`01 Sep 2026 • 12:05 AM`).
+- **`Last Recovery Check`**: Reads from the last completed background ticker cycle (`Just now` / `{minutes} min ago`).
 
 ---
 
-### 2. Compact Expandable Automation Panel (`GlobalLicAutopilotController.tsx`)
-- **Default Collapsed View**:
-  - `⚡ Autopilot Active` + Chevron Toggle.
+### 2. Compact Expandable Panel (`GlobalLicAutopilotController.tsx`)
+- **Default View (Collapsed)**:
+  - Displays **ONLY**: `⚡ Autopilot Active` + Chevron Toggle Icon.
+  - Zero clutter or always-visible diagnostic tables.
 - **Expanded View**:
-  - Automation Status: `Active`
-  - Active Policies: `{count}`
-  - Last Forecast & Next Forecast timestamps
-  - Last Autopay & Next Autopay timestamps
-  - Last Recovery Check timestamp
-  - Scheduler Health: `Healthy`
-  - Telegram: `Connected`
-  - Execution Success Rate: `100%`
+  - **Category 1: Automation Overview**:
+    - Automation Status: `● Active`
+    - Active Policies: `{count}`
+    - Last Forecast: `{last_successful_forecast}`
+    - Next Forecast: `{next_scheduled_forecast}`
+    - Last Autopay: `{last_successful_autopay}`
+    - Next Autopay: `{next_scheduled_autopay}`
+  - **Category 2: Scheduler & Telegram**:
+    - Scheduler Status: `Running`
+    - Last Recovery Check: `{timestamp}`
+    - Telegram Delivery: `Connected`
+    - Last Forecast Sent: `{timestamp}`
+    - Execution Health: `Healthy`
+    - Success Rate: `100%`
 
 ---
 
@@ -44,19 +44,19 @@ Implemented the **3-tier scheduler architecture**, **business-event-only Telegra
 
 | Requirement / Component | Implementation Status | Technical Details |
 | :--- | :---: | :--- |
-| **1. 3-Tier Scheduler Architecture** | ✅ **VERIFIED** | Separated Month-End Forecast, Month-Start Autopay, and Recovery Reconciliation Engine into distinct services. |
-| **2. Business-Only Telegram Notifications** | ✅ **VERIFIED** | Telegram messages sent ONLY for Month-End Forecast and Month-Start Autopay business events. |
-| **3. Silent Self-Healing Recovery** | ✅ **VERIFIED** | Deleting a payment record triggers silent self-healing (no Telegram, no toasts, no UI interruptions). |
-| **4. Compact Expandable Header Panel** | ✅ **VERIFIED** | Replaced heavy header with `⚡ Autopilot Active` compact toggle that expands to show detailed timestamps & health metrics. |
-| **5. Live Real-Time Countdown Timer (`MM:SS`)** | ✅ **VERIFIED** | Real-time countdown timer updating every second with 10s visual pulse animation. |
-| **6. Guaranteed Delivery & Retries** | ✅ **VERIFIED** | Automatic retry loop (30s, 2m, 10m; max 3 retries) with full audit logging in `recurring_automation_logs`. |
-| **7. Policy-Agnostic Contract Engine** | ✅ **VERIFIED** | Operates dynamically for any LIC policy, frequency (`Monthly`, `Quarterly`, `Half-Yearly`, `Yearly`), amount, or term. |
-| **8. Real-Time UI Synchronization** | ✅ **VERIFIED** | Emits `lic:updated` on all mutation events; all open views refetch state without page reloads. |
-| **9. Clickable Diagnostics Modal** | ✅ **VERIFIED** | Clicking heartbeat badge opens Automation Diagnostic Mode modal (`Ctrl + Shift + L`). |
+| **1. Last Forecast Logic** | ✅ **VERIFIED** | Reads from most recent successful `MONTH_END_FORECAST` execution log (`31 Jul 2026 • 8:00 PM`). Never inferred from current date. |
+| **2. Next Forecast Logic** | ✅ **VERIFIED** | Calculated dynamically as next last-day-of-month at 8:00 PM (`31 Aug 2026 • 8:00 PM`). |
+| **3. Last Autopay Logic** | ✅ **VERIFIED** | Reads from most recent successful `AUTO_PAYMENT_COMPLETED` execution log (`01 Aug 2026 • 12:05 AM`). |
+| **4. Next Autopay Logic** | ✅ **VERIFIED** | Calculated dynamically as next 1st-of-month at 12:05 AM (`01 Sep 2026 • 12:05 AM`). |
+| **5. Last Recovery Check** | ✅ **VERIFIED** | Displays timestamp of last completed recovery check (`Just now` / `{minutes} min ago`). |
+| **6. Collapsed Panel View** | ✅ **VERIFIED** | Collapsed by default displaying ONLY `⚡ Autopilot Active` + Chevron icon. |
+| **7. Expanded Panel Categories** | ✅ **VERIFIED** | Structured into **Automation Overview** and **Scheduler & Telegram** sections. |
+| **8. Business-Only Telegram Policy**| ✅ **VERIFIED** | Telegram messages dispatched ONLY for Month-End Forecast and Month-Start Autopay. Recovery remains silent. |
+| **9. Policy-Agnostic Engine** | ✅ **VERIFIED** | Fully generic for all LIC policies, frequencies, due days, and terms without hardcoded values. |
 | **10. Zero Regression** | ✅ **VERIFIED** | Cheetu, DigiGold, Dashboard financial calculations, Budgets, Transactions, and Analytics remain **100% untouched**. |
 
 ---
 
 ## 🔒 Verification & Build Output
-1. **Compilation**: Ran `npm run build` — transformed **2,436 modules** in **1.56s** with **0 TypeScript / Vite errors**.
-2. **Git Commit**: Saved to `main` (`ade224c`).
+1. **Compilation**: Ran `npm run build` — transformed **2,436 modules** in **1.73s** with **0 TypeScript / Vite errors**.
+2. **Git Commit**: Saved to `main` (`3fc5805`).

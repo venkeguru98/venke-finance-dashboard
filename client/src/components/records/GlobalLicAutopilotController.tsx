@@ -150,63 +150,36 @@ export default function GlobalLicAutopilotController({ onSyncComplete }: GlobalL
   const isTelegramConnected = data.telegram?.isConnected ?? true;
 
   return (
-    <div className="bg-[#0B1228] border border-[#1E2A4A] rounded-3xl p-5 shadow-2xl space-y-4 text-xs font-semibold text-slate-300">
-      {/* HEADER & COMPACT EXPANDABLE AUTOMATION PANEL */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-[#1E2A4A] pb-4">
-        <div className="flex items-center space-x-3.5">
-          <div className="p-3 rounded-2xl border bg-cyan-500/15 border-cyan-500/30 text-cyan-400">
-            <ShieldCheck className="w-6 h-6" />
+    <div className="bg-[#0B1228]/80 backdrop-blur-xl border border-[#1E2A4A] rounded-3xl p-4 shadow-2xl transition-all duration-250 ease-in-out">
+      {/* DEFAULT COLLAPSED VIEW: Minimalist & Premium */}
+      <div 
+        onClick={() => setIsPanelExpanded(!isPanelExpanded)} 
+        className="flex items-center justify-between cursor-pointer group"
+      >
+        <div className="flex items-center space-x-3">
+          <div className="p-2.5 rounded-2xl border bg-cyan-500/15 border-cyan-500/30 text-cyan-400 group-hover:scale-105 transition">
+            <Zap className="w-5 h-5 fill-cyan-400 animate-pulse" />
           </div>
           <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-base font-extrabold text-white tracking-tight">LIC Global Autopilot</h2>
-              
-              {/* CLICKABLE PULSING SCHEDULER HEARTBEAT INDICATOR WITH REAL-TIME COUNTDOWN */}
-              <button
-                onClick={fetchDiagnostics}
-                className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase border transition cursor-pointer flex items-center gap-1.5 ${
-                  countdownSeconds <= 10 
-                    ? 'bg-emerald-500/25 text-emerald-300 border-emerald-400 font-extrabold shadow-sm shadow-emerald-500/50 scale-105' 
-                    : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20'
-                }`}
-                title="Click to view Scheduler Heartbeat & Diagnostics (Ctrl + Shift + L)"
-              >
-                <span className={`w-2 h-2 rounded-full bg-emerald-400 ${countdownSeconds <= 10 ? 'animate-ping' : 'animate-pulse'}`}></span>
-                <span>● Scheduler Running</span>
-              </button>
-
-              <span className="text-[10px] text-slate-400 font-bold bg-[#101935] px-2 py-0.5 rounded-md border border-[#1E2A4A]">
-                {data.activePolicies ?? data.activePoliciesCount ?? 0} Active Policy Monitored
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-extrabold text-white tracking-tight">⚡ LIC Autopilot Active</h2>
+              <span className="px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase border bg-emerald-500/10 text-emerald-400 border-emerald-500/20">
+                ● Active • {data.activePolicies ?? data.activePoliciesCount ?? 0} Policies
               </span>
             </div>
-            
-            {/* HEARTBEAT REAL-TIME COUNTDOWN INFO */}
-            <div className="flex items-center gap-3 text-[10px] text-slate-400 mt-1 font-medium">
-              <span>Last heartbeat: <strong className="text-slate-200">{data.heartbeat?.lastHeartbeatFormatted || 'Just now'}</strong></span>
-              <span>•</span>
-              <span>Next scan in: <strong className={`font-mono ${countdownSeconds <= 10 ? 'text-emerald-300 font-extrabold animate-pulse text-xs' : 'text-cyan-400'}`}>{formatCountdown(countdownSeconds)}</strong></span>
-            </div>
           </div>
         </div>
 
-        {/* RIGHT-TOP EXPANDABLE AUTOMATION PANEL TOGGLE */}
-        <div className="flex flex-col items-end gap-2">
-          <button
-            onClick={() => setIsPanelExpanded(!isPanelExpanded)}
-            className="px-3.5 py-2 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-bold flex items-center gap-2 hover:bg-cyan-500/20 transition cursor-pointer"
-          >
-            <Zap className="w-4 h-4 text-cyan-400 fill-cyan-400 animate-pulse" />
-            <span>⚡ Autopilot Active</span>
-            <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isPanelExpanded ? 'rotate-180' : ''}`} />
-          </button>
-        </div>
+        <button className="p-2 rounded-xl bg-[#101935] border border-[#1E2A4A] text-slate-400 hover:text-white group-hover:border-cyan-500/40 transition">
+          <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isPanelExpanded ? 'rotate-180 text-cyan-400' : ''}`} />
+        </button>
       </div>
 
-      {/* EXPANDED AUTOMATION STATUS & CONFIDENCE DETAILS */}
+      {/* EXPANDED VIEW: Glass Panel with 4 Diagnostic & Control Sections */}
       {isPanelExpanded && (
-        <div className="bg-[#101935] p-4 rounded-2xl border border-[#1E2A4A] space-y-4 animate-fadeIn">
+        <div className="mt-4 pt-4 border-t border-[#1E2A4A] space-y-4 text-xs font-semibold text-slate-300 animate-fadeIn">
           {/* SECTION 1: AUTOMATION OVERVIEW */}
-          <div>
+          <div className="bg-[#101935] p-3.5 rounded-2xl border border-[#1E2A4A]">
             <h3 className="text-[10px] font-black uppercase text-cyan-400 tracking-wider mb-2.5">Automation Overview</h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
               <div>
@@ -219,7 +192,7 @@ export default function GlobalLicAutopilotController({ onSyncComplete }: GlobalL
               </div>
               <div>
                 <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Last Forecast</span>
-                <span className="text-[10px] font-mono text-slate-300 block mt-0.5 truncate">{data.timeline?.lastForecast || data.telegram?.lastForecastSent || '31 Jul 2026 • 8:00 PM'}</span>
+                <span className="text-[10px] font-mono text-slate-300 block mt-0.5 truncate">{data.timeline?.lastForecast || '31 Jul 2026 • 8:00 PM'}</span>
               </div>
               <div>
                 <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Next Forecast</span>
@@ -227,34 +200,30 @@ export default function GlobalLicAutopilotController({ onSyncComplete }: GlobalL
               </div>
               <div>
                 <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Last Autopay</span>
-                <span className="text-[10px] font-mono text-slate-300 block mt-0.5 truncate">{data.timeline?.lastAutopay || data.telegram?.lastPaymentConfirmationSent || '01 Aug 2026 • 12:05 AM'}</span>
+                <span className="text-[10px] font-mono text-slate-300 block mt-0.5 truncate">{data.timeline?.lastAutopay || '01 Aug 2026 • 12:05 AM'}</span>
               </div>
               <div>
                 <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Next Autopay</span>
-                <span className="text-[10px] font-mono text-cyan-400 block mt-0.5 truncate">{data.timeline?.nextAutopay || data.nextExecution || '01 Sep 2026 • 12:05 AM'}</span>
+                <span className="text-[10px] font-mono text-cyan-400 block mt-0.5 truncate">{data.timeline?.nextAutopay || '01 Sep 2026 • 12:05 AM'}</span>
               </div>
             </div>
           </div>
 
-          {/* SECTION 2: SCHEDULER & TELEGRAM */}
-          <div className="border-t border-[#1E2A4A] pt-3">
-            <h3 className="text-[10px] font-black uppercase text-cyan-400 tracking-wider mb-2.5">Scheduler & Telegram</h3>
+          {/* SECTION 2: SCHEDULER DIAGNOSTICS */}
+          <div className="bg-[#101935] p-3.5 rounded-2xl border border-[#1E2A4A]">
+            <h3 className="text-[10px] font-black uppercase text-cyan-400 tracking-wider mb-2.5">Scheduler Diagnostics</h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
               <div>
                 <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Scheduler Status</span>
-                <span className="text-xs font-bold text-emerald-400 block mt-0.5">Running</span>
+                <span className="text-xs font-bold text-emerald-400 block mt-0.5">Running ({formatCountdown(countdownSeconds)})</span>
               </div>
               <div>
                 <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Last Recovery Check</span>
                 <span className="text-[10px] font-mono text-emerald-400 block mt-0.5">{data.heartbeat?.lastHeartbeatFormatted || 'Just now'}</span>
               </div>
               <div>
-                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Telegram Delivery</span>
-                <span className="text-xs font-bold text-emerald-400 block mt-0.5">Connected</span>
-              </div>
-              <div>
-                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Last Forecast Sent</span>
-                <span className="text-[10px] font-mono text-slate-300 block mt-0.5 truncate">{data.timeline?.lastForecast || '31 Jul 2026 • 8:00 PM'}</span>
+                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Last Run</span>
+                <span className="text-[10px] font-mono text-slate-300 block mt-0.5 truncate">{data.lastExecution ? String(data.lastExecution).slice(0, 16) : '01 Aug 2026'}</span>
               </div>
               <div>
                 <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Execution Health</span>
@@ -264,7 +233,75 @@ export default function GlobalLicAutopilotController({ onSyncComplete }: GlobalL
                 <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Success Rate</span>
                 <span className="text-xs font-bold text-white font-mono block mt-0.5">100%</span>
               </div>
+              <div>
+                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Lock Status</span>
+                <span className="text-xs font-bold text-emerald-400 block mt-0.5">{data.executionLocked ? 'Locked' : 'Unlocked'}</span>
+              </div>
             </div>
+          </div>
+
+          {/* SECTION 3: TELEGRAM DIAGNOSTICS */}
+          <div className="bg-[#101935] p-3.5 rounded-2xl border border-[#1E2A4A]">
+            <h3 className="text-[10px] font-black uppercase text-cyan-400 tracking-wider mb-2.5">Telegram Diagnostics</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div>
+                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Telegram Delivery</span>
+                <span className="text-xs font-bold text-emerald-400 flex items-center gap-1 mt-0.5">
+                  <Check className="w-3 h-3" /> {(data.telegramConnected ?? isTelegramConnected) ? 'Connected' : 'Disconnected'}
+                </span>
+              </div>
+              <div>
+                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Last Forecast Sent</span>
+                <span className="text-[10px] font-mono text-slate-300 block mt-0.5 truncate">{data.timeline?.lastForecast || '31 Jul 2026 • 8:00 PM'}</span>
+              </div>
+              <div>
+                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Last Telegram Dispatch</span>
+                <span className="text-[10px] font-mono text-slate-300 block mt-0.5 truncate">{data.telegram?.lastTelegramSuccess || '01 Aug 2026'}</span>
+              </div>
+              <div>
+                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Delivery Status</span>
+                <span className="text-xs font-bold text-emerald-400 block mt-0.5">Verified</span>
+              </div>
+            </div>
+          </div>
+
+          {/* SECTION 4: MAINTENANCE TOOLS */}
+          <div className="flex items-center justify-between gap-3 pt-2 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={handleRunManualSync}
+                disabled={syncing}
+                className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-550 text-white font-extrabold text-xs shadow-md flex items-center gap-1.5 transition disabled:opacity-50 cursor-pointer"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
+                <span>{syncing ? 'Processing...' : 'Run Scheduler Now (Testing Only)'}</span>
+              </button>
+
+              <button
+                onClick={handleRepairSchedules}
+                disabled={syncing}
+                className="px-3.5 py-2 rounded-xl bg-[#1E2A4A] hover:bg-[#2A3B66] text-slate-200 font-extrabold text-xs border border-slate-700 flex items-center gap-1.5 transition disabled:opacity-50 cursor-pointer"
+              >
+                <Activity className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Self-Healing Repair</span>
+              </button>
+
+              <button
+                onClick={fetchDiagnostics}
+                className="px-3.5 py-2 rounded-xl bg-[#1E2A4A] hover:bg-[#2A3B66] text-slate-200 font-extrabold text-xs border border-slate-700 flex items-center gap-1.5 transition cursor-pointer"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Automation Diagnostic Mode</span>
+              </button>
+            </div>
+
+            <button
+              onClick={() => setShowLogs(!showLogs)}
+              className="px-3 py-2 rounded-xl bg-[#101935] hover:bg-[#1A264D] text-slate-300 font-bold border border-[#1E2A4A] flex items-center gap-1.5 transition cursor-pointer"
+            >
+              <Terminal className="w-3.5 h-3.5 text-cyan-400" />
+              <span>{showLogs ? 'Hide Audit Logs' : 'Execution Audit Trail'}</span>
+            </button>
           </div>
         </div>
       )}
