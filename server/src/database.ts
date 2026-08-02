@@ -751,6 +751,7 @@ export const initializeDatabase = async () => {
           try { await execute(`ALTER TABLE lic_policies ADD COLUMN schedule_generated_at TEXT NULL`); } catch (_) {}
           try { await execute(`ALTER TABLE lic_policies ADD COLUMN last_automation_run_month INTEGER NULL`); } catch (_) {}
           try { await execute(`ALTER TABLE lic_policies ADD COLUMN last_automation_run_year INTEGER NULL`); } catch (_) {}
+          try { await execute(`ALTER TABLE lic_policies ADD COLUMN total_paid REAL DEFAULT 0`); } catch (_) {}
         }
         console.log('Contract-Driven LIC Schedule table verified/created.');
       } catch (licSchErr) {
