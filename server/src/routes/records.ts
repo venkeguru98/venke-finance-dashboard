@@ -1806,12 +1806,42 @@ router.post('/lic/repair-all-schedules', async (req: Request, res: Response) => 
   }
 });
 
+import { GlobalLicAutopilotService } from '../services/GlobalLicAutopilotService';
+
 // ─── GLOBAL LIC AUTOPILOT ENDPOINTS ──────────────────────────────────────────
 router.get('/automation/lic/global-status', async (req: Request, res: Response) => {
   const userId = req.user!.id;
   try {
-    const status = await getGlobalLicAutopilotStatus(userId);
+    const status = await GlobalLicAutopilotService.getOperationalMetrics(userId);
     res.json(status);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/automation/lic/global-sync', async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  try {
+    const syncRes: any = await GlobalLicAutopilotService.runGlobalAutopilotExecution(userId, true, 'manual_sync');
+    const status = await GlobalLicAutopilotService.getOperationalMetrics(userId);
+    res.json({
+      success: true,
+      message: 'Global LIC Autopilot sync completed.',
+      processedCount: syncRes?.processedCount || 0,
+      updatedCount: syncRes?.updatedCount || 0,
+      traces: syncRes?.traces || [],
+      status
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/automation/lic/diagnostics', async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  try {
+    const diag = await GlobalLicAutopilotService.runAutomationDiagnosticSuite(userId);
+    res.json(diag);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

@@ -752,8 +752,44 @@ export const initializeDatabase = async () => {
           try { await execute(`ALTER TABLE lic_policies ADD COLUMN last_automation_run_month INTEGER NULL`); } catch (_) {}
           try { await execute(`ALTER TABLE lic_policies ADD COLUMN last_automation_run_year INTEGER NULL`); } catch (_) {}
           try { await execute(`ALTER TABLE lic_policies ADD COLUMN total_paid REAL DEFAULT 0`); } catch (_) {}
+          try { await execute(`ALTER TABLE lic_policies ADD COLUMN last_automation_run_at TEXT NULL`); } catch (_) {}
+          try { await execute(`ALTER TABLE lic_policies ADD COLUMN last_processed_installment INTEGER NULL`); } catch (_) {}
+          try { await execute(`ALTER TABLE lic_policies ADD COLUMN last_processed_due_date TEXT NULL`); } catch (_) {}
         }
-        console.log('Contract-Driven LIC Schedule table verified/created.');
+
+        // Add LIC Automation Execution Audit Ledger Table
+        if (isPg) {
+          await execute(`
+            CREATE TABLE IF NOT EXISTS lic_automation_execution (
+              execution_id SERIAL PRIMARY KEY,
+              execution_month INTEGER NOT NULL,
+              execution_year INTEGER NOT NULL,
+              started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              completed_at TIMESTAMP NULL,
+              policies_processed INTEGER DEFAULT 0,
+              policies_updated INTEGER DEFAULT 0,
+              telegram_sent INTEGER DEFAULT 0,
+              telegram_failed INTEGER DEFAULT 0,
+              status VARCHAR(20) DEFAULT 'Running'
+            )
+          `);
+        } else {
+          await execute(`
+            CREATE TABLE IF NOT EXISTS lic_automation_execution (
+              execution_id INTEGER PRIMARY KEY AUTOINCREMENT,
+              execution_month INTEGER NOT NULL,
+              execution_year INTEGER NOT NULL,
+              started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+              completed_at DATETIME NULL,
+              policies_processed INTEGER DEFAULT 0,
+              policies_updated INTEGER DEFAULT 0,
+              telegram_sent INTEGER DEFAULT 0,
+              telegram_failed INTEGER DEFAULT 0,
+              status TEXT DEFAULT 'Running'
+            )
+          `);
+        }
+        console.log('Contract-Driven LIC Schedule & Audit Ledger tables verified/created.');
       } catch (licSchErr) {
         console.error('Migration failed for lic_premium_schedule table:', licSchErr);
       }
