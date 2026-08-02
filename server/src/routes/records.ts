@@ -433,13 +433,28 @@ router.get('/lic/:id/premiums', async (req: Request, res: Response) => {
 
 router.post('/lic/:id/premiums', async (req: Request, res: Response) => {
   const { month, year, amount_paid, paid_date, status, remarks } = req.body;
+  const policyId = Number(req.params.id);
   try {
-    const result = await execute(
-      `INSERT INTO lic_premium_history (policy_id, month, year, amount_paid, paid_date, status, remarks) 
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [req.params.id, month, year, amount_paid, paid_date, status, remarks]
+    const existing = await get(
+      `SELECT id FROM lic_premium_history WHERE policy_id = ? AND month = ? AND year = ?`,
+      [policyId, month, year]
     );
-    res.json({ id: result.lastID, success: true });
+
+    if (existing) {
+      await execute(
+        `UPDATE lic_premium_history SET amount_paid = ?, paid_date = ?, status = ?, remarks = ? WHERE id = ?`,
+        [amount_paid, paid_date, status, remarks, existing.id]
+      );
+    } else {
+      await execute(
+        `INSERT INTO lic_premium_history (policy_id, month, year, amount_paid, paid_date, status, remarks) 
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [policyId, month, year, amount_paid, paid_date, status, remarks]
+      );
+    }
+
+    await recalculateLicMetrics(policyId);
+    res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -447,7 +462,11 @@ router.post('/lic/:id/premiums', async (req: Request, res: Response) => {
 
 router.delete('/lic/premiums/:premiumId', async (req: Request, res: Response) => {
   try {
+    const p = await get(`SELECT policy_id FROM lic_premium_history WHERE id = ?`, [req.params.premiumId]);
     await execute(`DELETE FROM lic_premium_history WHERE id = ?`, [req.params.premiumId]);
+    if (p && p.policy_id) {
+      await recalculateLicMetrics(p.policy_id);
+    }
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -1597,6 +1616,7 @@ import {
   getGlobalCheetuAutopilotStatus,
   getGlobalLicAutopilotStatus,
   backfillLicHistoricalPremiums,
+  recalculateLicMetrics,
   runDeveloperAutomationSimulation,
   runFullAutomationValidationSuite 
 } from '../services/recurringAutomation';
@@ -1820,6 +1840,11 @@ router.get('/automation/:moduleType/:entityId', async (req: Request, res: Respon
     if (moduleType === 'chit') {
       nextInstallment = await get(
         `SELECT * FROM chit_payments WHERE chit_id = ? AND status != 'Paid' ORDER BY year ASC, month ASC LIMIT 1`,
+        [entityId]
+      );
+    } else if (moduleType === 'lic') {
+      nextInstallment = await get(
+        `SELECT * FROM lic_premium_history WHERE policy_id = ? AND status IN ('Pending', 'Overdue', 'Scheduled') ORDER BY year ASC, month ASC LIMIT 1`,
         [entityId]
       );
     }

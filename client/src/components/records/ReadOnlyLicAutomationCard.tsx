@@ -53,11 +53,6 @@ export default function ReadOnlyLicAutomationCard({
   }
 
   const isEnabled = data.settings?.enabled === 1;
-  const now = new Date();
-  const nextMonthDate = new Date(now.getFullYear(), now.getMonth(), 1);
-  const monthName = nextMonthDate.toLocaleString('en-US', { month: 'long' });
-  const yearNum = nextMonthDate.getFullYear();
-
   const lastLog = data.logs && data.logs.length > 0 ? data.logs[0] : null;
 
   return (
@@ -120,12 +115,20 @@ export default function ReadOnlyLicAutomationCard({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-[#101935] p-3 rounded-2xl border border-[#1E2A4A]">
         <div>
           <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Next Scheduled Premium</span>
-          <p className="text-xs font-extrabold text-white mt-0.5">
-            {monthName} {yearNum}: <span className="font-mono text-emerald-400">₹{monthlyPremium.toLocaleString('en-IN')}</span>
-          </p>
-          <span className="text-[9px] text-slate-400 font-medium block mt-0.5">
-            Due: {String(dueDay || 12).padStart(2, '0')} {monthName.slice(0, 3)} {yearNum}
-          </span>
+          {data.nextInstallment ? (
+            <div>
+              <p className="text-xs font-extrabold text-white mt-0.5">
+                {new Date(2000, data.nextInstallment.month - 1).toLocaleString('en-US', { month: 'short' })} {data.nextInstallment.year}: <span className="font-mono text-emerald-400">₹{Number(data.nextInstallment.amount_paid || monthlyPremium).toLocaleString('en-IN')}</span>
+              </p>
+              <span className="text-[9px] text-slate-400 font-medium block mt-0.5">
+                Due: {String(dueDay || 12).padStart(2, '0')} {new Date(2000, data.nextInstallment.month - 1).toLocaleString('en-US', { month: 'short' })} {data.nextInstallment.year}
+              </span>
+            </div>
+          ) : (
+            <p className="text-xs font-bold text-emerald-400 mt-0.5">
+              All Premiums Completed ✓
+            </p>
+          )}
         </div>
 
         <div>

@@ -70,7 +70,6 @@ export async function recalculateChitMetrics(chitId: number) {
     const chit = await get(`SELECT monthly_installment, total_months FROM chit_funds WHERE id = ?`, [chitId]);
     if (!chit) return;
 
-    const monthsPaid = Number(paidRes?.count || 0);
     const totalPaid = Number(paidRes?.total || 0);
 
     // Keep chit_funds table synchronized
@@ -162,16 +161,8 @@ export async function recalculateLicMetrics(policyId: number) {
     const paidCount = Number(paidRes?.count || 0);
     const totalPaid = Number(paidRes?.total || 0);
 
-    let matYear = new Date().getFullYear();
-    let matMonth = new Date().getMonth() + 1;
-    if (policy.maturity_date) {
-      const matDate = new Date(policy.maturity_date);
-      matYear = matDate.getFullYear();
-      matMonth = matDate.getMonth() + 1;
-    }
-
     const pendingRow = await get(
-      `SELECT id FROM lic_premium_history WHERE policy_id = ? AND status != 'Paid' LIMIT 1`,
+      `SELECT id FROM lic_premium_history WHERE policy_id = ? AND status IN ('Pending', 'Overdue', 'Scheduled') LIMIT 1`,
       [policyId]
     );
 
@@ -305,10 +296,25 @@ export async function runRecurringAutomation(userId: number = 1, forceRun: boole
           continue;
         }
 
+        // Manual Sync processes ONLY the CURRENT MONTH row
         let existing = await get(
           'SELECT * FROM lic_premium_history WHERE policy_id = ? AND month = ? AND year = ?',
           [entity_id, currentMonth, currentYear]
         );
+
+        if (!existing) {
+          const amt = Number(policy.monthly_premium) || 0;
+          const dueDay = policy.premium_due_day || 5;
+          await execute(
+            `INSERT INTO lic_premium_history (policy_id, month, year, amount_paid, paid_date, status, remarks)
+             VALUES (?, ?, ?, ?, ?, 'Pending', 'Scheduled premium')`,
+            [entity_id, currentMonth, currentYear, amt, `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(dueDay).padStart(2, '0')}`]
+          );
+          existing = await get(
+            'SELECT * FROM lic_premium_history WHERE policy_id = ? AND month = ? AND year = ?',
+            [entity_id, currentMonth, currentYear]
+          );
+        }
 
         if (existing) {
           if (existing.status === 'Paid' && !existing.remarks?.includes('Auto-generated')) {
@@ -507,7 +513,7 @@ export async function generateNextMonthForecast(userId: number = 1, isHeadsUp: b
   }
 
   // Consolidated Forecast Message with explicit LIC line items & Remaining after premiums
-  let text = `<b>Venke Finance — ${nextMonthName} ${nextYear} Premium Forecast</b>\n\n`;
+  let text = `<b>Venke Finance — ${nextMonthName} ${nextYear} LIC Premium Forecast</b>\n\n`;
 
   if (licItems.length > 0) {
     licItems.sort((a, b) => a.dueDay - b.dueDay).forEach(item => {
@@ -532,7 +538,7 @@ export async function generateNextMonthForecast(userId: number = 1, isHeadsUp: b
 
   text += `Total Premium: <b>₹${totalNextCommitment.toLocaleString('en-IN')}</b>\n`;
   text += `Available Balance: <b>₹${availableBalance.toLocaleString('en-IN')}</b>\n`;
-  text += `Remaining After Premiums: <b>₹${expectedDiff.toLocaleString('en-IN')}</b>\n\n`;
+  text += `Remaining After LIC Premiums: <b>₹${expectedDiff.toLocaleString('en-IN')}</b>\n\n`;
 
   text += `Venke Finance`;
 
@@ -579,13 +585,62 @@ export async function getGlobalCheetuAutopilotStatus(userId: number = 1) {
   };
 }
 
-// ─── GLOBAL LIC AUTOPILOT STATUS HELPER ───────────────────────────────────
+// ─── GLOBAL LIC AUTOPILOT STATUS HELPER & ATOMIC POLICY SNAPSHOT ─────────
 export async function getGlobalLicAutopilotStatus(userId: number = 1) {
   let activePolicies = await query(`SELECT * FROM lic_policies WHERE user_id = ? AND (status = 'Running' OR status IS NULL OR status != 'Completed')`, [userId]);
   if (!activePolicies || activePolicies.length === 0) {
     activePolicies = await query(`SELECT * FROM lic_policies WHERE user_id = ?`, [userId]);
   }
   const activeCount = activePolicies ? activePolicies.length : 0;
+
+  // Enrich each policy with next unpaid premium using explicit unpaid-status query
+  const policySnapshots = [];
+  for (const p of activePolicies) {
+    const nextUnpaid = await get(
+      `SELECT * FROM lic_premium_history 
+       WHERE policy_id = ? AND status IN ('Pending', 'Overdue', 'Scheduled') 
+       ORDER BY year ASC, month ASC LIMIT 1`,
+      [p.id]
+    );
+
+    const paidStats = await get(
+      `SELECT COUNT(*) as count, SUM(amount_paid) as total 
+       FROM lic_premium_history WHERE policy_id = ? AND status = 'Paid'`,
+      [p.id]
+    );
+
+    const monthsPaid = Number(paidStats?.count || 0);
+    const totalPaid = Number(paidStats?.total || 0);
+    const termYears = Number(p.policy_term || 10);
+    const totalMonths = termYears * 12;
+    const monthsRemaining = Math.max(0, totalMonths - monthsPaid);
+    const monthlyPremium = Number(p.monthly_premium || 0);
+    const totalRemaining = monthsRemaining * monthlyPremium;
+    const completionPct = Math.min(100, Math.round((monthsPaid / totalMonths) * 100));
+
+    policySnapshots.push({
+      id: p.id,
+      policy_name: p.policy_name,
+      policy_number: p.policy_number,
+      monthly_premium: monthlyPremium,
+      premium_due_day: p.premium_due_day,
+      maturity_date: p.maturity_date,
+      status: p.status,
+      monthsPaid,
+      monthsRemaining,
+      totalPaid,
+      totalRemaining,
+      completionPct,
+      nextScheduledPremium: nextUnpaid ? {
+        id: nextUnpaid.id,
+        month: nextUnpaid.month,
+        year: nextUnpaid.year,
+        amount: nextUnpaid.amount_paid,
+        status: nextUnpaid.status,
+        dueDay: p.premium_due_day || 5
+      } : null
+    });
+  }
 
   const rules = await query(`SELECT * FROM recurring_commitments WHERE user_id = ? AND module_type = 'lic'`, [userId]);
   const isEnabled = rules.some(r => r.enabled === 1);
@@ -615,6 +670,7 @@ export async function getGlobalLicAutopilotStatus(userId: number = 1) {
     nextRunStr,
     isTelegramLinked,
     health: isEnabled ? 'Healthy' : 'Paused',
+    policySnapshots,
     logs
   };
 }
