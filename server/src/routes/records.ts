@@ -369,7 +369,12 @@ router.post('/lic', async (req: Request, res: Response) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [req.user!.id, policy_name, policy_number, monthly_premium, start_date, maturity_date, premium_due_day, policy_term, sum_assured, expected_maturity_amount]
     );
-    res.json({ id: result.lastID, success: true });
+    const policyId = result.lastID;
+    
+    // Automatically backfill historical premium records (Past: Paid, Current/Future: Pending)
+    await backfillLicHistoricalPremiums(policyId);
+
+    res.json({ id: policyId, success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -1590,9 +1595,79 @@ import {
   generateNextMonthForecast, 
   sendTelegramMessage, 
   getGlobalCheetuAutopilotStatus,
+  getGlobalLicAutopilotStatus,
+  backfillLicHistoricalPremiums,
   runDeveloperAutomationSimulation,
   runFullAutomationValidationSuite 
 } from '../services/recurringAutomation';
+
+// ─── GLOBAL LIC AUTOPILOT ENDPOINTS ──────────────────────────────────────────
+router.get('/automation/lic/global-status', async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  try {
+    const status = await getGlobalLicAutopilotStatus(userId);
+    res.json(status);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/automation/lic/global-toggle', async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  try {
+    const rules = await query(`SELECT enabled FROM recurring_commitments WHERE user_id = ? AND module_type = 'lic'`, [userId]);
+    const currentEnabled = rules.some(r => r.enabled === 1);
+    const newEnabled = currentEnabled ? 0 : 1;
+
+    await execute(
+      `INSERT INTO recurring_commitments (user_id, module_type, entity_id, enabled, auto_create, auto_mark_paid)
+       VALUES (?, 'lic', 0, ?, 1, 1)
+       ON CONFLICT(module_type, entity_id) DO UPDATE SET enabled = ?`,
+      [userId, newEnabled, newEnabled]
+    );
+
+    const activePolicies = await query(`SELECT id FROM lic_policies WHERE user_id = ? AND (status = 'Running' OR status IS NULL OR status != 'Completed')`, [userId]);
+    for (const p of activePolicies) {
+      await execute(
+        `INSERT INTO recurring_commitments (user_id, module_type, entity_id, enabled, auto_create, auto_mark_paid)
+         VALUES (?, 'lic', ?, ?, 1, 1)
+         ON CONFLICT(module_type, entity_id) DO UPDATE SET enabled = ?`,
+        [userId, p.id, newEnabled, newEnabled]
+      );
+    }
+
+    const status = await getGlobalLicAutopilotStatus(userId);
+    res.json({ success: true, enabled: newEnabled, message: newEnabled ? 'Global LIC autopilot resumed successfully.' : 'Global LIC autopilot paused successfully.', status });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/automation/lic/global-sync', async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  try {
+    // 1. Trigger historical backfill across active policies missing history
+    const activePolicies = await query(`SELECT id FROM lic_policies WHERE user_id = ? AND (status = 'Running' OR status IS NULL OR status != 'Completed')`, [userId]);
+    for (const p of activePolicies) {
+      await backfillLicHistoricalPremiums(p.id);
+    }
+
+    // 2. Run monthly automation execution
+    const syncRes: any = await runRecurringAutomation(userId, true);
+    const status = await getGlobalLicAutopilotStatus(userId);
+    res.json({
+      success: true,
+      message: 'Global LIC Sync completed.',
+      processedCount: syncRes?.processedCount || 0,
+      updatedCount: syncRes?.updatedCount || 0,
+      skippedCount: syncRes?.skippedCount || 0,
+      failedCount: syncRes?.failedCount || 0,
+      status
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ─── GLOBAL CHEETTU AUTOPILOT ENDPOINTS (MUST BE BEFORE PARAMETRIC ROUTES) ─────
 router.post('/automation/chit/developer-simulate', async (req: Request, res: Response) => {

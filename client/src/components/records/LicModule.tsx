@@ -3,7 +3,8 @@ import axios from 'axios';
 import { Plus, Edit2, Trash2, Calendar, Shield, AlertCircle, ArrowLeft, ChevronRight } from 'lucide-react';
 import Button from '../ui/Button';
 import CsvImportModal from './CsvImportModal';
-import RecurringAutomationPanel from './RecurringAutomationPanel';
+import GlobalLicAutopilotController from './GlobalLicAutopilotController';
+import ReadOnlyLicAutomationCard from './ReadOnlyLicAutomationCard';
 import { formatDisplayDate } from '../../utils/date';
 
 const API = window.location.port === '5173' ? 'http://localhost:5000/api' : '/api';
@@ -239,6 +240,9 @@ export default function LicModule({ onBack }: LicModuleProps) {
         </Button>
       </div>
 
+      {/* GLOBAL LIC AUTOPILOT CONTROLLER */}
+      <GlobalLicAutopilotController onSyncComplete={fetchPolicies} />
+
       {loading ? (
         <div className="text-center py-12 text-slate-400 text-sm font-semibold">Loading policies data...</div>
       ) : policies.length === 0 ? (
@@ -416,13 +420,14 @@ export default function LicModule({ onBack }: LicModuleProps) {
                 </div>
               </div>
 
-              {/* RECURRING AUTOMATION PANEL */}
-              <RecurringAutomationPanel
-                moduleType="lic"
-                entityId={activePolicy.id}
-                entityName={activePolicy.policy_name}
-                defaultAmount={activePolicy.monthly_premium}
+              {/* READ ONLY LIC AUTOMATION CARD */}
+              <ReadOnlyLicAutomationCard
+                policyId={activePolicy.id}
+                monthlyPremium={activePolicy.monthly_premium}
                 dueDay={activePolicy.premium_due_day || 12}
+                maturityDate={activePolicy.maturity_date}
+                monthsRemaining={activePolicy.monthsRemaining}
+                totalRemaining={activePolicy.totalRemaining}
               />
 
               {/* YEARLY PAYMENTS CARD */}

@@ -83,7 +83,108 @@ export async function recalculateChitMetrics(chitId: number) {
   }
 }
 
-// ─── RUN AUTOMATION ENGINE (GLOBAL CHETTU SCHEDULER) ──────────────────────
+// ─── LIC HISTORICAL BACKFILL & METRICS RECALCULATION HELPER ───────────────
+export async function backfillLicHistoricalPremiums(policyId: number) {
+  try {
+    const policy = await get(`SELECT * FROM lic_policies WHERE id = ?`, [policyId]);
+    if (!policy || !policy.start_date) return;
+
+    const now = new Date();
+    const currYear = now.getFullYear();
+    const currMonth = now.getMonth() + 1;
+
+    const startDate = new Date(policy.start_date);
+    const startYear = startDate.getFullYear();
+    const startMonth = startDate.getMonth() + 1;
+
+    let matYear = currYear + 10;
+    let matMonth = startMonth;
+    if (policy.maturity_date) {
+      const matDate = new Date(policy.maturity_date);
+      matYear = matDate.getFullYear();
+      matMonth = matDate.getMonth() + 1;
+    }
+
+    const monthlyAmt = Number(policy.monthly_premium) || 0;
+    const dueDay = policy.premium_due_day || 5;
+
+    let y = startYear;
+    let m = startMonth;
+
+    while (y < matYear || (y === matYear && m <= matMonth)) {
+      const existing = await get(
+        `SELECT id, status FROM lic_premium_history WHERE policy_id = ? AND month = ? AND year = ?`,
+        [policyId, m, y]
+      );
+
+      // Past months -> Paid; Current & Future months -> Pending
+      const isPast = (y < currYear) || (y === currYear && m < currMonth);
+      const targetStatus = isPast ? 'Paid' : (existing ? existing.status : 'Pending');
+      const pDate = isPast ? `${y}-${String(m).padStart(2, '0')}-${String(dueDay).padStart(2, '0')}` : null;
+
+      if (!existing) {
+        await execute(
+          `INSERT INTO lic_premium_history (policy_id, month, year, amount_paid, paid_date, status, remarks)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [policyId, m, y, monthlyAmt, pDate, targetStatus, isPast ? 'Auto-backfilled historical premium' : 'Scheduled premium']
+        );
+      } else if (isPast && existing.status !== 'Paid') {
+        await execute(
+          `UPDATE lic_premium_history SET status = 'Paid', paid_date = ? WHERE id = ?`,
+          [pDate, existing.id]
+        );
+      }
+
+      m++;
+      if (m > 12) {
+        m = 1;
+        y++;
+      }
+    }
+
+    await recalculateLicMetrics(policyId);
+  } catch (err) {
+    console.error('[LIC Backfill Error]', err);
+  }
+}
+
+export async function recalculateLicMetrics(policyId: number) {
+  try {
+    const paidRes = await get(
+      `SELECT COUNT(*) as count, SUM(amount_paid) as total 
+       FROM lic_premium_history WHERE policy_id = ? AND status = 'Paid'`,
+      [policyId]
+    );
+
+    const policy = await get(`SELECT policy_term, monthly_premium, maturity_date FROM lic_policies WHERE id = ?`, [policyId]);
+    if (!policy) return;
+
+    const paidCount = Number(paidRes?.count || 0);
+    const totalPaid = Number(paidRes?.total || 0);
+
+    let matYear = new Date().getFullYear();
+    let matMonth = new Date().getMonth() + 1;
+    if (policy.maturity_date) {
+      const matDate = new Date(policy.maturity_date);
+      matYear = matDate.getFullYear();
+      matMonth = matDate.getMonth() + 1;
+    }
+
+    const pendingRow = await get(
+      `SELECT id FROM lic_premium_history WHERE policy_id = ? AND status != 'Paid' LIMIT 1`,
+      [policyId]
+    );
+
+    // If maturity month is reached and no pending rows exist -> Policy Completed!
+    if (!pendingRow && paidCount > 0) {
+      await execute(`UPDATE lic_policies SET status = 'Completed' WHERE id = ?`, [policyId]);
+    }
+  } catch (err) {
+    console.error('[LIC Metrics Recalculation Error]', err);
+  }
+}
+
+// ─── RUN AUTOMATION ENGINE (GLOBAL CHETTU & LIC SCHEDULER) ──────────────────
 export async function runRecurringAutomation(userId: number = 1, forceRun: boolean = false) {
   const now = new Date();
   const currentMonth = now.getMonth() + 1;
@@ -117,13 +218,11 @@ export async function runRecurringAutomation(userId: number = 1, forceRun: boole
           continue;
         }
 
-        // Safeguard: Check monthly execution state (execute once per chit per month unless forceRun)
         if (!forceRun && last_executed_month === currentMonth && last_executed_year === currentYear) {
           skippedCount++;
-          continue; // Already executed for this month
+          continue;
         }
 
-        // 1. Find next unpaid payment schedule row
         let existing = await get(
           'SELECT * FROM chit_payments WHERE chit_id = ? AND month = ? AND year = ?',
           [entity_id, currentMonth, currentYear]
@@ -137,7 +236,6 @@ export async function runRecurringAutomation(userId: number = 1, forceRun: boole
         }
 
         if (existing) {
-          // 2. Check manual override
           if (existing.status === 'Paid' && !existing.remarks?.includes('Auto-generated')) {
             await execute(
               `INSERT INTO recurring_automation_logs (user_id, module_type, entity_id, action, amount, period_month, period_year, details)
@@ -157,23 +255,19 @@ export async function runRecurringAutomation(userId: number = 1, forceRun: boole
           const status = auto_mark_paid ? 'Paid' : (existing.status || 'Pending');
           const pDate = dateStr;
 
-          // 3. Mark payment paid & update payment date
           await execute(
             `UPDATE chit_payments SET status = ?, payment_date = ?, remarks = 'Auto-generated recurring installment' WHERE id = ?`,
             [status, auto_mark_paid ? pDate : existing.payment_date, existing.id]
           );
 
-          // 4. Recalculate chit summary metrics
           await recalculateChitMetrics(entity_id);
           updatedCount++;
 
-          // 5. Update execution tracking
           await execute(
             `UPDATE recurring_commitments SET last_run_date = ?, last_executed_month = ?, last_executed_year = ? WHERE id = ?`,
             [dateStr, currentMonth, currentYear, id]
           );
 
-          // 6. Send Telegram confirmation
           let telegramSent = 0;
           if (telegram_confirm && chatId) {
             const instMonthName = new Date(2000, existing.month - 1).toLocaleString('en-US', { month: 'short' });
@@ -190,11 +284,82 @@ export async function runRecurringAutomation(userId: number = 1, forceRun: boole
             if (ok) telegramSent = 1;
           }
 
-          // 7. Log audit entry
           await execute(
             `INSERT INTO recurring_automation_logs (user_id, module_type, entity_id, action, amount, period_month, period_year, telegram_sent, details)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Automated payment schedule row updated & synchronized')`,
             [userId, module_type, entity_id, auto_mark_paid ? 'Auto-marked Paid' : 'Auto-updated', amt, existing.month, existing.year, telegramSent]
+          );
+        } else {
+          skippedCount++;
+        }
+      } else if (module_type === 'lic') {
+        const policy = await get('SELECT * FROM lic_policies WHERE id = ?', [entity_id]);
+        if (!policy || policy.status === 'Completed') {
+          skippedCount++;
+          continue;
+        }
+
+        // Safeguard: Check monthly execution lock (execute once per policy per month unless forceRun)
+        if (!forceRun && last_executed_month === currentMonth && last_executed_year === currentYear) {
+          skippedCount++;
+          continue;
+        }
+
+        let existing = await get(
+          'SELECT * FROM lic_premium_history WHERE policy_id = ? AND month = ? AND year = ?',
+          [entity_id, currentMonth, currentYear]
+        );
+
+        if (existing) {
+          if (existing.status === 'Paid' && !existing.remarks?.includes('Auto-generated')) {
+            await execute(
+              `INSERT INTO recurring_automation_logs (user_id, module_type, entity_id, action, amount, period_month, period_year, details)
+               VALUES (?, ?, ?, 'Manual override detected', ?, ?, ?, 'User manually paid LIC premium')`,
+              [userId, module_type, entity_id, existing.amount_paid, currentMonth, currentYear]
+            );
+
+            await execute(
+              `UPDATE recurring_commitments SET last_executed_month = ?, last_executed_year = ? WHERE id = ?`,
+              [currentMonth, currentYear, id]
+            );
+            skippedCount++;
+            continue;
+          }
+
+          const amt = Number(policy.monthly_premium) || Number(existing.amount_paid) || 0;
+          const status = auto_mark_paid ? 'Paid' : (existing.status || 'Pending');
+
+          await execute(
+            `UPDATE lic_premium_history SET status = ?, paid_date = ?, remarks = 'Auto-generated recurring premium' WHERE id = ?`,
+            [status, dateStr, existing.id]
+          );
+
+          await recalculateLicMetrics(entity_id);
+          updatedCount++;
+
+          await execute(
+            `UPDATE recurring_commitments SET last_run_date = ?, last_executed_month = ?, last_executed_year = ? WHERE id = ?`,
+            [dateStr, currentMonth, currentYear, id]
+          );
+
+          let telegramSent = 0;
+          if (telegram_confirm && chatId) {
+            const monthName = now.toLocaleString('en-US', { month: 'short' });
+            const msg = `<b>LIC premium recorded</b>\n\n` +
+              `Policy: ${policy.policy_name} (#${policy.policy_number})\n` +
+              `Month: ${monthName} ${currentYear}\n` +
+              `Premium: ₹${amt.toLocaleString('en-IN')}\n` +
+              `Status: ${status}\n\n` +
+              `Venke Finance`;
+
+            const ok = await sendTelegramMessage(chatId, msg);
+            if (ok) telegramSent = 1;
+          }
+
+          await execute(
+            `INSERT INTO recurring_automation_logs (user_id, module_type, entity_id, action, amount, period_month, period_year, telegram_sent, details)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Automated LIC premium recorded & synchronized')`,
+            [userId, module_type, entity_id, auto_mark_paid ? 'Auto-marked Paid' : 'Auto-updated', amt, currentMonth, currentYear, telegramSent]
           );
         } else {
           skippedCount++;
@@ -260,67 +425,6 @@ export async function runRecurringAutomation(userId: number = 1, forceRun: boole
         } else {
           skippedCount++;
         }
-      } else if (module_type === 'lic') {
-        const policy = await get('SELECT * FROM lic_policies WHERE id = ?', [entity_id]);
-        if (!policy || policy.status === 'Completed') {
-          skippedCount++;
-          continue;
-        }
-
-        const existing = await get(
-          'SELECT * FROM lic_premium_history WHERE policy_id = ? AND month = ? AND year = ?',
-          [entity_id, currentMonth, currentYear]
-        );
-
-        if (existing) {
-          if (!existing.remarks?.includes('Auto-generated')) {
-            await execute(
-              `INSERT INTO recurring_automation_logs (user_id, module_type, entity_id, action, amount, period_month, period_year, details)
-               VALUES (?, ?, ?, 'Manual override detected', ?, ?, ?, 'User manually logged premium entry')`,
-              [userId, module_type, entity_id, existing.amount_paid, currentMonth, currentYear]
-            );
-          }
-          skippedCount++;
-          continue;
-        }
-
-        if (auto_create) {
-          const status = auto_mark_paid ? 'Paid' : 'Pending';
-          const amt = Number(policy.monthly_premium) || 0;
-
-          await execute(
-            `INSERT INTO lic_premium_history (policy_id, month, year, amount_paid, paid_date, status, remarks)
-             VALUES (?, ?, ?, ?, ?, ?, 'Auto-generated recurring premium')`,
-            [entity_id, currentMonth, currentYear, amt, dateStr, status]
-          );
-          updatedCount++;
-
-          await execute(
-            `UPDATE recurring_commitments SET last_run_date = ?, last_executed_month = ?, last_executed_year = ? WHERE id = ?`,
-            [dateStr, currentMonth, currentYear, id]
-          );
-
-          let telegramSent = 0;
-          if (telegram_confirm && chatId) {
-            const msg = `<b>LIC premium recorded</b>\n\n` +
-              `Policy: ${policy.policy_name} (#${policy.policy_number})\n` +
-              `Amount: ₹${amt.toLocaleString('en-IN')}\n` +
-              `Due Date: ${dateStr}\n` +
-              `Status: ${status}\n\n` +
-              `Venke Finance`;
-
-            const ok = await sendTelegramMessage(chatId, msg);
-            if (ok) telegramSent = 1;
-          }
-
-          await execute(
-            `INSERT INTO recurring_automation_logs (user_id, module_type, entity_id, action, amount, period_month, period_year, telegram_sent, details)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Automated premium entry generated')`,
-            [userId, module_type, entity_id, auto_mark_paid ? 'Auto-marked Paid' : 'Auto-created', amt, currentMonth, currentYear, telegramSent]
-          );
-        } else {
-          skippedCount++;
-        }
       }
     } catch (err: any) {
       failedCount++;
@@ -335,15 +439,13 @@ export async function runRecurringAutomation(userId: number = 1, forceRun: boole
 export async function generateNextMonthForecast(userId: number = 1, isHeadsUp: boolean = false): Promise<{ text: string; totalCommitments: number }> {
   const now = new Date();
   const nextMonthDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-  const nextMonth = nextMonthDate.getMonth() + 1;
-  const nextYear = nextMonthDate.getFullYear();
   const nextMonthName = nextMonthDate.toLocaleString('en-US', { month: 'long' });
+  const nextMonthShort = nextMonthDate.toLocaleString('en-US', { month: 'short' });
+  const nextYear = nextMonthDate.getFullYear();
 
-  // 1. Fetch available balance for current month context
   const currMonthPrefix = now.toISOString().slice(0, 7);
   const availableBalance = await getAvailableBalance(userId, currMonthPrefix);
 
-  // 2. Fetch active rules
   const activeRules = await query(
     `SELECT * FROM recurring_commitments WHERE user_id = ? AND enabled = 1`,
     [userId]
@@ -404,57 +506,33 @@ export async function generateNextMonthForecast(userId: number = 1, isHeadsUp: b
     return { text: headsUpText, totalCommitments: totalNextCommitment };
   }
 
-  // Consolidated Forecast Message
-  let text = `<b>Venke Finance — ${nextMonthName} ${nextYear} Commitment Forecast</b>\n\n`;
-  text += `Available Balance: <b>₹${availableBalance.toLocaleString('en-IN')}</b>\n`;
-  text += `Next Month Commitments: <b>₹${totalNextCommitment.toLocaleString('en-IN')}</b>\n`;
+  // Consolidated Forecast Message with explicit LIC line items & Remaining after premiums
+  let text = `<b>Venke Finance — ${nextMonthName} ${nextYear} Premium Forecast</b>\n\n`;
 
-  if (isShortfall) {
-    text += `Expected Shortfall: <b style="color: #F43F5E;">₹${Math.abs(expectedDiff).toLocaleString('en-IN')}</b>\n\n`;
-  } else {
-    text += `Expected Surplus: <b style="color: #10B981;">₹${expectedDiff.toLocaleString('en-IN')}</b>\n\n`;
-  }
-
-  if (cheetuItems.length > 0) {
-    text += `<b>Cheetu chit funds</b>\n`;
-    cheetuItems.sort((a, b) => a.dueDay - b.dueDay).forEach(item => {
-      text += `• ${item.name}: ₹${item.amount.toLocaleString('en-IN')} (Due: ${String(item.dueDay).padStart(2, '0')} ${nextMonthName.slice(0, 3)})\n`;
+  if (licItems.length > 0) {
+    licItems.sort((a, b) => a.dueDay - b.dueDay).forEach(item => {
+      text += `• ${item.name}: ₹${item.amount.toLocaleString('en-IN')} (Due: ${String(item.dueDay).padStart(2, '0')} ${nextMonthShort})\n`;
     });
     text += `\n`;
   }
 
-  if (licItems.length > 0) {
-    text += `<b>LIC policies</b>\n`;
-    licItems.sort((a, b) => a.dueDay - b.dueDay).forEach(item => {
-      text += `• ${item.name}: ₹${item.amount.toLocaleString('en-IN')} (Due: ${String(item.dueDay).padStart(2, '0')} ${nextMonthName.slice(0, 3)})\n`;
+  if (cheetuItems.length > 0) {
+    cheetuItems.sort((a, b) => a.dueDay - b.dueDay).forEach(item => {
+      text += `• ${item.name}: ₹${item.amount.toLocaleString('en-IN')} (Due: ${String(item.dueDay).padStart(2, '0')} ${nextMonthShort})\n`;
     });
     text += `\n`;
   }
 
   if (goldItems.length > 0) {
-    text += `<b>PhonePe DigiGold</b>\n`;
     goldItems.sort((a, b) => a.dueDay - b.dueDay).forEach(item => {
-      text += `• ${item.name}: ₹${item.amount.toLocaleString('en-IN')} (${String(item.dueDay).padStart(2, '0')} ${nextMonthName.slice(0, 3)})\n`;
+      text += `• ${item.name}: ₹${item.amount.toLocaleString('en-IN')} (${String(item.dueDay).padStart(2, '0')} ${nextMonthShort})\n`;
     });
     text += `\n`;
   }
 
-  text += `<b>Total Next Month Commitment</b>\n₹${totalNextCommitment.toLocaleString('en-IN')}\n\n`;
-  text += `Breakdown:\n`;
-  text += `• Cheetu: ₹${cheetuTotal.toLocaleString('en-IN')}\n`;
-  text += `• LIC: ₹${licTotal.toLocaleString('en-IN')}\n`;
-  text += `• DigiGold: ₹${goldTotal.toLocaleString('en-IN')}\n\n`;
-
-  if (totalNextCommitment >= 50000) {
-    text += `⚠️ <b>High Commitment Alert</b>\nYour ${nextMonthName} commitments exceed ₹50,000. Total: ₹${totalNextCommitment.toLocaleString('en-IN')}\n\n`;
-  }
-
-  text += `💡 <b>Recommendation</b>\n`;
-  if (isShortfall) {
-    text += `You need an additional ₹${Math.abs(expectedDiff).toLocaleString('en-IN')} before ${nextMonthName} begins.\n\n`;
-  } else {
-    text += `You have sufficient funds (₹${expectedDiff.toLocaleString('en-IN')} surplus) to cover all ${nextMonthName} commitments.\n\n`;
-  }
+  text += `Total Premium: <b>₹${totalNextCommitment.toLocaleString('en-IN')}</b>\n`;
+  text += `Available Balance: <b>₹${availableBalance.toLocaleString('en-IN')}</b>\n`;
+  text += `Remaining After Premiums: <b>₹${expectedDiff.toLocaleString('en-IN')}</b>\n\n`;
 
   text += `Venke Finance`;
 
@@ -480,13 +558,52 @@ export async function getGlobalCheetuAutopilotStatus(userId: number = 1) {
   const user = await get(`SELECT telegram_chat_id FROM users WHERE id = ?`, [userId]);
   const isTelegramLinked = !!(user && user.telegram_chat_id);
 
-  // Compute next global run date (1st of next month at 12:05 AM)
   const now = new Date();
   const nextMonthDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
   const nextRunStr = `01 ${nextMonthDate.toLocaleString('en-US', { month: 'short' })} ${nextMonthDate.getFullYear()} • 12:05 AM`;
 
   const logs = await query(
     `SELECT * FROM recurring_automation_logs WHERE user_id = ? AND module_type = 'chit' ORDER BY created_at DESC LIMIT 15`,
+    [userId]
+  );
+
+  return {
+    enabled: isEnabled ? 1 : 0,
+    activeCount,
+    lastRunDate: lastLog ? lastLog.created_at : null,
+    lastAction: lastLog ? lastLog.action : 'No runs yet',
+    nextRunStr,
+    isTelegramLinked,
+    health: isEnabled ? 'Healthy' : 'Paused',
+    logs
+  };
+}
+
+// ─── GLOBAL LIC AUTOPILOT STATUS HELPER ───────────────────────────────────
+export async function getGlobalLicAutopilotStatus(userId: number = 1) {
+  let activePolicies = await query(`SELECT * FROM lic_policies WHERE user_id = ? AND (status = 'Running' OR status IS NULL OR status != 'Completed')`, [userId]);
+  if (!activePolicies || activePolicies.length === 0) {
+    activePolicies = await query(`SELECT * FROM lic_policies WHERE user_id = ?`, [userId]);
+  }
+  const activeCount = activePolicies ? activePolicies.length : 0;
+
+  const rules = await query(`SELECT * FROM recurring_commitments WHERE user_id = ? AND module_type = 'lic'`, [userId]);
+  const isEnabled = rules.some(r => r.enabled === 1);
+
+  const lastLog = await get(
+    `SELECT * FROM recurring_automation_logs WHERE user_id = ? AND module_type = 'lic' ORDER BY created_at DESC LIMIT 1`,
+    [userId]
+  );
+
+  const user = await get(`SELECT telegram_chat_id FROM users WHERE id = ?`, [userId]);
+  const isTelegramLinked = !!(user && user.telegram_chat_id);
+
+  const now = new Date();
+  const nextMonthDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const nextRunStr = `01 ${nextMonthDate.toLocaleString('en-US', { month: 'short' })} ${nextMonthDate.getFullYear()} • 12:05 AM`;
+
+  const logs = await query(
+    `SELECT * FROM recurring_automation_logs WHERE user_id = ? AND module_type = 'lic' ORDER BY created_at DESC LIMIT 15`,
     [userId]
   );
 
@@ -516,12 +633,10 @@ export async function runDeveloperAutomationSimulation(
   const simMonthName = simDate.toLocaleString('en-US', { month: 'long' });
   const simMonthShort = simDate.toLocaleString('en-US', { month: 'short' });
 
-  // Calculate next month from simDate for forecast
   const nextMonthDate = new Date(simDate.getFullYear(), simDate.getMonth() + 1, 1);
-  const nextMonthNum = nextMonthDate.getMonth() + 1;
-  const nextYearNum = nextMonthDate.getFullYear();
   const nextMonthNameStr = nextMonthDate.toLocaleString('en-US', { month: 'long' });
   const nextMonthShortStr = nextMonthDate.toLocaleString('en-US', { month: 'short' });
+  const nextYearNum = nextMonthDate.getFullYear();
 
   const activeChits = await query(`SELECT * FROM chit_funds WHERE user_id = ? AND (status = 'Running' OR status IS NULL OR status != 'Completed')`, [userId]);
   const user = await get('SELECT telegram_chat_id FROM users WHERE id = ?', [userId]);
@@ -531,7 +646,6 @@ export async function runDeveloperAutomationSimulation(
   let affectedChits: Array<{ id: number; name: string; amount: number; month: number; year: number }> = [];
   let totalAmountSimulated = 0;
 
-  // Calculate Current Metrics
   let currentMonthsPaidTotal = 0;
   let currentPaidAmountTotal = 0;
   let currentTotalValue = 0;
@@ -592,7 +706,6 @@ export async function runDeveloperAutomationSimulation(
       );
       const amt = Number(nextPayment?.installment_amount) || Number(chit.monthly_installment) || 0;
       totalCommitment += amt;
-      const dueDay = 5;
       const instMonthName = nextPayment ? new Date(2000, nextPayment.month - 1).toLocaleString('en-US', { month: 'short' }) : nextMonthShortStr;
       forecastItems.push(`• ${chit.chit_name} — ₹${amt.toLocaleString('en-IN')} (Due: 05 ${instMonthName})`);
     }
@@ -639,7 +752,6 @@ export async function runDeveloperAutomationSimulation(
     previewMessage += `\nPlease update payment status in Records.\nVenke Finance`;
   }
 
-  // Handle Live Telegram Send Verification
   let telegramMeta = null;
   if (sendTelegram && chatId) {
     const startTime = Date.now();
@@ -662,7 +774,6 @@ export async function runDeveloperAutomationSimulation(
     };
   }
 
-  // Compute Simulated Metrics for comparison table
   const simulatedMonthsPaid = currentMonthsPaidTotal + (actionType === 'month-start' ? affectedChits.length : 0);
   const simulatedPaidAmount = currentPaidAmountTotal + (actionType === 'month-start' ? totalAmountSimulated : 0);
   const simulatedLiability = Math.max(0, currentTotalValue - simulatedPaidAmount);
@@ -684,7 +795,6 @@ export async function runDeveloperAutomationSimulation(
   };
 }
 
-// ─── RUN FULL AUTOMATION VALIDATION SUITE ──────────────────────────────────────
 export async function runFullAutomationValidationSuite(userId: number = 1) {
   const activeChits = await query(`SELECT * FROM chit_funds WHERE user_id = ? AND (status = 'Running' OR status IS NULL OR status != 'Completed')`, [userId]);
   const user = await get('SELECT telegram_chat_id FROM users WHERE id = ?', [userId]);
