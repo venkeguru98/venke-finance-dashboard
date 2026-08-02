@@ -102,7 +102,7 @@ export class LicAutomationScheduler {
     try {
       const paidRes = await get(
         `SELECT COUNT(*) as count, SUM(amount_paid) as total 
-         FROM lic_premium_history WHERE policy_id = ? AND status = 'Paid'`,
+         FROM lic_premium_history WHERE policy_id = ? AND LOWER(status) = 'paid'`,
         [policyId]
       );
 
@@ -145,44 +145,61 @@ export class LicAutomationScheduler {
     }
   }
 
-  // ─── 5. UNIFIED NEXT SCHEDULED PREMIUM POINTER RESOLUTION ─────────────────
-  static async getNextScheduledPremium(policyId: number) {
-    let nextRow = await get(
+  // ─── 5. UNIFIED DYNAMIC NEXT SCHEDULED PREMIUM RESOLVER ─────────────────
+  static async resolveNextPremium(policyId: number) {
+    const policy = await get(`SELECT * FROM lic_policies WHERE id = ?`, [policyId]);
+    if (!policy) return null;
+
+    const totalExpected = Number(policy.policy_term || 10) * 12;
+    const rowCheck = await get(`SELECT COUNT(*) as count FROM lic_premium_history WHERE policy_id = ?`, [policyId]);
+    
+    if (Number(rowCheck?.count || 0) < totalExpected) {
+      console.warn(`[LicAutomationScheduler] Policy #${policyId} has ${rowCheck?.count || 0}/${totalExpected} schedule rows. Auto-generating full schedule...`);
+      await LicAutomationScheduler.generateFullSchedule(policyId);
+    }
+
+    // Query earliest unpaid row using NULL-safe, case-insensitive query
+    const nextRow = await get(
       `SELECT * FROM lic_premium_history 
-       WHERE policy_id = ? AND status != 'Paid' 
+       WHERE policy_id = ? AND (status IS NULL OR LOWER(status) != 'paid') 
        ORDER BY year ASC, month ASC LIMIT 1`,
       [policyId]
     );
 
-    // Consistency Validation & Self-Healing Schedule Rebuild
-    if (!nextRow) {
-      const paidRes = await get(
-        `SELECT COUNT(*) as count FROM lic_premium_history WHERE policy_id = ? AND status = 'Paid'`,
-        [policyId]
-      );
-      const policy = await get(`SELECT policy_term FROM lic_policies WHERE id = ?`, [policyId]);
-      if (policy) {
-        const paidCount = Number(paidRes?.count || 0);
-        const totalPolicyMonths = Number(policy.policy_term || 10) * 12;
-        const remainingMonths = Math.max(0, totalPolicyMonths - paidCount);
+    if (!nextRow) return null;
 
-        if (remainingMonths > 0) {
-          console.warn(`[LicAutomationScheduler] Policy #${policyId} has ${remainingMonths} remaining months but missing next row. Auto-rebuilding schedule...`);
-          await LicAutomationScheduler.generateFullSchedule(policyId);
-          nextRow = await get(
-            `SELECT * FROM lic_premium_history 
-             WHERE policy_id = ? AND status != 'Paid' 
-             ORDER BY year ASC, month ASC LIMIT 1`,
-            [policyId]
-          );
-        }
-      }
-    }
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const monthShorts = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    
+    const mIndex = Number(nextRow.month) - 1;
+    const monthName = monthNames[mIndex] || `Month ${nextRow.month}`;
+    const monthShort = monthShorts[mIndex] || `M${nextRow.month}`;
+    const dueDay = String(policy.premium_due_day || 5).padStart(2, '0');
+    const amount = Number(nextRow.amount_paid || policy.monthly_premium || 0);
 
-    return nextRow;
+    return {
+      id: nextRow.id,
+      policyId: policy.id,
+      policy_id: policy.id,
+      policyName: policy.policy_name,
+      month: Number(nextRow.month),
+      year: Number(nextRow.year),
+      amount,
+      amount_paid: amount,
+      dueDay: policy.premium_due_day || 5,
+      dueDate: `${dueDay} ${monthShort} ${nextRow.year}`,
+      monthYearStr: `${monthName} ${nextRow.year}`,
+      formattedStr: `${monthName} ${nextRow.year} • ₹${amount.toLocaleString('en-IN')}`,
+      status: nextRow.status || 'Pending'
+    };
   }
 
-  // ─── 6. MONTH-START AUTO-PAYMENT PIPELINE ─────────────────────────────────
+  // Backward compatibility alias for getNextScheduledPremium
+  static async getNextScheduledPremium(policyId: number) {
+    return await LicAutomationScheduler.resolveNextPremium(policyId);
+  }
+
+  // ─── 6. MONTH-START AUTO-PAYMENT & MANUAL SYNC PIPELINE ──────────────────
   static async processMonthStartAutoPayment(userId: number = 1, forceRun: boolean = false, source: 'automation' | 'manual_sync' = 'automation') {
     const now = new Date();
     const currentMonth = now.getMonth() + 1;
@@ -197,6 +214,8 @@ export class LicAutomationScheduler {
     let skippedCount = 0;
     let failedCount = 0;
 
+    const traces: string[] = [];
+
     const user = await get('SELECT telegram_chat_id FROM users WHERE id = ?', [userId]);
     const chatId = user?.telegram_chat_id;
 
@@ -209,6 +228,8 @@ export class LicAutomationScheduler {
     for (const policy of activePolicies) {
       processedCount++;
       try {
+        const rowsBefore = await get(`SELECT COUNT(*) as count FROM lic_premium_history WHERE policy_id = ? AND LOWER(status) = 'paid'`, [policy.id]);
+
         let existing = await get(
           'SELECT * FROM lic_premium_history WHERE policy_id = ? AND month = ? AND year = ?',
           [policy.id, currentMonth, currentYear]
@@ -231,6 +252,7 @@ export class LicAutomationScheduler {
         if (existing) {
           if (existing.status === 'Paid' && !existing.remarks?.includes('Auto-generated')) {
             skippedCount++;
+            traces.push(`Policy #${policy.id} (${policy.policy_name}): ${currentMonthName} ${currentYear} already paid manually. Skipped.`);
             continue;
           }
 
@@ -244,14 +266,14 @@ export class LicAutomationScheduler {
           await LicAutomationScheduler.recalculateMetrics(policy.id);
           updatedCount++;
 
-          const nextRow = await LicAutomationScheduler.getNextScheduledPremium(policy.id);
+          const rowsAfter = await get(`SELECT COUNT(*) as count FROM lic_premium_history WHERE policy_id = ? AND LOWER(status) = 'paid'`, [policy.id]);
+
+          const nextRow = await LicAutomationScheduler.resolveNextPremium(policy.id);
           let nextPremStr = 'All Premiums Completed ✓';
           if (nextRow) {
-            const nmName = monthNames[nextRow.month - 1];
-            nextPremStr = `${nmName} ${nextRow.year}`;
+            nextPremStr = `${nextRow.monthYearStr}`;
           }
 
-          // Format Date string for Telegram message (e.g., 01 Aug 2026)
           const dayStr = String(now.getDate()).padStart(2, '0');
           const shortMonth = now.toLocaleString('en-US', { month: 'short' });
           const formattedPaidDate = `${dayStr} ${shortMonth} ${currentYear}`;
@@ -273,6 +295,8 @@ export class LicAutomationScheduler {
 
           const structuredLog = `[SCHEDULER] Policy ID: ${policy.id} | Target Month: ${currentMonthName} ${currentYear} | Pending Item Found: Yes | Marked Paid: Success | Next Premium Resolved: ${nextPremStr} | Telegram Dispatched: ${telegramSent ? 'Success' : 'Skipped'} | Metrics Sync: Success`;
 
+          traces.push(`Policy #${policy.id} (${policy.policy_name}): Month ${currentMonthName} ${currentYear} marked Paid. Paid rows before: ${rowsBefore?.count || 0}, after: ${rowsAfter?.count || 0}. Next Premium: ${nextPremStr}. Telegram: ${telegramSent ? 'Success' : 'Skipped'}.`);
+
           await execute(
             `INSERT INTO recurring_automation_logs (user_id, module_type, entity_id, action, amount, period_month, period_year, telegram_sent, details)
              VALUES (?, 'lic', ?, 'Auto-marked Paid', ?, ?, ?, ?, ?)`,
@@ -285,7 +309,7 @@ export class LicAutomationScheduler {
       }
     }
 
-    return { processedCount, updatedCount, skippedCount, failedCount };
+    return { processedCount, updatedCount, skippedCount, failedCount, traces };
   }
 
   // ─── 7. MONTH-END FORECAST REMINDER PIPELINE ──────────────────────────────
@@ -419,7 +443,7 @@ export class LicAutomationScheduler {
 
     for (const p of allPolicies) {
       const paidRes = await get(
-        `SELECT COUNT(*) as count FROM lic_premium_history WHERE policy_id = ? AND status = 'Paid'`,
+        `SELECT COUNT(*) as count FROM lic_premium_history WHERE policy_id = ? AND LOWER(status) = 'paid'`,
         [p.id]
       );
       const paidCount = Number(paidRes?.count || 0);
@@ -458,12 +482,12 @@ export class LicAutomationScheduler {
 
       const paidRes = await get(
         `SELECT COUNT(*) as count, SUM(amount_paid) as total 
-         FROM lic_premium_history WHERE policy_id = ? AND status = 'Paid'`,
+         FROM lic_premium_history WHERE policy_id = ? AND LOWER(status) = 'paid'`,
         [p.id]
       );
       const yearPaidRes = await get(
         `SELECT SUM(amount_paid) as total 
-         FROM lic_premium_history WHERE policy_id = ? AND status = 'Paid' AND year = ?`,
+         FROM lic_premium_history WHERE policy_id = ? AND LOWER(status) = 'paid' AND year = ?`,
         [p.id, currentYear]
       );
 
@@ -499,17 +523,7 @@ export class LicAutomationScheduler {
     const activeIds = activePoliciesList.map((p: any) => p.id);
     let nextUnpaidRow = null;
     if (activeIds.length > 0) {
-      const placeholders = activeIds.map(() => '?').join(',');
-      nextUnpaidRow = await get(
-        `SELECT h.*, p.policy_name, p.premium_due_day 
-         FROM lic_premium_history h
-         JOIN lic_policies p ON h.policy_id = p.id
-         WHERE p.id IN (${placeholders})
-           AND h.status IN ('Pending', 'Scheduled', 'Overdue')
-         ORDER BY h.year ASC, h.month ASC, p.premium_due_day ASC
-         LIMIT 1`,
-        activeIds
-      );
+      nextUnpaidRow = await LicAutomationScheduler.resolveNextPremium(activeIds[0]);
     }
 
     let upcomingPremiumDue = 'No upcoming premiums';
@@ -520,12 +534,10 @@ export class LicAutomationScheduler {
     let nextPremiumYear = null;
 
     if (nextUnpaidRow) {
-      const monthName = new Date(2000, nextUnpaidRow.month - 1).toLocaleString('en-US', { month: 'short' });
-      const dueDay = String(nextUnpaidRow.premium_due_day || 5).padStart(2, '0');
-      upcomingPremiumDue = `${nextUnpaidRow.policy_name} — ₹${Number(nextUnpaidRow.amount_paid).toLocaleString('en-IN')} (Due: ${dueDay} ${monthName} ${nextUnpaidRow.year})`;
-      nextPremiumDate = `${monthName} ${nextUnpaidRow.year}`;
-      nextPremiumAmount = Number(nextUnpaidRow.amount_paid || 0);
-      nextPremiumDueDate = `${dueDay} ${monthName} ${nextUnpaidRow.year}`;
+      upcomingPremiumDue = `${nextUnpaidRow.policyName} — ₹${Number(nextUnpaidRow.amount).toLocaleString('en-IN')} (Due: ${nextUnpaidRow.dueDate})`;
+      nextPremiumDate = nextUnpaidRow.monthYearStr;
+      nextPremiumAmount = Number(nextUnpaidRow.amount || 0);
+      nextPremiumDueDate = nextUnpaidRow.dueDate;
       nextPremiumMonth = nextUnpaidRow.month;
       nextPremiumYear = nextUnpaidRow.year;
     } else if (activePolicies > 0) {

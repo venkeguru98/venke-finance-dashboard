@@ -118,22 +118,16 @@ export default function ReadOnlyLicAutomationCard({
           {data.nextInstallment ? (
             <div>
               <p className="text-xs font-extrabold text-white mt-0.5">
-                {new Date(2000, data.nextInstallment.month - 1).toLocaleString('en-US', { month: 'short' })} {data.nextInstallment.year}: <span className="font-mono text-emerald-400">₹{Number(data.nextInstallment.amount_paid || monthlyPremium).toLocaleString('en-IN')}</span>
+                {data.nextInstallment.monthYearStr || `${new Date(2000, data.nextInstallment.month - 1).toLocaleString('en-US', { month: 'short' })} ${data.nextInstallment.year}`}: <span className="font-mono text-emerald-400">₹{Number(data.nextInstallment.amount || data.nextInstallment.amount_paid || monthlyPremium).toLocaleString('en-IN')}</span>
               </p>
               <span className="text-[9px] text-slate-400 font-medium block mt-0.5">
-                Due: {String(dueDay || 12).padStart(2, '0')} {new Date(2000, data.nextInstallment.month - 1).toLocaleString('en-US', { month: 'short' })} {data.nextInstallment.year}
+                Due: {data.nextInstallment.dueDate || `${String(data.nextInstallment.dueDay || dueDay || 5).padStart(2, '0')} ${new Date(2000, data.nextInstallment.month - 1).toLocaleString('en-US', { month: 'short' })} ${data.nextInstallment.year}`}
               </span>
             </div>
-          ) : monthsRemaining === 0 ? (
+          ) : (
             <p className="text-xs font-bold text-emerald-400 mt-0.5">
               All Premiums Completed ✓
             </p>
-          ) : (
-            <div>
-              <p className="text-xs font-extrabold text-amber-400 mt-0.5">
-                Calculating Next Premium...
-              </p>
-            </div>
           )}
         </div>
 

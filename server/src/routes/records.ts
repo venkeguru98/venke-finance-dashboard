@@ -1619,12 +1619,44 @@ import {
   runFullAutomationValidationSuite 
 } from '../services/recurringAutomation';
 
-// ─── LIC SUMMARY AGGREGATION ENDPOINT ─────────────────────────────────────
-router.get('/lic/summary', async (req: Request, res: Response) => {
-  const userId = req.user!.id;
+// ─── LIC DEBUG ENDPOINT FOR ROOT-CAUSE TRACING ──────────────────────────────
+router.get('/debug/lic/:policyId', async (req: Request, res: Response) => {
+  const policyId = Number(req.params.policyId);
   try {
-    const summary = await getLicModuleSummary(userId);
-    res.json(summary);
+    const policy = await get(`SELECT * FROM lic_policies WHERE id = ?`, [policyId]);
+    if (!policy) return res.status(404).json({ error: 'Policy not found' });
+
+    const totalScheduleRows = await get(`SELECT COUNT(*) as count FROM lic_premium_history WHERE policy_id = ?`, [policyId]);
+    const paidRows = await get(`SELECT COUNT(*) as count FROM lic_premium_history WHERE policy_id = ? AND LOWER(status) = 'paid'`, [policyId]);
+    const pendingRows = await get(`SELECT COUNT(*) as count FROM lic_premium_history WHERE policy_id = ? AND LOWER(status) = 'pending'`, [policyId]);
+    const overdueRows = await get(`SELECT COUNT(*) as count FROM lic_premium_history WHERE policy_id = ? AND LOWER(status) = 'overdue'`, [policyId]);
+    const scheduledRows = await get(`SELECT COUNT(*) as count FROM lic_premium_history WHERE policy_id = ? AND LOWER(status) = 'scheduled'`, [policyId]);
+    const nullStatusRows = await get(`SELECT COUNT(*) as count FROM lic_premium_history WHERE policy_id = ? AND status IS NULL`, [policyId]);
+
+    const nextPendingRow = await LicAutomationScheduler.resolveNextPremium(policyId);
+    const first10FutureRows = await query(`SELECT * FROM lic_premium_history WHERE policy_id = ? AND (status IS NULL OR LOWER(status) != 'paid') ORDER BY year ASC, month ASC LIMIT 10`, [policyId]);
+    const last10Rows = await query(`SELECT * FROM lic_premium_history WHERE policy_id = ? ORDER BY year DESC, month DESC LIMIT 10`, [policyId]);
+
+    const calculationTrace = [
+      `Policy #${policyId} (${policy.policy_name}) total tenure: ${policy.policy_term * 12} months`,
+      `Total schedule rows in DB: ${totalScheduleRows?.count || 0}`,
+      `Paid rows: ${paidRows?.count || 0}, Pending: ${pendingRows?.count || 0}, Overdue: ${overdueRows?.count || 0}, Scheduled: ${scheduledRows?.count || 0}, NULL status: ${nullStatusRows?.count || 0}`,
+      `Resolved next premium pointer: ${nextPendingRow ? nextPendingRow.formattedStr : 'NONE (All Paid)'}`
+    ];
+
+    res.json({
+      policy,
+      totalScheduleRows: Number(totalScheduleRows?.count || 0),
+      paidRows: Number(paidRows?.count || 0),
+      pendingRows: Number(pendingRows?.count || 0),
+      overdueRows: Number(overdueRows?.count || 0),
+      scheduledRows: Number(scheduledRows?.count || 0),
+      nullStatusRows: Number(nullStatusRows?.count || 0),
+      nextPendingRow,
+      first10FutureRows,
+      last10Rows,
+      calculationTrace
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
