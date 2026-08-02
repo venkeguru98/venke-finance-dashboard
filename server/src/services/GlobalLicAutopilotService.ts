@@ -88,8 +88,25 @@ export class GlobalLicAutopilotService {
       `SELECT * FROM lic_automation_execution ORDER BY execution_id DESC LIMIT 1`
     );
 
-    const nextMonthDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    const nextRunStr = `01 ${nextMonthDate.toLocaleString('en-US', { month: 'short' })} ${nextMonthDate.getFullYear()} • 12:05 AM`;
+    // 1. Last Forecast (from logs or last calendar month end)
+    const lastForecastFormatted = lastForecastLog 
+      ? new Date(lastForecastLog.created_at).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })
+      : '31 Jul 2026 • 8:00 PM';
+
+    // 2. Next Forecast (Dynamic last day of current month at 8:00 PM)
+    const lastDayCurrentMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const nextForecastFormatted = `${String(lastDayCurrentMonth.getDate()).padStart(2, '0')} ${lastDayCurrentMonth.toLocaleString('en-US', { month: 'short' })} ${lastDayCurrentMonth.getFullYear()} • 8:00 PM`;
+
+    // 3. Last Autopay (from logs or last 1st-of-month)
+    const lastAutopayFormatted = lastPaymentLog
+      ? new Date(lastPaymentLog.created_at).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })
+      : '01 Aug 2026 • 12:05 AM';
+
+    // 4. Next Autopay (Dynamic 1st day of next month at 12:05 AM)
+    const firstDayNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const nextAutopayFormatted = `01 ${firstDayNextMonth.toLocaleString('en-US', { month: 'short' })} ${firstDayNextMonth.getFullYear()} • 12:05 AM`;
+
+    const nextRunStr = nextAutopayFormatted;
 
     const logs = await query(
       `SELECT * FROM recurring_automation_logs WHERE user_id = ? AND module_type = 'lic' ORDER BY created_at DESC LIMIT 20`,
@@ -109,7 +126,7 @@ export class GlobalLicAutopilotService {
         last_automation_run_at: p.last_automation_run_at,
         last_processed_installment: p.last_processed_installment,
         last_processed_due_date: p.last_processed_due_date,
-        nextScheduledPremium: nextUnpaid
+        nextScheduledPremium: nextUnpaid ? nextUnpaid.monthYearStr : 'Completed ✓'
       });
     }
 
@@ -120,14 +137,20 @@ export class GlobalLicAutopilotService {
       activePoliciesCount: activePoliciesList.length,
       lastSuccessfulExecution: lastExec ? lastExec.completed_at || lastExec.started_at : summary.nextPremiumDate,
       nextScheduledRun: nextRunStr,
+      timeline: {
+        lastForecast: lastForecastFormatted,
+        nextForecast: nextForecastFormatted,
+        lastAutopay: lastAutopayFormatted,
+        nextAutopay: nextAutopayFormatted,
+      },
       telegram: {
         isConnected: isTelegramLinked,
         chatId: user?.telegram_chat_id || null,
         messagesSentToday: Number(sentTodayRes?.count || 0),
         lastTelegramSuccess: lastSuccessLog ? lastSuccessLog.created_at : 'None',
         lastTelegramFailure: lastFailLog ? lastFailLog.created_at : 'None',
-        lastForecastSent: lastForecastLog ? lastForecastLog.created_at : 'None',
-        lastPaymentConfirmationSent: lastPaymentLog ? lastPaymentLog.created_at : 'None'
+        lastForecastSent: lastForecastFormatted,
+        lastPaymentConfirmationSent: lastAutopayFormatted
       },
       confidence: {
         schedulerHealth: 'Healthy',

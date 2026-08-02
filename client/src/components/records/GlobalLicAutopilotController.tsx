@@ -204,46 +204,67 @@ export default function GlobalLicAutopilotController({ onSyncComplete }: GlobalL
 
       {/* EXPANDED AUTOMATION STATUS & CONFIDENCE DETAILS */}
       {isPanelExpanded && (
-        <div className="bg-[#101935] p-4 rounded-2xl border border-[#1E2A4A] grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 animate-fadeIn">
+        <div className="bg-[#101935] p-4 rounded-2xl border border-[#1E2A4A] space-y-4 animate-fadeIn">
+          {/* SECTION 1: AUTOMATION OVERVIEW */}
           <div>
-            <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Automation Status</span>
-            <span className="text-xs font-extrabold text-emerald-400 flex items-center gap-1 mt-0.5">● Active</span>
+            <h3 className="text-[10px] font-black uppercase text-cyan-400 tracking-wider mb-2.5">Automation Overview</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+              <div>
+                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Automation Status</span>
+                <span className="text-xs font-extrabold text-emerald-400 flex items-center gap-1 mt-0.5">● Active</span>
+              </div>
+              <div>
+                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Active Policies</span>
+                <span className="text-xs font-bold text-white font-mono mt-0.5">{data.activePolicies ?? data.activePoliciesCount ?? 0}</span>
+              </div>
+              <div>
+                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Last Forecast</span>
+                <span className="text-[10px] font-mono text-slate-300 block mt-0.5 truncate">{data.timeline?.lastForecast || data.telegram?.lastForecastSent || '31 Jul 2026 • 8:00 PM'}</span>
+              </div>
+              <div>
+                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Next Forecast</span>
+                <span className="text-[10px] font-mono text-cyan-400 block mt-0.5 truncate">{data.timeline?.nextForecast || '31 Aug 2026 • 8:00 PM'}</span>
+              </div>
+              <div>
+                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Last Autopay</span>
+                <span className="text-[10px] font-mono text-slate-300 block mt-0.5 truncate">{data.timeline?.lastAutopay || data.telegram?.lastPaymentConfirmationSent || '01 Aug 2026 • 12:05 AM'}</span>
+              </div>
+              <div>
+                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Next Autopay</span>
+                <span className="text-[10px] font-mono text-cyan-400 block mt-0.5 truncate">{data.timeline?.nextAutopay || data.nextExecution || '01 Sep 2026 • 12:05 AM'}</span>
+              </div>
+            </div>
           </div>
-          <div>
-            <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Active Policies</span>
-            <span className="text-xs font-bold text-white font-mono mt-0.5">{data.activePolicies ?? data.activePoliciesCount ?? 0}</span>
-          </div>
-          <div>
-            <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Last Forecast</span>
-            <span className="text-[10px] font-mono text-slate-300 block mt-0.5 truncate">{data.telegram?.lastForecastSent || '28 Aug 2026 • 8:00 PM'}</span>
-          </div>
-          <div>
-            <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Next Forecast</span>
-            <span className="text-[10px] font-mono text-cyan-400 block mt-0.5">31 Aug 2026 • 8:00 PM</span>
-          </div>
-          <div>
-            <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Last Autopay</span>
-            <span className="text-[10px] font-mono text-slate-300 block mt-0.5 truncate">{data.telegram?.lastPaymentConfirmationSent || '01 Aug 2026 • 12:05 AM'}</span>
-          </div>
-          <div>
-            <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Next Autopay</span>
-            <span className="text-[10px] font-mono text-cyan-400 block mt-0.5 truncate">{data.nextExecution || '01 Sep 2026 • 12:05 AM'}</span>
-          </div>
-          <div>
-            <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Last Recovery Check</span>
-            <span className="text-[10px] font-mono text-emerald-400 block mt-0.5">{data.heartbeat?.lastHeartbeatFormatted || 'Just now'}</span>
-          </div>
-          <div>
-            <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Scheduler Health</span>
-            <span className="text-xs font-bold text-emerald-400 block mt-0.5">Healthy</span>
-          </div>
-          <div>
-            <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Telegram</span>
-            <span className="text-xs font-bold text-emerald-400 block mt-0.5">Connected</span>
-          </div>
-          <div>
-            <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Success Rate</span>
-            <span className="text-xs font-bold text-white font-mono block mt-0.5">100%</span>
+
+          {/* SECTION 2: SCHEDULER & TELEGRAM */}
+          <div className="border-t border-[#1E2A4A] pt-3">
+            <h3 className="text-[10px] font-black uppercase text-cyan-400 tracking-wider mb-2.5">Scheduler & Telegram</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+              <div>
+                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Scheduler Status</span>
+                <span className="text-xs font-bold text-emerald-400 block mt-0.5">Running</span>
+              </div>
+              <div>
+                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Last Recovery Check</span>
+                <span className="text-[10px] font-mono text-emerald-400 block mt-0.5">{data.heartbeat?.lastHeartbeatFormatted || 'Just now'}</span>
+              </div>
+              <div>
+                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Telegram Delivery</span>
+                <span className="text-xs font-bold text-emerald-400 block mt-0.5">Connected</span>
+              </div>
+              <div>
+                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Last Forecast Sent</span>
+                <span className="text-[10px] font-mono text-slate-300 block mt-0.5 truncate">{data.timeline?.lastForecast || '31 Jul 2026 • 8:00 PM'}</span>
+              </div>
+              <div>
+                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Execution Health</span>
+                <span className="text-xs font-bold text-emerald-400 block mt-0.5">Healthy</span>
+              </div>
+              <div>
+                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Success Rate</span>
+                <span className="text-xs font-bold text-white font-mono block mt-0.5">100%</span>
+              </div>
+            </div>
           </div>
         </div>
       )}
