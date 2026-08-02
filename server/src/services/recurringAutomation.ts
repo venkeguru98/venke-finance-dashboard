@@ -171,7 +171,7 @@ export async function recalculateLicMetrics(policyId: number) {
       [policyId]
     );
 
-    const policy = await get(`SELECT policy_term, monthly_premium, maturity_date FROM lic_policies WHERE id = ?`, [policyId]);
+    const policy = await get(`SELECT policy_term, monthly_premium, maturity_date, policy_name, user_id FROM lic_policies WHERE id = ?`, [policyId]);
     if (!policy) return;
 
     const paidCount = Number(paidRes?.count || 0);
@@ -183,7 +183,27 @@ export async function recalculateLicMetrics(policyId: number) {
 
     // Completion Lock: ONLY if all 180 premiums are paid -> Completed; otherwise Running!
     if (totalPolicyMonths > 0 && paidCount >= totalPolicyMonths) {
+      const wasCompleted = policy.status === 'Completed';
       await execute(`UPDATE lic_policies SET status = 'Completed' WHERE id = ?`, [policyId]);
+
+      if (!wasCompleted) {
+        // Send policy maturity Telegram notification
+        const user = await get('SELECT telegram_chat_id FROM users WHERE id = ?', [policy.user_id || 1]);
+        if (user && user.telegram_chat_id) {
+          const msg = `<b>Venke Finance — LIC Policy Matured 🎉</b>\n\n` +
+            `Policy: <b>${policy.policy_name}</b>\n` +
+            `Final premium completed (${totalPolicyMonths}/${totalPolicyMonths} paid).\n` +
+            `Policy marked as Completed.\n\n` +
+            `Venke Finance`;
+          await sendTelegramMessage(user.telegram_chat_id, msg);
+        }
+
+        await execute(
+          `INSERT INTO recurring_automation_logs (user_id, module_type, entity_id, action, amount, period_month, period_year, details)
+           VALUES (?, 'lic', ?, 'Policy Matured', 0, ?, ?, 'All policy premiums fully paid and schedule frozen')`,
+          [policy.user_id || 1, policyId, new Date().getMonth() + 1, new Date().getFullYear()]
+        );
+      }
     } else {
       await execute(`UPDATE lic_policies SET status = 'Running' WHERE id = ?`, [policyId]);
     }
@@ -304,6 +324,8 @@ export async function getLicModuleSummary(userId: number = 1) {
   let nextPremiumDate = null;
   let nextPremiumAmount = 0;
   let nextPremiumDueDate = null;
+  let nextPremiumMonth = null;
+  let nextPremiumYear = null;
 
   if (nextUnpaidRow) {
     const monthName = new Date(2000, nextUnpaidRow.month - 1).toLocaleString('en-US', { month: 'short' });
@@ -312,6 +334,8 @@ export async function getLicModuleSummary(userId: number = 1) {
     nextPremiumDate = `${monthName} ${nextUnpaidRow.year}`;
     nextPremiumAmount = Number(nextUnpaidRow.amount_paid || 0);
     nextPremiumDueDate = `${dueDay} ${monthName} ${nextUnpaidRow.year}`;
+    nextPremiumMonth = nextUnpaidRow.month;
+    nextPremiumYear = nextUnpaidRow.year;
   } else if (activePolicies > 0) {
     upcomingPremiumDue = 'All Premiums Completed ✓';
   }
@@ -326,6 +350,8 @@ export async function getLicModuleSummary(userId: number = 1) {
     nextPremiumDate,
     nextPremiumAmount,
     nextPremiumDueDate,
+    nextPremiumMonth,
+    nextPremiumYear,
     paidThisYear,
     completionPercentage,
     maturityCountdownDays,
@@ -406,12 +432,13 @@ export async function runRecurringAutomation(userId: number = 1, forceRun: boole
 
         let telegramSent = 0;
         if (chatId) {
-          const monthName = now.toLocaleString('en-US', { month: 'short' });
-          const msg = `<b>LIC premium recorded</b>\n\n` +
-            `Policy: ${policy.policy_name} (#${policy.policy_number || 'N/A'})\n` +
-            `Premium: ₹${amt.toLocaleString('en-IN')}\n` +
-            `Month: ${monthName} ${currentYear}\n` +
-            `Status: Paid\n\n` +
+          const monthName = now.toLocaleString('en-US', { month: 'long' });
+          const msg = `<b>Venke Finance — LIC Premium Recorded</b>\n\n` +
+            `Policy: <b>${policy.policy_name}</b> (#${policy.policy_number || 'N/A'})\n` +
+            `Premium: <b>₹${amt.toLocaleString('en-IN')}</b>\n` +
+            `Month: <b>${monthName} ${currentYear}</b>\n` +
+            `Paid Date: <b>${dateStr}</b>\n` +
+            `Status: <b>Auto-paid successfully</b>\n\n` +
             `Venke Finance`;
 
           const ok = await sendTelegramMessage(chatId, msg);
@@ -665,7 +692,7 @@ export async function generateNextMonthForecast(userId: number = 1, isHeadsUp: b
   }
 
   // Consolidated Forecast Message with explicit LIC line items & Remaining after premiums
-  let text = `<b>Venke Finance — ${nextMonthName} ${nextYear} LIC Premium Forecast</b>\n\n`;
+  let text = `<b>Venke Finance — ${nextMonthName} ${nextYear} LIC Forecast</b>\n\n`;
 
   if (licItems.length > 0) {
     licItems.sort((a, b) => a.dueDay - b.dueDay).forEach(item => {
@@ -688,13 +715,119 @@ export async function generateNextMonthForecast(userId: number = 1, isHeadsUp: b
     text += `\n`;
   }
 
-  text += `Total Premium: <b>₹${totalNextCommitment.toLocaleString('en-IN')}</b>\n`;
+  text += `Total LIC Commitment: <b>₹${totalNextCommitment.toLocaleString('en-IN')}</b>\n`;
   text += `Available Balance: <b>₹${availableBalance.toLocaleString('en-IN')}</b>\n`;
-  text += `Remaining After Premiums: <b>₹${expectedDiff.toLocaleString('en-IN')}</b>\n\n`;
+  if (isShortfall) {
+    text += `Expected Shortfall: <b>₹${Math.abs(expectedDiff).toLocaleString('en-IN')}</b>\n`;
+    text += `Recommendation: Keep ₹${Math.abs(expectedDiff).toLocaleString('en-IN')} available before ${nextMonthName} begins.\n\n`;
+  } else {
+    text += `Surplus: <b>₹${expectedDiff.toLocaleString('en-IN')}</b>\n\n`;
+  }
 
   text += `Venke Finance`;
 
   return { text, totalCommitments: totalNextCommitment };
+}
+
+// ─── AUTONOMOUS SCHEDULER DAEMON (LIC RECURRING AUTOMATION SERVICE) ─────────
+export function startLicAutomationScheduler(userId: number = 1) {
+  console.log('[LicRecurringAutomationService] Initializing autonomous background scheduler...');
+
+  // Check every hour (3600000ms) for month-start auto-payment, 3-day reminders, & month-end forecasts
+  const INTERVAL_MS = 60 * 60 * 1000;
+
+  const runSchedulerTick = async () => {
+    try {
+      const now = new Date();
+      const currYear = now.getFullYear();
+      const currMonth = now.getMonth() + 1;
+      const currDay = now.getDate();
+      const currHour = now.getHours();
+
+      const user = await get('SELECT telegram_chat_id FROM users WHERE id = ?', [userId]);
+      const chatId = user?.telegram_chat_id;
+
+      // 1. MONTH-START AUTO-PAYMENT EXECUTION (1st day of month)
+      if (currDay === 1) {
+        const monthStartRan = await get(
+          `SELECT id FROM recurring_automation_logs 
+           WHERE user_id = ? AND module_type = 'lic' AND action = 'Auto-marked Paid' 
+             AND period_month = ? AND period_year = ?`,
+          [userId, currMonth, currYear]
+        );
+
+        if (!monthStartRan) {
+          console.log(`[LicRecurringAutomationService] Running Month-Start Auto-Payment for ${currMonth}/${currYear}...`);
+          await runRecurringAutomation(userId, true);
+        }
+      }
+
+      // 2. 3-DAY DUE DATE REMINDERS (Daily check)
+      const allPolicies = await query(`SELECT * FROM lic_policies WHERE user_id = ?`, [userId]);
+      const activePolicies = allPolicies.filter((p: any) => isPolicyActive(p));
+
+      for (const policy of activePolicies) {
+        const dueDay = policy.premium_due_day || 5;
+        const daysDiff = dueDay - currDay;
+
+        if (daysDiff === 3 && chatId) {
+          const reminderKey = `reminder_sent_${policy.id}_${currMonth}_${currYear}`;
+          const reminderSent = await get(
+            `SELECT id FROM recurring_automation_logs 
+             WHERE user_id = ? AND module_type = 'lic' AND entity_id = ? 
+               AND action = 'Reminder Sent' AND period_month = ? AND period_year = ?`,
+            [userId, policy.id, currMonth, currYear]
+          );
+
+          if (!reminderSent) {
+            const monthName = now.toLocaleString('en-US', { month: 'short' });
+            const dueStr = `${String(dueDay).padStart(2, '0')} ${monthName} ${currYear}`;
+            const msg = `<b>LIC Premium Reminder</b>\n\n` +
+              `Policy: <b>${policy.policy_name}</b>\n` +
+              `Premium: <b>₹${Number(policy.monthly_premium).toLocaleString('en-IN')}</b>\n` +
+              `Due Date: <b>${dueStr}</b>\n\n` +
+              `Reminder: Premium due in 3 days. Please keep ₹${Number(policy.monthly_premium).toLocaleString('en-IN')} available.\n\n` +
+              `Venke Finance`;
+
+            const ok = await sendTelegramMessage(chatId, msg);
+            await execute(
+              `INSERT INTO recurring_automation_logs (user_id, module_type, entity_id, action, amount, period_month, period_year, telegram_sent, details)
+               VALUES (?, 'lic', ?, 'Reminder Sent', ?, ?, ?, ?, '3-day upcoming premium Telegram reminder')`,
+              [userId, policy.id, policy.monthly_premium, currMonth, currYear, ok ? 1 : 0]
+            );
+          }
+        }
+      }
+
+      // 3. MONTH-END FORECAST (Last calendar day at >= 8:00 PM)
+      const lastDayOfMonth = new Date(currYear, currMonth, 0).getDate();
+      if (currDay === lastDayOfMonth && currHour >= 20) {
+        const forecastSent = await get(
+          `SELECT id FROM recurring_automation_logs 
+           WHERE user_id = ? AND module_type = 'lic' AND action = 'Forecast Sent' 
+             AND period_month = ? AND period_year = ?`,
+          [userId, currMonth, currYear]
+        );
+
+        if (!forecastSent && chatId) {
+          const forecast = await generateNextMonthForecast(userId, false);
+          const ok = await sendTelegramMessage(chatId, forecast.text);
+          await execute(
+            `INSERT INTO recurring_automation_logs (user_id, module_type, entity_id, action, amount, period_month, period_year, telegram_sent, details)
+             VALUES (?, 'lic', 0, 'Forecast Sent', ?, ?, ?, ?, 'Month-end commitment forecast sent via Telegram')`,
+            [userId, forecast.totalCommitments, currMonth, currYear, ok ? 1 : 0]
+          );
+        }
+      }
+
+    } catch (err: any) {
+      console.error('[LicRecurringAutomationService Tick Error]', err.message);
+    }
+  };
+
+  // Run initial tick on server start, then set interval
+  runSchedulerTick();
+  setInterval(runSchedulerTick, INTERVAL_MS);
 }
 
 // ─── GLOBAL CHEETTU AUTOPILOT STATUS HELPER ────────────────────────────────

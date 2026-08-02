@@ -130,10 +130,14 @@ function getLocalIpAddress() {
   return '127.0.0.1';
 }
 
+import { startLicAutomationScheduler } from './services/recurringAutomation';
+
 const startServer = async () => {
   // ─── Initialize Database ─────────────────────────────────────────────────
   try {
     await initializeDatabase();
+    // ─── Initialize Autonomous LIC Automation Scheduler Daemon ──────────────
+    startLicAutomationScheduler(1);
   } catch (dbErr) {
     console.error('[DB] Failed to initialize database:', dbErr);
   }
