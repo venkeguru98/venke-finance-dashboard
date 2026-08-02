@@ -4,11 +4,13 @@ import { LicPolicyScheduleService } from './LicPolicyScheduleService';
 export class GlobalLicAutopilotService {
   private static isExecutionLocked: boolean = false;
   private static tickerTimer: NodeJS.Timeout | null = null;
+  private static lastHeartbeatAt: string = new Date().toISOString();
 
   // ─── 0. START 5-MINUTE AUTONOMOUS BACKGROUND TICKER & 2-MIN RECONCILIATION ─
   static start15MinuteTicker(userId: number = 1) {
     if (GlobalLicAutopilotService.tickerTimer) return;
     console.log('[GlobalLicAutopilotService] Starting 5-minute autonomous background scheduler ticker & fast reconciliation...');
+    GlobalLicAutopilotService.lastHeartbeatAt = new Date().toISOString();
 
     // Run immediate missed execution check on startup
     GlobalLicAutopilotService.checkAndRecoverMissedExecutions(userId);
@@ -16,6 +18,7 @@ export class GlobalLicAutopilotService {
     // Continuous 5-minute background reconciliation ticker (300,000 ms)
     GlobalLicAutopilotService.tickerTimer = setInterval(async () => {
       try {
+        GlobalLicAutopilotService.lastHeartbeatAt = new Date().toISOString();
         console.log('[GlobalLicAutopilotService 5-Min Ticker] Evaluating active LIC policies & missed executions...');
         await GlobalLicAutopilotService.checkAndRecoverMissedExecutions(userId);
       } catch (err) {
@@ -31,6 +34,16 @@ export class GlobalLicAutopilotService {
     const activePoliciesList = allPolicies.filter((p: any) => LicPolicyScheduleService.isPolicyActive(p));
 
     const todayStr = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const lastRunDate = new Date(GlobalLicAutopilotService.lastHeartbeatAt);
+    const nextScanDate = new Date(lastRunDate.getTime() + 5 * 60 * 1000);
+
+    const heartbeat = {
+      status: GlobalLicAutopilotService.isExecutionLocked ? 'Retrying' : 'Healthy',
+      lastHeartbeatAt: GlobalLicAutopilotService.lastHeartbeatAt,
+      lastHeartbeatFormatted: `${Math.max(0, Math.floor((now.getTime() - lastRunDate.getTime()) / 60000))} min ago`,
+      nextScanFormatted: `${Math.max(1, Math.ceil((nextScanDate.getTime() - now.getTime()) / 60000))} min`,
+    };
 
     // Telegram delivery metrics
     const sentTodayRes = await get(
@@ -74,7 +87,6 @@ export class GlobalLicAutopilotService {
       `SELECT * FROM lic_automation_execution ORDER BY execution_id DESC LIMIT 1`
     );
 
-    const now = new Date();
     const nextMonthDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
     const nextRunStr = `01 ${nextMonthDate.toLocaleString('en-US', { month: 'short' })} ${nextMonthDate.getFullYear()} • 12:05 AM`;
 
@@ -124,6 +136,7 @@ export class GlobalLicAutopilotService {
         telegramConnected: isTelegramLinked,
         executionSuccessRate: '100%'
       },
+      heartbeat,
       summary,
       policySnapshots,
       logs

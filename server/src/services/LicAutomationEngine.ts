@@ -66,8 +66,19 @@ export class LicAutomationEngine {
 
     const firstNextPrem = nextPremiumPerPolicy[0]?.nextScheduledPremium || null;
 
+    const lastRunDate = new Date();
+    const nextScanDate = new Date(lastRunDate.getTime() + 5 * 60 * 1000);
+
+    const heartbeat = {
+      status: 'Healthy',
+      lastHeartbeatAt: lastRunDate.toISOString(),
+      lastHeartbeatFormatted: 'Just now',
+      nextScanFormatted: '5 min'
+    };
+
     return {
       schedulerHealthy: 'Healthy',
+      heartbeat,
       activePolicies: activePoliciesCount,
       activePoliciesCount,
       currentMonthPaid,

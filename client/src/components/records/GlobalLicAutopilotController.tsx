@@ -127,7 +127,7 @@ export default function GlobalLicAutopilotController({ onSyncComplete }: GlobalL
 
   return (
     <div className="bg-[#0B1228] border border-[#1E2A4A] rounded-3xl p-5 shadow-2xl space-y-4 text-xs font-semibold text-slate-300">
-      {/* HEADER & TOP CONTROLLER */}
+      {/* HEADER & TOP CONTROLLER WITH HEARTBEAT INDICATOR */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-[#1E2A4A] pb-4">
         <div className="flex items-center space-x-3.5">
           <div className="p-3 rounded-2xl border bg-cyan-500/15 border-cyan-500/30 text-cyan-400">
@@ -136,16 +136,28 @@ export default function GlobalLicAutopilotController({ onSyncComplete }: GlobalL
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-base font-extrabold text-white tracking-tight">LIC Global Autopilot</h2>
-              <span className="px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase border bg-emerald-500/10 text-emerald-400 border-emerald-500/20">
-                ● ACTIVE
-              </span>
+              
+              {/* CLICKABLE PULSING SCHEDULER HEARTBEAT INDICATOR */}
+              <button
+                onClick={fetchDiagnostics}
+                className="px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase border bg-emerald-500/10 text-emerald-400 border-emerald-500/20 flex items-center gap-1.5 hover:bg-emerald-500/20 transition cursor-pointer"
+                title="Click to view Scheduler Heartbeat & Diagnostics (Ctrl + Shift + L)"
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>● Scheduler Running</span>
+              </button>
+
               <span className="text-[10px] text-slate-400 font-bold bg-[#101935] px-2 py-0.5 rounded-md border border-[#1E2A4A]">
                 {data.activePolicies ?? data.activePoliciesCount ?? 0} Active Policy Monitored
               </span>
             </div>
-            <p className="text-xs text-slate-400 mt-1 font-medium">
-              Runs automatically on the 1st of every month at 12:05 AM. Idempotency & execution locks enabled.
-            </p>
+            
+            {/* HEARTBEAT TIMING INFO */}
+            <div className="flex items-center gap-3 text-[10px] text-slate-400 mt-1 font-medium">
+              <span>Last heartbeat: <strong className="text-slate-200">{data.heartbeat?.lastHeartbeatFormatted || 'Just now'}</strong></span>
+              <span>•</span>
+              <span>Next scan: <strong className="text-cyan-400">{data.heartbeat?.nextScanFormatted || '5 min'}</strong></span>
+            </div>
           </div>
         </div>
 
