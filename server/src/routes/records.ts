@@ -366,19 +366,44 @@ router.get('/lic', async (req: Request, res: Response) => {
 
 router.post('/lic', async (req: Request, res: Response) => {
   const { policy_name, policy_number, monthly_premium, start_date, maturity_date, premium_due_day, policy_term, sum_assured, expected_maturity_amount } = req.body;
+  const userId = req.user!.id;
   try {
     const result = await execute(
       `INSERT INTO lic_policies (user_id, policy_name, policy_number, monthly_premium, start_date, maturity_date, premium_due_day, policy_term, sum_assured, expected_maturity_amount) 
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [req.user!.id, policy_name, policy_number, monthly_premium, start_date, maturity_date, premium_due_day, policy_term, sum_assured, expected_maturity_amount]
+      [userId, policy_name, policy_number, monthly_premium, start_date, maturity_date, premium_due_day, policy_term, sum_assured, expected_maturity_amount]
     );
     const policyId = result.lastID;
     
-    // Automatically backfill historical premium records (Past: Paid, Current/Future: Pending)
-    await backfillLicHistoricalPremiums(policyId);
-    const licSummary = await getLicModuleSummary(req.user!.id);
+    // Step 1 & 2: Generate full schedule & backfill historical payment records
+    await LicPolicyScheduleService.generateFullContractSchedule(policyId, true);
+    await LicPolicyScheduleService.syncScheduleWithPaymentHistory(policyId);
 
-    res.json({ id: policyId, success: true, licSummary });
+    // Step 3 & 4: Immediate reconciliation for current month pending installment
+    await GlobalLicAutopilotService.runGlobalAutopilotExecution(userId, true, 'automation');
+
+    // Step 5: Telegram Policy Enrollment Notification
+    const user = await get('SELECT telegram_chat_id FROM users WHERE id = ?', [userId]);
+    if (user && user.telegram_chat_id) {
+      const enrollmentMsg = `<b>Venke Finance — LIC Policy Enrolled</b>\n\n` +
+        `Policy: <b>${policy_name}</b>\n` +
+        `Policy No: <b>${policy_number}</b>\n` +
+        `Monthly Premium: <b>₹${Number(monthly_premium).toLocaleString('en-IN')}</b>\n` +
+        `Status: <b>Autopilot Active</b>\n\n` +
+        `Venke Finance`;
+      await LicPolicyScheduleService.sendTelegram(user.telegram_chat_id, enrollmentMsg);
+    }
+
+    const licSummary = await LicPolicyScheduleService.getSummary(userId);
+    const nextScheduledPremium = await LicPolicyScheduleService.getNextScheduledPremium(policyId);
+
+    res.json({ 
+      id: policyId, 
+      success: true, 
+      licSummary, 
+      nextScheduledPremium,
+      nextInstallment: nextScheduledPremium 
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

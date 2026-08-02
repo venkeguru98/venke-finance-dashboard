@@ -150,6 +150,21 @@ export class LicPolicyScheduleService {
           insertedCount++;
         }
 
+        // MANDATORY PARITY RULE: Mirror Paid installments into lic_premium_history
+        if (initialStatus === 'Paid') {
+          const existingHist = await get(
+            `SELECT id FROM lic_premium_history WHERE policy_id = ? AND month = ? AND year = ?`,
+            [policyId, m, y]
+          );
+          if (!existingHist) {
+            await execute(
+              `INSERT INTO lic_premium_history (policy_id, month, year, amount_paid, paid_date, status, remarks)
+               VALUES (?, ?, ?, ?, ?, 'Paid', ?)`,
+              [policyId, m, y, monthlyAmt, initialPaidDate || dateStr, 'Historical Backfill']
+            );
+          }
+        }
+
         // Increment month by stepMonths
         m += stepMonths;
         while (m > 12) {
@@ -197,6 +212,31 @@ export class LicPolicyScheduleService {
   }
 
   // ─── 4. SCHEDULE INTEGRITY CHECK & AUTOMATIC REPAIR ────────────────────────
+  static async syncScheduleWithPaymentHistory(policyId: number) {
+    try {
+      const paidScheduleRows = await query(
+        `SELECT * FROM lic_premium_schedule WHERE policy_id = ? AND status = 'Paid'`,
+        [policyId]
+      );
+
+      for (const sch of paidScheduleRows) {
+        const histRow = await get(
+          `SELECT id FROM lic_premium_history WHERE policy_id = ? AND month = ? AND year = ?`,
+          [policyId, sch.month, sch.year]
+        );
+        if (!histRow) {
+          await execute(
+            `INSERT INTO lic_premium_history (policy_id, month, year, amount_paid, paid_date, status, remarks)
+             VALUES (?, ?, ?, ?, ?, 'Paid', ?)`,
+            [policyId, sch.month, sch.year, sch.premium_amount, sch.paid_date || sch.due_date, 'Auto-synced from schedule']
+          );
+        }
+      }
+    } catch (err) {
+      console.error('[LicPolicyScheduleService History Sync Error]', err);
+    }
+  }
+
   static async verifyAndRepairScheduleIntegrity(policyId: number): Promise<boolean> {
     try {
       const policy = await get(`SELECT * FROM lic_policies WHERE id = ?`, [policyId]);
@@ -209,8 +249,9 @@ export class LicPolicyScheduleService {
       if (currentRows !== totalExpected) {
         console.warn(`[LicPolicyScheduleService Integrity Check Failed] Policy #${policyId}: Total rows (${currentRows}) != Expected (${totalExpected}). Auto-repairing schedule...`);
         await LicPolicyScheduleService.generateFullContractSchedule(policyId, true);
-        return true;
       }
+
+      await LicPolicyScheduleService.syncScheduleWithPaymentHistory(policyId);
       return true;
     } catch (err) {
       console.error('[LicPolicyScheduleService Integrity Check Error]', err);
