@@ -1,6 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import { Plus, Edit2, Trash2, ArrowLeft, ArrowUpRight, ArrowDownLeft, ShieldAlert, ChevronDown, ChevronUp, Calendar, Trash, ChevronRight } from 'lucide-react';
+import { 
+  Plus, Edit2, Trash2, ArrowLeft, ArrowUpRight, ArrowDownLeft, ShieldAlert, 
+  ChevronDown, ChevronUp, Calendar, Trash, Activity, 
+  CheckCircle2, Layers
+} from 'lucide-react';
 import Button from '../ui/Button';
 import CsvImportModal from './CsvImportModal';
 import { formatDisplayDate } from '../../utils/date';
@@ -11,12 +15,12 @@ interface DebtModuleProps {
   onBack: () => void;
 }
 
-export const PRIORITY_CONFIG: Record<string, { label: string; shortLabel: string; badgeClass: string; dot: string; order: number }> = {
-  pay_first: { label: 'Pay First', shortLabel: 'PAY FIRST', badgeClass: 'bg-red-500/20 border-red-500/40 text-red-400', dot: '🔴', order: 1 },
-  high:      { label: 'High Priority', shortLabel: 'HIGH', badgeClass: 'bg-orange-500/20 border-orange-500/40 text-orange-400', dot: '🟠', order: 2 },
-  medium:    { label: 'Medium Priority', shortLabel: 'MEDIUM', badgeClass: 'bg-amber-500/20 border-amber-500/40 text-amber-400', dot: '🟡', order: 3 },
-  low:       { label: 'Low Priority', shortLabel: 'LOW', badgeClass: 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400', dot: '🟢', order: 4 },
-  last:      { label: 'Last to Pay', shortLabel: 'LAST', badgeClass: 'bg-slate-500/20 border-slate-500/40 text-slate-400', dot: '⚪', order: 5 },
+export const PRIORITY_CONFIG: Record<string, { label: string; shortLabel: string; badgeClass: string; accentBar: string; dot: string; order: number }> = {
+  pay_first: { label: 'Pay First', shortLabel: 'PAY FIRST', badgeClass: 'bg-rose-500/15 border-rose-500/30 text-rose-400', accentBar: 'bg-rose-500', dot: '🔴', order: 1 },
+  high:      { label: 'High Priority', shortLabel: 'HIGH', badgeClass: 'bg-orange-500/15 border-orange-500/30 text-orange-400', accentBar: 'bg-orange-500', dot: '🟠', order: 2 },
+  medium:    { label: 'Medium Priority', shortLabel: 'MEDIUM', badgeClass: 'bg-amber-500/15 border-amber-500/30 text-amber-400', accentBar: 'bg-amber-500', dot: '🟡', order: 3 },
+  low:       { label: 'Low Priority', shortLabel: 'LOW', badgeClass: 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400', accentBar: 'bg-emerald-500', dot: '🟢', order: 4 },
+  last:      { label: 'Last to Pay', shortLabel: 'LAST', badgeClass: 'bg-slate-500/15 border-slate-500/30 text-slate-400', accentBar: 'bg-slate-500', dot: '⚪', order: 5 },
 };
 
 export default function DebtModule({ onBack }: DebtModuleProps) {
@@ -25,7 +29,6 @@ export default function DebtModule({ onBack }: DebtModuleProps) {
   const [transactions, setTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingDetails, setLoadingDetails] = useState(false);
-  const [isDetailCollapsed, setIsDetailCollapsed] = useState(false);
 
   // Sorting & Filtering
   const [sortBy, setSortBy] = useState<'Priority' | 'Name' | 'NetBalance'>('Priority');
@@ -37,7 +40,7 @@ export default function DebtModule({ onBack }: DebtModuleProps) {
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
-  const rowsPerPage = 5;
+  const rowsPerPage = 6;
 
   // Expanded transactions for Settlement History
   const [expandedTxId, setExpandedTxId] = useState<number | null>(null);
@@ -110,7 +113,6 @@ export default function DebtModule({ onBack }: DebtModuleProps) {
 
   const handleSelectAccount = (a: any) => {
     setActiveAccount(a);
-    setIsDetailCollapsed(false);
     fetchTransactions(a.id);
     setExpandedTxId(null);
   };
@@ -340,6 +342,7 @@ export default function DebtModule({ onBack }: DebtModuleProps) {
   };
 
   const priorityCounts = getPriorityCounts();
+  const totalAccountsCount = accounts.length || 1;
 
   // Filter & Sort Accounts
   const getFilteredAndSortedAccounts = () => {
@@ -386,11 +389,33 @@ export default function DebtModule({ onBack }: DebtModuleProps) {
       outstandingPay,
       outstandingReceive,
       settledAmount,
-      pendingAmount: outstandingPay + outstandingReceive
+      pendingAmount: outstandingPay + outstandingReceive,
+      netBalance: outstandingReceive - outstandingPay
     };
   };
 
   const overall = getOverallStats();
+
+  // Health Score Calculation (0-100)
+  const calculateDebtHealthScore = () => {
+    if (accounts.length === 0) return { score: 100, label: 'Excellent', color: 'text-emerald-400' };
+    const totalVolume = overall.totalBorrowed + overall.totalLent;
+    if (totalVolume === 0) return { score: 100, label: 'Excellent', color: 'text-emerald-400' };
+
+    const settledRatio = overall.settledAmount / (totalVolume || 1);
+    let score = Math.round(50 + settledRatio * 50);
+
+    if (priorityCounts.pay_first > 0) score -= 15;
+    if (overall.outstandingPay > overall.totalBorrowed * 0.7) score -= 10;
+    score = Math.max(10, Math.min(100, score));
+
+    if (score >= 80) return { score, label: 'Excellent', color: 'text-emerald-400' };
+    if (score >= 60) return { score, label: 'Good', color: 'text-blue-400' };
+    if (score >= 40) return { score, label: 'Needs Attention', color: 'text-amber-400' };
+    return { score, label: 'Critical', color: 'text-rose-400' };
+  };
+
+  const health = calculateDebtHealthScore();
 
   // Filters logic
   const getFilteredTransactions = () => {
@@ -417,725 +442,759 @@ export default function DebtModule({ onBack }: DebtModuleProps) {
   );
 
   return (
-    <div className="space-y-6">
-      {/* HEADER */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-900 pb-4 shrink-0">
-        <div className="flex items-center space-x-3.5">
-          <button onClick={onBack} className="p-2.5 rounded-2xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-850 transition">
+    <div className="space-y-6 text-xs font-semibold text-slate-300">
+      {/* EXECUTIVE HERO HEADER */}
+      <div className="bg-[#0B1228] p-6 rounded-3xl border border-[#1E2A4A] shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 relative overflow-hidden">
+        <div className="flex items-center space-x-4 z-10">
+          <button 
+            onClick={onBack} 
+            className="p-3 rounded-2xl bg-[#101935] border border-[#1E2A4A] text-slate-300 hover:text-white hover:bg-slate-800 transition-all duration-150 shadow-md hover:-translate-y-0.5"
+          >
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
-            <h1 className="text-xl font-bold text-white flex items-center gap-2">
-              <ShieldAlert className="w-6 h-6 text-purple-400" /> Debt Manager & Loan Registry
-            </h1>
-            <p className="text-xs text-slate-400 mt-0.5">Track borrowings, personal loans, lent items, outstanding repayments, and settlement audits.</p>
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-xl bg-[#635BFF]/15 border border-[#635BFF]/30 text-[#635BFF]">
+                <ShieldAlert className="w-5 h-5" />
+              </div>
+              <h1 className="text-xl font-extrabold text-white tracking-tight">Debt Manager & Loan Registry</h1>
+              <span className="text-[10px] font-black text-[#635BFF] bg-[#635BFF]/15 px-2.5 py-0.5 rounded-full border border-[#635BFF]/30 uppercase tracking-wider">
+                Fintech CFO
+              </span>
+            </div>
+            <p className="text-xs text-slate-400 mt-1 font-medium max-w-xl">
+              Track borrowings, personal loans, lent items, outstanding repayments, and settlement audits.
+            </p>
           </div>
         </div>
-        <div className="flex gap-2">
-          <Button onClick={handleOpenAddAcc} variant="primary" className="text-xs font-bold py-2.5 bg-purple-600 hover:bg-purple-700">
+
+        <div className="flex items-center space-x-2.5 z-10 self-start md:self-auto">
+          <button
+            onClick={() => setShowImportModal(true)}
+            className="flex items-center space-x-1.5 px-3.5 py-2 bg-[#101935] hover:bg-slate-800 text-slate-200 border border-[#1E2A4A] rounded-xl font-bold text-xs shadow-md transition-all duration-150 hover:-translate-y-0.5"
+          >
+            <span>Import CSV</span>
+          </button>
+          <Button 
+            onClick={handleOpenAddAcc} 
+            variant="primary" 
+            className="text-xs font-bold py-2.5 px-4 bg-[#635BFF] hover:bg-[#5249FF] text-white rounded-xl shadow-lg shadow-[#635BFF]/25 transition-all duration-150 hover:-translate-y-0.5"
+          >
             <Plus className="w-4 h-4 mr-1.5" /> New Debt Account
           </Button>
         </div>
       </div>
 
       {loading ? (
-        <div className="text-center py-12 text-slate-400 text-sm font-semibold">Loading debt log...</div>
+        <div className="text-center py-16 text-slate-400 font-bold uppercase tracking-widest flex flex-col items-center justify-center space-y-3">
+          <div className="w-8 h-8 border-3 border-[#635BFF] border-t-transparent rounded-full animate-spin"></div>
+          <p>Loading Debt Manager Dashboard...</p>
+        </div>
       ) : accounts.length === 0 ? (
-        <div className="bg-slate-950/40 border border-slate-850 rounded-3xl p-10 text-center space-y-4">
-          <p className="text-slate-400 text-sm">No Debt accounts configured yet. Create one to begin logging borrowings or lent assets.</p>
-          <Button onClick={handleOpenAddAcc} variant="primary" className="text-xs py-2.5 bg-purple-600 hover:bg-purple-700">
+        <div className="bg-[#0B1228] border border-[#1E2A4A] rounded-3xl p-12 text-center space-y-4 shadow-2xl">
+          <ShieldAlert className="w-12 h-12 text-[#635BFF] mx-auto opacity-80" />
+          <h3 className="text-lg font-bold text-white">No Debt Accounts Configured</h3>
+          <p className="text-xs text-slate-400 max-w-md mx-auto">
+            Create your first debt account to track personal borrowings, loans given to friends, or company liabilities.
+          </p>
+          <Button onClick={handleOpenAddAcc} variant="primary" className="text-xs py-2.5 px-5 bg-[#635BFF] hover:bg-[#5249FF] text-white rounded-xl">
             Create Debt Account
           </Button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start transition-all duration-350">
-          {/* LEFT SIDEBAR: LIST OF DEBT ACCOUNTS */}
-          <div className={`space-y-3.5 transition-all duration-350 ${isDetailCollapsed ? 'lg:col-span-4' : 'lg:col-span-1'}`}>
-            <div className="flex flex-col space-y-2">
-              <div className="flex justify-between items-center">
-                <h2 className="text-xs font-black uppercase text-slate-500 tracking-wider">Debt Accounts ({displayAccounts.length})</h2>
-                {/* Sort selector */}
-                <select
-                  value={sortBy}
-                  onChange={e => setSortBy(e.target.value as any)}
-                  className="bg-slate-950 border border-slate-850 rounded-lg text-[10px] font-bold text-slate-300 py-1 px-1.5 focus:outline-none"
-                >
-                  <option value="Priority">Sort: Priority</option>
-                  <option value="NetBalance">Sort: Net Balance</option>
-                  <option value="Name">Sort: Name</option>
-                </select>
+        <>
+          {/* EXECUTIVE SUMMARY GLASS CARDS (4 CARDS) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Card 1: Total Borrowed */}
+            <div className="bg-[#0B1228] p-5 rounded-3xl border border-[#1E2A4A] shadow-xl relative overflow-hidden group hover:border-rose-500/50 transition-all duration-300">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Borrowed</span>
+                <div className="p-2 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400">
+                  <ArrowDownLeft className="w-4 h-4" />
+                </div>
               </div>
-
-              {/* Priority Filter */}
-              <div className="flex items-center space-x-1.5">
-                <span className="text-[9px] font-bold uppercase text-slate-500">Filter:</span>
-                <select
-                  value={filterPriority}
-                  onChange={e => setFilterPriority(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-850 rounded-lg text-[10px] font-bold text-slate-300 py-1 px-1.5 focus:outline-none"
-                >
-                  <option value="All">All Priorities</option>
-                  <option value="pay_first">🔴 Pay First</option>
-                  <option value="high">🟠 High Priority</option>
-                  <option value="medium">🟡 Medium Priority</option>
-                  <option value="low">🟢 Low Priority</option>
-                  <option value="last">⚪ Last to Pay</option>
-                </select>
+              <div className="mt-3">
+                <p className="text-2xl font-black text-white tracking-tight font-mono">₹{overall.totalBorrowed.toLocaleString('en-IN')}</p>
+                <div className="flex items-center justify-between mt-2">
+                  <span className="text-[10px] font-bold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-md border border-rose-500/20">
+                    Pay: ₹{overall.outstandingPay.toLocaleString('en-IN')}
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-semibold">Borrowed Volume</span>
+                </div>
               </div>
             </div>
 
-            <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1 custom-scrollbar">
-              {displayAccounts.length === 0 ? (
-                <p className="text-xs text-slate-500 italic p-3 text-center">No accounts match selected priority.</p>
-              ) : (
-                displayAccounts.map((a) => {
-                  const isActive = activeAccount && activeAccount.id === a.id;
-                  const priKey = a.priority || 'medium';
-                  const priConfig = PRIORITY_CONFIG[priKey] || PRIORITY_CONFIG.medium;
-                  return (
-                    <div
-                      key={a.id}
-                      onClick={() => handleSelectAccount(a)}
-                      onDoubleClick={() => {
-                        if (activeAccount && activeAccount.id === a.id) {
-                          setIsDetailCollapsed(!isDetailCollapsed);
-                        }
-                      }}
-                      className={`p-4 rounded-2xl border transition cursor-pointer flex flex-col gap-2 relative ${
-                        isActive 
-                          ? 'bg-purple-500/10 border-purple-500/40 shadow-lg shadow-purple-500/2' 
-                          : 'bg-slate-950/40 border-slate-850 hover:bg-slate-900/30'
-                      }`}
-                    >
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <p className="font-extrabold text-white text-[13px] truncate">{a.account_name}</p>
-                          {/* Priority badge on card */}
-                          <div className="mt-1 flex items-center space-x-1.5">
-                            <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase border flex items-center gap-1 ${priConfig.badgeClass}`}>
-                              <span>{priConfig.dot}</span> {priConfig.shortLabel}
-                            </span>
-                            
-                            {/* Quick priority changer */}
-                            <select
-                              value={priKey}
-                              onClick={e => e.stopPropagation()}
-                              onChange={e => {
-                                e.stopPropagation();
-                                handleQuickChangePriority(a.id, e.target.value);
-                              }}
-                              className="bg-slate-900 border border-slate-800 text-[8px] text-slate-400 font-bold rounded px-1 py-0.5 focus:outline-none cursor-pointer"
-                              title="Quick set priority"
+            {/* Card 2: Total Lent */}
+            <div className="bg-[#0B1228] p-5 rounded-3xl border border-[#1E2A4A] shadow-xl relative overflow-hidden group hover:border-emerald-500/50 transition-all duration-300">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Lent</span>
+                <div className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                  <ArrowUpRight className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="mt-3">
+                <p className="text-2xl font-black text-white tracking-tight font-mono">₹{overall.totalLent.toLocaleString('en-IN')}</p>
+                <div className="flex items-center justify-between mt-2">
+                  <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
+                    Rec: ₹{overall.outstandingReceive.toLocaleString('en-IN')}
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-semibold">Assets Out</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Card 3: Total Settled */}
+            <div className="bg-[#0B1228] p-5 rounded-3xl border border-[#1E2A4A] shadow-xl relative overflow-hidden group hover:border-amber-500/50 transition-all duration-300">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Settled</span>
+                <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-500">
+                  <CheckCircle2 className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="mt-3">
+                <p className="text-2xl font-black text-emerald-400 tracking-tight font-mono">₹{overall.settledAmount.toLocaleString('en-IN')}</p>
+                <div className="flex items-center justify-between mt-2">
+                  <span className="text-[10px] font-bold text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
+                    Cleared Ledger
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-semibold">Repaid Total</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Card 4: Net Balance */}
+            <div className="bg-[#0B1228] p-5 rounded-3xl border border-[#1E2A4A] shadow-xl relative overflow-hidden group hover:border-[#635BFF]/50 transition-all duration-300">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Net Position</span>
+                <div className="p-2 rounded-xl bg-[#635BFF]/10 border border-[#635BFF]/20 text-[#635BFF]">
+                  <Activity className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="mt-3">
+                <p className={`text-2xl font-black tracking-tight font-mono ${overall.netBalance >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {overall.netBalance >= 0 ? '+' : ''}₹{overall.netBalance.toLocaleString('en-IN')}
+                </p>
+                <div className="flex items-center justify-between mt-2">
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${
+                    overall.netBalance >= 0 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                  }`}>
+                    {overall.netBalance >= 0 ? 'Surplus Claim' : 'Net Obligation'}
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-semibold">Receivable − Payable</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* PRIORITY ANALYTICS & DEBT HEALTH SECTION */}
+          <div className="bg-[#0B1228] border border-[#1E2A4A] p-6 rounded-3xl shadow-2xl grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+            {/* Left: Priority Distribution Bar */}
+            <div className="lg:col-span-8 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-black uppercase text-slate-300 tracking-wider flex items-center gap-1.5">
+                  <Layers className="w-4 h-4 text-[#635BFF]" /> Priority Risk Distribution
+                </h3>
+                <span className="text-[10px] font-bold text-slate-400">{accounts.length} Registered Accounts</span>
+              </div>
+
+              {/* Progress Bar Stack */}
+              <div className="h-3 w-full bg-[#101935] rounded-full overflow-hidden flex border border-[#1E2A4A]">
+                <div style={{ width: `${(priorityCounts.pay_first / totalAccountsCount) * 100}%` }} className="bg-rose-500 h-full transition-all duration-500" title={`Pay First: ${priorityCounts.pay_first}`} />
+                <div style={{ width: `${(priorityCounts.high / totalAccountsCount) * 100}%` }} className="bg-orange-500 h-full transition-all duration-500" title={`High: ${priorityCounts.high}`} />
+                <div style={{ width: `${(priorityCounts.medium / totalAccountsCount) * 100}%` }} className="bg-amber-500 h-full transition-all duration-500" title={`Medium: ${priorityCounts.medium}`} />
+                <div style={{ width: `${(priorityCounts.low / totalAccountsCount) * 100}%` }} className="bg-emerald-500 h-full transition-all duration-500" title={`Low: ${priorityCounts.low}`} />
+                <div style={{ width: `${(priorityCounts.last / totalAccountsCount) * 100}%` }} className="bg-slate-500 h-full transition-all duration-500" title={`Last: ${priorityCounts.last}`} />
+              </div>
+
+              {/* Priority Chips Grid */}
+              <div className="flex flex-wrap items-center gap-2 pt-1 font-mono text-[11px] font-bold">
+                <span className="px-2.5 py-1 rounded-xl bg-rose-500/10 text-rose-400 border border-rose-500/20 flex items-center gap-1">
+                  🔴 Pay First: <strong>{priorityCounts.pay_first}</strong> ({Math.round((priorityCounts.pay_first / totalAccountsCount) * 100)}%)
+                </span>
+                <span className="px-2.5 py-1 rounded-xl bg-orange-500/10 text-orange-400 border border-orange-500/20 flex items-center gap-1">
+                  🟠 High: <strong>{priorityCounts.high}</strong> ({Math.round((priorityCounts.high / totalAccountsCount) * 100)}%)
+                </span>
+                <span className="px-2.5 py-1 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center gap-1">
+                  🟡 Medium: <strong>{priorityCounts.medium}</strong> ({Math.round((priorityCounts.medium / totalAccountsCount) * 100)}%)
+                </span>
+                <span className="px-2.5 py-1 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                  🟢 Low: <strong>{priorityCounts.low}</strong> ({Math.round((priorityCounts.low / totalAccountsCount) * 100)}%)
+                </span>
+                <span className="px-2.5 py-1 rounded-xl bg-slate-500/10 text-slate-400 border border-slate-500/20 flex items-center gap-1">
+                  ⚪ Last: <strong>{priorityCounts.last}</strong> ({Math.round((priorityCounts.last / totalAccountsCount) * 100)}%)
+                </span>
+              </div>
+            </div>
+
+            {/* Right: Circular Debt Health Score */}
+            <div className="lg:col-span-4 bg-[#101935] p-4 rounded-2xl border border-[#1E2A4A] flex items-center space-x-4">
+              <div className="relative w-16 h-16 shrink-0 flex items-center justify-center">
+                <svg className="w-16 h-16 transform -rotate-90">
+                  <circle cx="32" cy="32" r="26" stroke="#1E2A4A" strokeWidth="4" fill="transparent" />
+                  <circle 
+                    cx="32" cy="32" r="26" 
+                    stroke="#635BFF" 
+                    strokeWidth="4" 
+                    fill="transparent"
+                    strokeDasharray={163}
+                    strokeDashoffset={163 - (163 * health.score) / 100}
+                    strokeLinecap="round"
+                    className="transition-all duration-1000 ease-out"
+                  />
+                </svg>
+                <span className="absolute text-sm font-black text-white font-mono">{health.score}</span>
+              </div>
+
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Debt Health Rating</span>
+                <p className={`text-base font-extrabold ${health.color}`}>{health.label}</p>
+                <p className="text-[10px] text-slate-400 mt-0.5 font-medium">Based on settlement ratio & risk items</p>
+              </div>
+            </div>
+          </div>
+
+          {/* MAIN CONTENT SPLIT LAYOUT (35% LEFT / 65% RIGHT) */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            {/* LEFT ACCOUNT NAVIGATION PANEL (lg:col-span-4 = ~35%) */}
+            <div className="lg:col-span-4 space-y-3.5">
+              <div className="bg-[#0B1228] p-4 rounded-2xl border border-[#1E2A4A] flex justify-between items-center flex-wrap gap-2">
+                <div>
+                  <h3 className="text-xs font-extrabold text-white">Accounts Registry</h3>
+                  <p className="text-[10px] font-semibold text-slate-400">({displayAccounts.length} Filtered)</p>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <select
+                    value={sortBy}
+                    onChange={e => setSortBy(e.target.value as any)}
+                    className="bg-[#101935] border border-[#1E2A4A] rounded-lg text-[10px] font-bold text-slate-300 py-1 px-2 focus:outline-none"
+                  >
+                    <option value="Priority">Sort: Priority</option>
+                    <option value="NetBalance">Sort: Net Balance</option>
+                    <option value="Name">Sort: Name</option>
+                  </select>
+
+                  <select
+                    value={filterPriority}
+                    onChange={e => setFilterPriority(e.target.value)}
+                    className="bg-[#101935] border border-[#1E2A4A] rounded-lg text-[10px] font-bold text-slate-300 py-1 px-2 focus:outline-none"
+                  >
+                    <option value="All">All Priority</option>
+                    <option value="pay_first">🔴 Pay First</option>
+                    <option value="high">🟠 High</option>
+                    <option value="medium">🟡 Medium</option>
+                    <option value="low">🟢 Low</option>
+                    <option value="last">⚪ Last</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* ACCOUNT CARDS LIST WITH 4PX PRIORITY ACCENT STRIPS */}
+              <div className="space-y-3 max-h-[640px] overflow-y-auto pr-1 custom-scrollbar">
+                {displayAccounts.length === 0 ? (
+                  <div className="p-8 text-center bg-[#0B1228] border border-[#1E2A4A] rounded-2xl text-slate-400 text-xs italic font-semibold">
+                    No debt accounts match the selected priority filter.
+                  </div>
+                ) : (
+                  displayAccounts.map((a) => {
+                    const isActive = activeAccount && activeAccount.id === a.id;
+                    const priKey = a.priority || 'medium';
+                    const priConfig = PRIORITY_CONFIG[priKey] || PRIORITY_CONFIG.medium;
+
+                    return (
+                      <div
+                        key={a.id}
+                        onClick={() => handleSelectAccount(a)}
+                        className={`p-4 rounded-2xl border transition-all duration-200 cursor-pointer relative overflow-hidden flex flex-col justify-between space-y-3 group ${
+                          isActive 
+                            ? 'bg-[#101935] border-[#635BFF] shadow-lg shadow-[#635BFF]/10 ring-1 ring-[#635BFF]/40' 
+                            : 'bg-[#0B1228]/80 border-[#1E2A4A] hover:bg-[#101935]/80 hover:border-slate-700 hover:-translate-y-0.5'
+                        }`}
+                      >
+                        {/* 4px Vertical Priority Accent Strip */}
+                        <div className={`absolute left-0 top-0 bottom-0 w-1 ${priConfig.accentBar} rounded-r-full`} />
+
+                        <div className="flex justify-between items-start pl-2">
+                          <div>
+                            <div className="flex items-center space-x-2">
+                              <h4 className="font-extrabold text-white text-xs tracking-tight group-hover:text-white truncate">{a.account_name}</h4>
+                            </div>
+
+                            <div className="mt-1 flex items-center space-x-2">
+                              <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase border flex items-center gap-1 ${priConfig.badgeClass}`}>
+                                <span>{priConfig.dot}</span> {priConfig.shortLabel}
+                              </span>
+
+                              <select
+                                value={priKey}
+                                onClick={e => e.stopPropagation()}
+                                onChange={e => {
+                                  e.stopPropagation();
+                                  handleQuickChangePriority(a.id, e.target.value);
+                                }}
+                                className="bg-[#050816] border border-[#1E2A4A] text-[8px] text-slate-400 font-bold rounded px-1.5 py-0.5 focus:outline-none cursor-pointer"
+                                title="Quick set priority"
+                              >
+                                <option value="pay_first">🔴 Pay First</option>
+                                <option value="high">🟠 High</option>
+                                <option value="medium">🟡 Medium</option>
+                                <option value="low">🟢 Low</option>
+                                <option value="last">⚪ Last</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center space-x-1 shrink-0">
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); handleOpenEditAcc(a); }}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+                              title="Edit Account"
                             >
-                              <option value="pay_first">🔴 Pay First</option>
-                              <option value="high">🟠 High</option>
-                              <option value="medium">🟡 Medium</option>
-                              <option value="low">🟢 Low</option>
-                              <option value="last">⚪ Last</option>
-                            </select>
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); handleDeleteAcc(a.id); }}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition"
+                              title="Delete Account"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                           </div>
                         </div>
 
-                        <div className="flex space-x-1">
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); handleOpenEditAcc(a); }}
-                            className="p-1 rounded text-slate-500 hover:text-white hover:bg-slate-800 transition"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); handleDeleteAcc(a.id); }}
-                            className="p-1 rounded text-slate-500 hover:text-red-400 hover:bg-slate-800 transition"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                        {a.description && <p className="text-[10px] text-slate-400 font-medium truncate pl-2">{a.description}</p>}
+
+                        <div className="flex justify-between items-center text-[11px] font-bold pt-2 border-t border-[#1E2A4A] pl-2">
+                          <span className="text-slate-400 font-semibold">Net Balance</span>
+                          <span className={`font-mono font-black ${a.runningBalance >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            {a.runningBalance >= 0 ? '+' : ''}₹{a.runningBalance.toLocaleString('en-IN')}
+                          </span>
                         </div>
                       </div>
-                      {a.description && <p className="text-[10px] text-slate-500 font-semibold truncate">{a.description}</p>}
-                      
-                      <div className="flex justify-between items-center text-[10px] font-bold mt-2 pt-2 border-t border-slate-900/60">
-                        <span className="text-slate-500">Net Balance</span>
-                        <span className={`font-mono font-black ${a.runningBalance >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                          {a.runningBalance >= 0 ? '+' : ''}₹{a.runningBalance.toLocaleString('en-IN')}
-                        </span>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            {/* RIGHT DETAIL WORKSPACE (lg:col-span-8 = ~65%) */}
+            <div className="lg:col-span-8 space-y-6">
+              {activeAccount && (
+                <div className="bg-[#0B1228] border border-[#1E2A4A] p-6 rounded-3xl shadow-2xl space-y-6">
+                  {/* WORKSPACE HEADER */}
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-[#1E2A4A] pb-5">
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h2 className="text-base font-extrabold text-white tracking-tight">{activeAccount.account_name} Ledger</h2>
+                        
+                        {(() => {
+                          const activePriKey = activeAccount.priority || 'medium';
+                          const activePriConfig = PRIORITY_CONFIG[activePriKey] || PRIORITY_CONFIG.medium;
+                          return (
+                            <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase border flex items-center gap-1 ${activePriConfig.badgeClass}`}>
+                              <span>{activePriConfig.dot}</span> {activePriConfig.shortLabel}
+                            </span>
+                          );
+                        })()}
+
+                        {(activeAccount.outstandingPay === 0 && activeAccount.outstandingReceive === 0) ? (
+                          <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full text-[9px] uppercase tracking-wider font-black">
+                            Fully Settled
+                          </span>
+                        ) : (
+                          <span className="bg-[#635BFF]/10 text-[#635BFF] border border-[#635BFF]/20 px-2 py-0.5 rounded-full text-[9px] uppercase tracking-wider font-black">
+                            Active Account
+                          </span>
+                        )}
                       </div>
-                      {(a.outstandingPay === 0 && a.outstandingReceive === 0) && (
-                        <div className="flex justify-between items-center text-[8px] font-black uppercase tracking-wider mt-1.5 pt-1 border-t border-slate-900/40 text-green-400">
-                          <span>Status</span>
-                          <span className="bg-green-500/10 border border-green-500/20 px-1.5 py-0.5 rounded">Closed</span>
+                      <p className="text-xs text-slate-400 font-medium mt-1">
+                        Running Account Balance: 
+                        <span className={`font-mono font-black ml-2 text-sm ${activeAccount.runningBalance >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {activeAccount.runningBalance >= 0 ? '+' : ''}₹{activeAccount.runningBalance.toLocaleString('en-IN')}
+                        </span>
+                      </p>
+                    </div>
+
+                    <div className="flex items-center space-x-2 shrink-0">
+                      <Button onClick={() => setShowImportModal(true)} variant="ghost" className="border border-[#1E2A4A] bg-[#101935] text-slate-300 hover:text-white text-xs py-2 px-3">
+                        Import CSV
+                      </Button>
+                      <Button onClick={handleOpenAddTx} variant="primary" className="text-xs py-2 px-4 bg-[#635BFF] hover:bg-[#5249FF] text-white rounded-xl shadow-lg shadow-[#635BFF]/20">
+                        <Plus className="w-3.5 h-3.5 mr-1.5" /> Log Record
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* FLOATING GLASS FILTER BAR */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 bg-[#101935] p-4 rounded-2xl border border-[#1E2A4A]">
+                    <div>
+                      <label className="block text-[9px] text-slate-400 font-bold uppercase tracking-wider mb-1">Type</label>
+                      <select
+                        value={filterType}
+                        onChange={e => setFilterType(e.target.value as any)}
+                        className="w-full h-10 bg-[#0B1228] border border-[#1E2A4A] rounded-xl px-3 text-white focus:outline-none focus:ring-1 focus:ring-[#635BFF] text-xs font-semibold"
+                      >
+                        <option value="All">All Types</option>
+                        <option value="Borrowed">Borrowed</option>
+                        <option value="Lent">Lent</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[9px] text-slate-400 font-bold uppercase tracking-wider mb-1">Repayment Status</label>
+                      <select
+                        value={filterStatus}
+                        onChange={e => setFilterStatus(e.target.value as any)}
+                        className="w-full h-10 bg-[#0B1228] border border-[#1E2A4A] rounded-xl px-3 text-white focus:outline-none focus:ring-1 focus:ring-[#635BFF] text-xs font-semibold"
+                      >
+                        <option value="All">All Statuses</option>
+                        <option value="Pending">Pending</option>
+                        <option value="Partially Settled">Partially Settled</option>
+                        <option value="Fully Settled">Fully Settled</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[9px] text-slate-400 font-bold uppercase tracking-wider mb-1">Start Date</label>
+                      <input
+                        type="date"
+                        value={filterStartDate}
+                        onChange={e => setFilterStartDate(e.target.value)}
+                        className="w-full h-10 bg-[#0B1228] border border-[#1E2A4A] rounded-xl px-3 text-white focus:outline-none focus:ring-1 focus:ring-[#635BFF] text-xs font-semibold"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[9px] text-slate-400 font-bold uppercase tracking-wider mb-1">End Date</label>
+                      <input
+                        type="date"
+                        value={filterEndDate}
+                        onChange={e => setFilterEndDate(e.target.value)}
+                        className="w-full h-10 bg-[#0B1228] border border-[#1E2A4A] rounded-xl px-3 text-white focus:outline-none focus:ring-1 focus:ring-[#635BFF] text-xs font-semibold"
+                      />
+                    </div>
+                  </div>
+
+                  {/* TRANSACTION LEDGER TABLE / ROWS */}
+                  {loadingDetails ? (
+                    <div className="text-center py-12 text-slate-400 font-bold uppercase tracking-wider">Querying ledger records...</div>
+                  ) : filtered.length === 0 ? (
+                    <div className="py-16 bg-[#101935]/60 border border-[#1E2A4A] rounded-2xl text-center text-slate-400 space-y-2">
+                      <p className="text-xs font-bold text-white">No transactions match current filters.</p>
+                      <p className="text-[10px] text-slate-500">Log a new record or adjust filter parameters.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {/* TRANSACTION ROWS LIST */}
+                      <div className="space-y-3">
+                        {paginatedTransactions.map((t) => {
+                          const isExpanded = expandedTxId === t.id;
+
+                          const statusBadgeClass = 
+                            t.status === 'Settled' || t.status === 'Fully Settled'
+                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                              : t.status === 'Partially Settled'
+                              ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                              : 'bg-rose-500/10 text-rose-400 border-rose-500/20';
+
+                          return (
+                            <div key={t.id} className="bg-[#101935] border border-[#1E2A4A] rounded-2xl overflow-hidden shadow-md transition-all duration-200">
+                              {/* Primary Row Header (64px Height) */}
+                              <div className="p-4 min-h-[64px] flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                <div className="flex items-center space-x-3.5">
+                                  <button 
+                                    onClick={() => setExpandedTxId(isExpanded ? null : t.id)}
+                                    className="p-2 rounded-xl bg-[#0B1228] border border-[#1E2A4A] text-slate-400 hover:text-white transition"
+                                  >
+                                    {isExpanded ? <ChevronUp className="w-4 h-4 text-[#635BFF]" /> : <ChevronDown className="w-4 h-4" />}
+                                  </button>
+
+                                  <div>
+                                    <div className="flex items-center space-x-2">
+                                      <h4 className="font-extrabold text-white text-xs">{t.description}</h4>
+                                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border flex items-center gap-1 ${
+                                        t.type === 'Borrowed' ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                      }`}>
+                                        {t.type === 'Borrowed' ? <ArrowDownLeft className="w-3 h-3" /> : <ArrowUpRight className="w-3 h-3" />}
+                                        {t.type}
+                                      </span>
+                                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${statusBadgeClass}`}>
+                                        {t.status === 'Settled' ? 'Fully Settled' : t.status}
+                                      </span>
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 mt-1 font-medium flex items-center space-x-2">
+                                      <span>Date: {formatDisplayDate(t.date)}</span>
+                                      {t.notes && <span className="text-slate-400 truncate max-w-xs">· {t.notes}</span>}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center justify-between md:justify-end space-x-6">
+                                  <div className="text-left md:text-right font-mono text-xs">
+                                    <p className="font-black text-white">Original: ₹{t.amount.toLocaleString('en-IN')}</p>
+                                    <p className="text-[10px] text-emerald-400 font-bold">Settled: ₹{t.settledAmount.toLocaleString('en-IN')}</p>
+                                    <p className="text-[10px] text-slate-400 font-black">Rem: ₹{t.outstandingAmount.toLocaleString('en-IN')}</p>
+                                  </div>
+
+                                  <div className="flex items-center space-x-1.5">
+                                    <button 
+                                      onClick={() => handleOpenEditTx(t)}
+                                      className="p-2 rounded-xl bg-[#0B1228] border border-[#1E2A4A] text-slate-400 hover:text-white transition"
+                                      title="Edit Record"
+                                    >
+                                      <Edit2 className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button 
+                                      onClick={() => handleDeleteTx(t.id)}
+                                      className="p-2 rounded-xl bg-[#0B1228] border border-[#1E2A4A] text-slate-400 hover:text-rose-400 transition"
+                                      title="Delete Record"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* EXPANDED SETTLEMENT AUDIT PANEL */}
+                              {isExpanded && (
+                                <div className="p-4 bg-[#0B0F19] border-t border-[#1E2A4A] space-y-4 animate-in fade-in duration-200">
+                                  <div className="flex items-center justify-between border-b border-[#1E2A4A] pb-3">
+                                    <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider flex items-center gap-1.5">
+                                      <Activity className="w-3.5 h-3.5 text-[#635BFF]" /> Settlement & Repayment Audit History
+                                    </span>
+
+                                    {t.outstandingAmount > 0 && (
+                                      <Button 
+                                        onClick={() => handleOpenAddSettlement(t.id, t.outstandingAmount)}
+                                        variant="primary" 
+                                        className="text-[10px] py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg"
+                                      >
+                                        <Plus className="w-3 h-3 mr-1" /> Add Repayment Entry
+                                      </Button>
+                                    )}
+                                  </div>
+
+                                  {t.settlements.length === 0 ? (
+                                    <p className="text-slate-500 text-xs py-2 italic font-semibold">No settlement entries recorded for this transaction yet.</p>
+                                  ) : (
+                                    <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
+                                      {t.settlements.map((s: any) => (
+                                        <div key={s.id} className="flex justify-between items-center p-3 bg-[#101935] border border-[#1E2A4A] rounded-xl text-xs">
+                                          <div className="space-y-0.5">
+                                            <p className="font-mono font-black text-white">₹{s.amount.toLocaleString('en-IN')}</p>
+                                            <p className="text-[10px] text-slate-400 font-semibold">{s.notes || (t.type === 'Borrowed' ? 'Repayment Made' : 'Collection Received')}</p>
+                                          </div>
+
+                                          <div className="flex items-center space-x-3">
+                                            <span className="text-slate-400 font-mono text-[10px] flex items-center gap-1">
+                                              <Calendar className="w-3.5 h-3.5 text-slate-500" /> {formatDisplayDate(s.date)}
+                                            </span>
+                                            <button 
+                                              onClick={() => handleOpenEditSettlement(t.id, s)}
+                                              className="p-1 text-slate-400 hover:text-white transition"
+                                            >
+                                              <Edit2 className="w-3.5 h-3.5" />
+                                            </button>
+                                            <button 
+                                              onClick={() => handleDeleteSettlement(s.id)}
+                                              className="p-1 text-slate-400 hover:text-rose-400 transition"
+                                            >
+                                              <Trash className="w-3.5 h-3.5" />
+                                            </button>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+
+                                  <div className="pt-3 border-t border-[#1E2A4A] flex justify-between items-center text-xs font-black uppercase">
+                                    <span className="text-slate-400">Remaining Outstanding Balance</span>
+                                    <span className="font-mono text-emerald-400 text-sm">₹{t.outstandingAmount.toLocaleString('en-IN')}</span>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* PAGINATION CONTROLS */}
+                      {totalPages > 1 && (
+                        <div className="flex items-center justify-between pt-3 border-t border-[#1E2A4A]">
+                          <span className="text-[10px] text-slate-400 font-bold uppercase">Page {currentPage} of {totalPages}</span>
+                          <div className="flex space-x-2">
+                            <Button 
+                              disabled={currentPage === 1} 
+                              onClick={() => setCurrentPage(c => Math.max(1, c - 1))}
+                              variant="ghost" 
+                              className="border border-[#1E2A4A] bg-[#101935] px-3 py-1.5 text-xs font-bold text-slate-300"
+                            >
+                              Prev
+                            </Button>
+                            <Button 
+                              disabled={currentPage === totalPages} 
+                              onClick={() => setCurrentPage(c => Math.min(totalPages, c + 1))}
+                              variant="ghost" 
+                              className="border border-[#1E2A4A] bg-[#101935] px-3 py-1.5 text-xs font-bold text-slate-300"
+                            >
+                              Next
+                            </Button>
+                          </div>
                         </div>
                       )}
                     </div>
-                  );
-                })
+                  )}
+                </div>
               )}
             </div>
           </div>
-
-          {/* RIGHT VIEWPORT: DASHBOARD STATS AND TRANSACTION LEDGER */}
-          {!isDetailCollapsed && (
-            <div className="lg:col-span-3 space-y-6">
-              {/* OVERVIEW STATS ROW */}
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 bg-slate-950/20 border border-slate-900 p-4.5 rounded-3xl">
-              <div className="p-3.5 bg-slate-950/40 border border-slate-900 rounded-2xl">
-                <p className="text-[10px] text-slate-500 font-bold uppercase">Total Borrowed</p>
-                <p className="text-base font-black text-white font-mono mt-1">₹{overall.totalBorrowed.toLocaleString('en-IN')}</p>
-              </div>
-              <div className="p-3.5 bg-slate-950/40 border border-slate-900 rounded-2xl">
-                <p className="text-[10px] text-slate-500 font-bold uppercase">Total Lent</p>
-                <p className="text-base font-black text-white font-mono mt-1">₹{overall.totalLent.toLocaleString('en-IN')}</p>
-              </div>
-              <div className="p-3.5 bg-slate-950/40 border border-slate-900 rounded-2xl">
-                <p className="text-[10px] text-slate-500 font-bold uppercase">Total Settled</p>
-                <p className="text-base font-black text-green-400 font-mono mt-1">₹{overall.settledAmount.toLocaleString('en-IN')}</p>
-              </div>
-              <div className="p-3.5 bg-red-500/5 border border-red-500/10 rounded-2xl">
-                <p className="text-[10px] text-slate-500 font-bold uppercase">Outstanding to Pay</p>
-                <p className="text-base font-black text-red-400 font-mono mt-1">₹{overall.outstandingPay.toLocaleString('en-IN')}</p>
-              </div>
-              <div className="p-3.5 bg-green-500/5 border border-green-500/10 rounded-2xl">
-                <p className="text-[10px] text-slate-500 font-bold uppercase">Outstanding to Receive</p>
-                <p className="text-base font-black text-green-400 font-mono mt-1">₹{overall.outstandingReceive.toLocaleString('en-IN')}</p>
-              </div>
-              <div className="p-3.5 bg-purple-500/5 border border-purple-500/10 rounded-2xl">
-                <p className="text-[10px] text-slate-500 font-bold uppercase">Net Balance</p>
-                <p className={`text-base font-black font-mono mt-1 ${overall.outstandingReceive - overall.outstandingPay >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  {overall.outstandingReceive - overall.outstandingPay >= 0 ? '+' : ''}₹{(overall.outstandingReceive - overall.outstandingPay).toLocaleString('en-IN')}
-                </p>
-              </div>
-            </div>
-
-            {/* PRIORITY OVERVIEW BAR */}
-            <div className="bg-slate-950/40 border border-slate-900 p-3.5 rounded-2xl flex flex-wrap items-center justify-between gap-2 text-xs">
-              <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Priority Overview:</span>
-              <div className="flex items-center space-x-2 flex-wrap text-[11px] font-mono font-bold">
-                <span className="px-2 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20">
-                  🔴 Pay First: <strong>{priorityCounts.pay_first}</strong>
-                </span>
-                <span className="px-2 py-0.5 rounded bg-orange-500/10 text-orange-400 border border-orange-500/20">
-                  🟠 High: <strong>{priorityCounts.high}</strong>
-                </span>
-                <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                  🟡 Medium: <strong>{priorityCounts.medium}</strong>
-                </span>
-                <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                  🟢 Low: <strong>{priorityCounts.low}</strong>
-                </span>
-                <span className="px-2 py-0.5 rounded bg-slate-500/10 text-slate-400 border border-slate-500/20">
-                  ⚪ Last: <strong>{priorityCounts.last}</strong>
-                </span>
-              </div>
-            </div>
-
-            {/* LEDGER DETAILS PANEL */}
-            {activeAccount && (
-              <div className="bg-slate-950/40 border border-slate-850 p-5 rounded-3xl space-y-5">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-900 pb-4">
-                  <div>
-                    <h3 className="text-sm font-black text-white flex items-center gap-2 flex-wrap">
-                      {activeAccount.account_name} Ledger
-                      <button
-                        onClick={() => setIsDetailCollapsed(true)}
-                        className="p-1 rounded text-slate-500 hover:text-white hover:bg-slate-800 transition"
-                        title="Collapse details panel"
-                      >
-                        <ChevronRight className="w-4 h-4" />
-                      </button>
-
-                      {/* Account Priority Badge & Selector in header */}
-                      {(() => {
-                        const activePriKey = activeAccount.priority || 'medium';
-                        const activePriConfig = PRIORITY_CONFIG[activePriKey] || PRIORITY_CONFIG.medium;
-                        return (
-                          <div className="flex items-center space-x-1.5 ml-1">
-                            <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase border flex items-center gap-1 ${activePriConfig.badgeClass}`}>
-                              <span>{activePriConfig.dot}</span> {activePriConfig.shortLabel}
-                            </span>
-                            <select
-                              value={activePriKey}
-                              onChange={e => handleQuickChangePriority(activeAccount.id, e.target.value)}
-                              className="bg-slate-900 border border-slate-800 text-[10px] text-slate-300 font-bold rounded px-2 py-0.5 focus:outline-none cursor-pointer"
-                            >
-                              <option value="pay_first">🔴 Pay First</option>
-                              <option value="high">🟠 High Priority</option>
-                              <option value="medium">🟡 Medium Priority</option>
-                              <option value="low">🟢 Low Priority</option>
-                              <option value="last">⚪ Last to Pay</option>
-                            </select>
-                          </div>
-                        );
-                      })()}
-
-                      {(activeAccount.outstandingPay === 0 && activeAccount.outstandingReceive === 0) ? (
-                        <span className="bg-green-500/10 text-green-400 border border-green-500/20 px-2 py-0.5 rounded text-[8px] uppercase tracking-wider font-black">
-                          Closed (Fully Settled)
-                        </span>
-                      ) : (
-                        <span className="bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2 py-0.5 rounded text-[8px] uppercase tracking-wider font-black">
-                          Active
-                        </span>
-                      )}
-                    </h3>
-                    <p className="text-[10px] text-slate-500 font-bold uppercase mt-1">Running account balance: 
-                      <span className={`font-mono font-black ml-1.5 ${activeAccount.runningBalance >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {activeAccount.runningBalance >= 0 ? '+' : ''}₹{activeAccount.runningBalance.toLocaleString('en-IN')}
-                      </span>
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-2 shrink-0">
-                    <Button onClick={() => setShowImportModal(true)} variant="ghost" className="border border-slate-800 text-slate-400 hover:text-white text-[11px] py-1.5">
-                      Import CSV
-                    </Button>
-                    <Button onClick={handleOpenAddTx} variant="primary" className="text-xs py-1.5 bg-purple-600 hover:bg-purple-700">
-                      <Plus className="w-3.5 h-3.5 mr-1" /> Log Record
-                    </Button>
-                  </div>
-                </div>
-
-                {/* FILTERS PANEL */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 bg-slate-900/20 p-3.5 rounded-2xl border border-slate-900/60">
-                  <div>
-                    <label className="block text-[9px] text-slate-500 font-bold uppercase mb-1">Type</label>
-                    <select
-                      value={filterType}
-                      onChange={e => setFilterType(e.target.value as any)}
-                      className="w-full bg-slate-950 border border-slate-900 rounded-lg py-1 px-2 text-white focus:outline-none text-[11px]"
-                    >
-                      <option value="All">All Types</option>
-                      <option value="Borrowed">Borrowed</option>
-                      <option value="Lent">Lent</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[9px] text-slate-500 font-bold uppercase mb-1">Repayment Status</label>
-                    <select
-                      value={filterStatus}
-                      onChange={e => setFilterStatus(e.target.value as any)}
-                      className="w-full bg-slate-950 border border-slate-900 rounded-lg py-1 px-2 text-white focus:outline-none text-[11px]"
-                    >
-                      <option value="All">All Statuses</option>
-                      <option value="Pending">Pending</option>
-                      <option value="Partially Settled">Partially Settled</option>
-                      <option value="Fully Settled">Fully Settled</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[9px] text-slate-500 font-bold uppercase mb-1">Start Date</label>
-                    <input
-                      type="date"
-                      value={filterStartDate}
-                      onChange={e => setFilterStartDate(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-900 rounded-lg py-1 px-2 text-white focus:outline-none text-[11px]"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[9px] text-slate-500 font-bold uppercase mb-1">End Date</label>
-                    <input
-                      type="date"
-                      value={filterEndDate}
-                      onChange={e => setFilterEndDate(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-900 rounded-lg py-1 px-2 text-white focus:outline-none text-[11px]"
-                    />
-                  </div>
-                </div>
-
-                {loadingDetails ? (
-                  <div className="text-center py-10 text-slate-400 font-bold">Querying ledger records...</div>
-                ) : filtered.length === 0 ? (
-                  <div className="py-12 border border-slate-900 rounded-2xl text-center text-slate-500">
-                    No transactions match current filters. Log a new record or adjust filter options.
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {/* TABLE */}
-                    <div className="border border-slate-900 rounded-2xl overflow-hidden">
-                      <table className="w-full text-left border-collapse">
-                        <thead>
-                          <tr className="bg-slate-900/50 text-slate-400 text-[10px] font-black uppercase border-b border-slate-900">
-                            <th className="py-2.5 px-3.5 w-10"></th>
-                            <th className="py-2.5 px-2">Date</th>
-                            <th className="py-2.5 px-2">Record details</th>
-                            <th className="py-2.5 px-2">Type</th>
-                            <th className="py-2.5 px-2">Status</th>
-                            <th className="py-2.5 px-2 text-right">Amount</th>
-                            <th className="py-2.5 px-3 text-center w-20">Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {paginatedTransactions.map((t) => {
-                            const isExpanded = expandedTxId === t.id;
-                            return (
-                              <React.Fragment key={t.id}>
-                                <tr className="border-b border-slate-900/40 hover:bg-slate-900/20">
-                                  <td className="py-2.5 px-3.5 text-center">
-                                    <button 
-                                      onClick={() => setExpandedTxId(isExpanded ? null : t.id)}
-                                      className="p-1 rounded hover:bg-slate-900 text-slate-500 hover:text-white transition"
-                                    >
-                                      {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                                    </button>
-                                  </td>
-                                  <td className="py-2.5 px-2 font-mono text-white text-[11px]">{formatDisplayDate(t.date)}</td>
-                                  <td className="py-2.5 px-2">
-                                    <p className="font-extrabold text-white leading-normal">{t.description}</p>
-                                    {t.notes && <p className="text-[10px] text-slate-500 font-semibold mt-0.5 leading-normal">{t.notes}</p>}
-                                  </td>
-                                  <td className="py-2.5 px-2">
-                                    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] uppercase font-black tracking-wider border ${
-                                      t.type === 'Borrowed' 
-                                        ? 'bg-red-500/10 text-red-400 border-red-500/20' 
-                                        : 'bg-green-500/10 text-green-400 border-green-500/20'
-                                    }`}>
-                                      {t.type === 'Borrowed' ? <ArrowDownLeft className="w-3 h-3" /> : <ArrowUpRight className="w-3 h-3" />}
-                                      {t.type}
-                                    </span>
-                                  </td>
-                                  <td className="py-2.5 px-2">
-                                    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] uppercase font-black border ${
-                                      t.status === 'Settled'
-                                        ? 'bg-green-500/10 text-green-400 border-green-500/10'
-                                        : t.status === 'Partially Settled'
-                                        ? 'bg-amber-500/10 text-amber-400 border-amber-500/10'
-                                        : 'bg-red-500/10 text-red-400 border-red-500/10'
-                                    }`}>
-                                      {t.status === 'Settled' ? 'Fully Settled' : t.status}
-                                    </span>
-                                  </td>
-                                  <td className="py-2.5 px-2 text-right font-mono text-[10px] leading-relaxed">
-                                    <p className="font-extrabold text-white">Original: ₹{t.amount.toLocaleString('en-IN')}</p>
-                                    <p className="text-green-400 font-bold">Settled: ₹{t.settledAmount.toLocaleString('en-IN')}</p>
-                                    <p className="text-slate-400 font-black">Remaining: ₹{t.outstandingAmount.toLocaleString('en-IN')}</p>
-                                  </td>
-                                  <td className="py-2.5 px-3 text-center">
-                                    <div className="flex items-center justify-center space-x-1.5">
-                                      <button onClick={() => handleOpenEditTx(t)} className="p-1 rounded text-slate-500 hover:text-white hover:bg-slate-900 transition">
-                                        <Edit2 className="w-3.5 h-3.5" />
-                                      </button>
-                                      <button onClick={() => handleDeleteTx(t.id)} className="p-1 rounded text-slate-500 hover:text-red-400 hover:bg-slate-900 transition">
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                      </button>
-                                    </div>
-                                  </td>
-                                </tr>
-
-                                {/* Expanded Settlements Segment */}
-                                {isExpanded && (
-                                  <tr>
-                                    <td colSpan={7} className="p-4 bg-slate-950/80 border-b border-slate-900">
-                                      <div className="space-y-3.5">
-                                        <div className="flex justify-between items-center border-b border-slate-900 pb-2">
-                                          <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Settlement & Repayments History</p>
-                                          {t.outstandingAmount > 0 && (
-                                            <Button 
-                                              onClick={() => handleOpenAddSettlement(t.id, t.outstandingAmount)}
-                                              variant="primary" 
-                                              className="text-[9px] py-1 px-2.5 bg-green-600 hover:bg-green-700"
-                                            >
-                                              Add Repayment entry
-                                            </Button>
-                                          )}
-                                        </div>
-
-                                        {t.settlements.length === 0 ? (
-                                          <p className="text-slate-500 text-[10px] font-semibold py-1">No settlements logged for this debt entry.</p>
-                                        ) : (
-                                          <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar pr-1 pb-1">
-                                            {t.settlements.map((s: any) => (
-                                              <div key={s.id} className="flex justify-between items-center p-2.5 bg-slate-900/30 border border-slate-900 rounded-xl text-[10px]">
-                                                <div className="space-y-0.5">
-                                                  <p className="font-extrabold text-white">₹{s.amount.toLocaleString('en-IN')}</p>
-                                                  <p className="text-slate-500 font-semibold">{s.notes || (t.type === 'Borrowed' ? 'Repayment Made' : 'Collection Received')}</p>
-                                                </div>
-                                                <div className="flex items-center space-x-2">
-                                                  <span className="text-slate-400 font-mono flex items-center gap-1 mr-2">
-                                                    <Calendar className="w-3 h-3 text-slate-500" /> {formatDisplayDate(s.date)}
-                                                  </span>
-                                                  <button 
-                                                    onClick={() => handleOpenEditSettlement(t.id, s)}
-                                                    className="p-1 text-slate-500 hover:text-white hover:bg-slate-900 rounded transition"
-                                                    title="Edit Entry"
-                                                  >
-                                                    <Edit2 className="w-3.5 h-3.5" />
-                                                  </button>
-                                                  <button 
-                                                    onClick={() => handleDeleteSettlement(s.id)}
-                                                    className="p-1 text-slate-500 hover:text-red-400 hover:bg-slate-900 rounded transition"
-                                                    title="Delete Entry"
-                                                  >
-                                                    <Trash className="w-3.5 h-3.5" />
-                                                  </button>
-                                                </div>
-                                              </div>
-                                            ))}
-                                          </div>
-                                        )}
-                                        <div className="pt-2.5 border-t border-slate-900 flex justify-between items-center text-[10px] font-black uppercase text-slate-400">
-                                          <span>Remaining Balance</span>
-                                          <span className="font-mono text-white text-[11px]">₹{t.outstandingAmount.toLocaleString('en-IN')}</span>
-                                        </div>
-                                      </div>
-                                    </td>
-                                  </tr>
-                                )}
-                              </React.Fragment>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    {/* Pagination Controls */}
-                    {totalPages > 1 && (
-                      <div className="flex items-center justify-between pt-2 shrink-0">
-                        <span className="text-[10px] text-slate-500 font-bold uppercase">Page {currentPage} of {totalPages}</span>
-                        <div className="flex space-x-2">
-                          <Button 
-                            disabled={currentPage === 1} 
-                            onClick={() => setCurrentPage(c => Math.max(1, c - 1))}
-                            variant="ghost" 
-                            className="border border-slate-900 px-3 py-1 text-[11px]"
-                          >
-                            Prev
-                          </Button>
-                          <Button 
-                            disabled={currentPage === totalPages} 
-                            onClick={() => setCurrentPage(c => Math.min(totalPages, c + 1))}
-                            variant="ghost" 
-                            className="border border-slate-900 px-3 py-1 text-[11px]"
-                          >
-                            Next
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    )}
+        </>
+      )}
 
       {/* ACCOUNT MODAL */}
       {showAccModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowAccModal(false)} />
-          <form onSubmit={handleAccSubmit} className="relative bg-slate-950 border border-slate-800 rounded-3xl p-6 shadow-2xl w-full max-w-sm space-y-4">
-            <h3 className="text-sm font-black text-white border-b border-slate-900 pb-2 uppercase tracking-wider">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-md" onClick={() => setShowAccModal(false)} />
+          <form onSubmit={handleAccSubmit} className="relative bg-[#101935] border border-[#1E2A4A] rounded-3xl p-6 shadow-2xl w-full max-w-sm space-y-4 z-10">
+            <h3 className="text-sm font-black text-white border-b border-[#1E2A4A] pb-3 uppercase tracking-wider">
               {editingAcc ? 'Edit Debt Account' : 'New Debt Account'}
             </h3>
             
             <div className="space-y-1">
-              <label className="block text-[10px] text-slate-500 font-bold uppercase">Account Name *</label>
+              <label className="block text-[10px] text-slate-400 font-bold uppercase">Account Name *</label>
               <input
                 type="text" required
                 value={accForm.account_name}
                 onChange={e => setAccForm(f => ({ ...f, account_name: e.target.value }))}
                 placeholder="e.g. Friends, SBI Loan, Ashok"
-                className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white focus:outline-none focus:ring-1 focus:ring-purple-500 font-bold text-xs"
+                className="w-full bg-[#0B1228] border border-[#1E2A4A] rounded-xl py-2.5 px-3 text-white focus:outline-none focus:ring-1 focus:ring-[#635BFF] font-bold text-xs"
               />
             </div>
 
             <div className="space-y-1">
-              <label className="block text-[10px] text-slate-500 font-bold uppercase">Priority *</label>
+              <label className="block text-[10px] text-slate-400 font-bold uppercase">Priority *</label>
               <select
                 value={accForm.priority}
                 onChange={e => setAccForm(f => ({ ...f, priority: e.target.value }))}
-                className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white focus:outline-none focus:ring-1 focus:ring-purple-500 font-bold text-xs"
+                className="w-full bg-[#0B1228] border border-[#1E2A4A] rounded-xl py-2.5 px-3 text-white focus:outline-none focus:ring-1 focus:ring-[#635BFF] font-bold text-xs"
               >
                 <option value="pay_first">🔴 Pay First (Highest Priority)</option>
                 <option value="high">🟠 High Priority</option>
                 <option value="medium">🟡 Medium Priority (Default)</option>
                 <option value="low">🟢 Low Priority</option>
-                <option value="last">⚪ Last to Pay (Lowest Priority)</option>
+                <option value="last">⚪ Last to Pay</option>
               </select>
             </div>
 
             <div className="space-y-1">
-              <label className="block text-[10px] text-slate-500 font-bold uppercase">Description</label>
+              <label className="block text-[10px] text-slate-400 font-bold uppercase">Description / Notes</label>
               <textarea
                 value={accForm.description}
                 onChange={e => setAccForm(f => ({ ...f, description: e.target.value }))}
-                placeholder="Optional notes or details"
-                rows={2}
-                className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white focus:outline-none focus:ring-1 focus:ring-purple-500 font-bold text-xs"
+                placeholder="Optional notes or account terms..."
+                className="w-full bg-[#0B1228] border border-[#1E2A4A] rounded-xl py-2 px-3 text-white focus:outline-none focus:ring-1 focus:ring-[#635BFF] text-xs h-20"
               />
             </div>
 
-            <div className="flex justify-end space-x-3.5 pt-2">
-              <Button onClick={() => setShowAccModal(false)} variant="ghost">Cancel</Button>
-              <Button type="submit" variant="primary" className="bg-purple-600 hover:bg-purple-700 px-5 text-white">Save</Button>
+            <div className="flex justify-end space-x-2 pt-2 border-t border-[#1E2A4A]">
+              <Button type="button" onClick={() => setShowAccModal(false)} variant="ghost" className="border border-[#1E2A4A] text-slate-400 text-xs">
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary" className="bg-[#635BFF] hover:bg-[#5249FF] text-white text-xs font-bold py-2 px-4">
+                Save Account
+              </Button>
             </div>
           </form>
         </div>
       )}
 
-      {/* TRANSACTION MODAL */}
+      {/* TRANSACTION / SETTLEMENT MODAL */}
       {showTxModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowTxModal(false)} />
-          <form onSubmit={handleTxSubmit} className="relative bg-slate-950 border border-slate-800 rounded-3xl p-6 shadow-2xl w-full max-w-sm space-y-4">
-            <h3 className="text-sm font-black text-white border-b border-slate-900 pb-2 uppercase tracking-wider">
-              {editingSettlement ? 'Edit Settlement' : editingTx ? 'Edit Debt Record' : 'Log New Record'}
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-md" onClick={() => setShowTxModal(false)} />
+          <form onSubmit={handleTxSubmit} className="relative bg-[#101935] border border-[#1E2A4A] rounded-3xl p-6 shadow-2xl w-full max-w-md space-y-4 z-10">
+            <h3 className="text-sm font-black text-white border-b border-[#1E2A4A] pb-3 uppercase tracking-wider">
+              {txForm.type === 'Settlement' 
+                ? (editingSettlement ? 'Edit Settlement Entry' : 'Log Repayment / Settlement')
+                : (editingTx ? 'Edit Debt Record' : 'Log New Debt Record')}
             </h3>
 
-            <div className="space-y-1.5">
-              <div className="grid grid-cols-3 gap-2 p-1 bg-slate-900 border border-slate-850 rounded-xl">
-                <button
-                  type="button"
-                  disabled={!!editingTx || !!editingSettlement}
-                  onClick={() => setTxForm(f => ({ ...f, type: 'Borrowed' }))}
-                  className={`py-2 text-[10px] font-black uppercase tracking-wider rounded-lg transition-colors ${
-                    txForm.type === 'Borrowed' ? 'bg-red-500/20 text-red-400 border border-red-500/10' : 'text-slate-400 hover:text-white'
-                  } disabled:opacity-50 disabled:cursor-not-allowed`}
-                >
-                  Borrowed
-                </button>
-                <button
-                  type="button"
-                  disabled={!!editingTx || !!editingSettlement}
-                  onClick={() => setTxForm(f => ({ ...f, type: 'Lent' }))}
-                  className={`py-2 text-[10px] font-black uppercase tracking-wider rounded-lg transition-colors ${
-                    txForm.type === 'Lent' ? 'bg-green-500/20 text-green-400 border border-green-500/10' : 'text-slate-400 hover:text-white'
-                  } disabled:opacity-50 disabled:cursor-not-allowed`}
-                >
-                  Lent
-                </button>
-                <button
-                  type="button"
-                  disabled={!!editingTx || !!editingSettlement}
-                  onClick={() => setTxForm(f => ({ ...f, type: 'Settlement' }))}
-                  className={`py-2 text-[10px] font-black uppercase tracking-wider rounded-lg transition-colors ${
-                    txForm.type === 'Settlement' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/10' : 'text-slate-400 hover:text-white'
-                  } disabled:opacity-50 disabled:cursor-not-allowed`}
-                >
-                  Settlement
-                </button>
+            {txForm.type !== 'Settlement' && (
+              <div className="space-y-1">
+                <label className="block text-[10px] text-slate-400 font-bold uppercase">Record Type *</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setTxForm(f => ({ ...f, type: 'Borrowed' }))}
+                    className={`py-2 px-3 rounded-xl border font-bold text-xs ${
+                      txForm.type === 'Borrowed' ? 'bg-rose-500/20 border-rose-500 text-rose-400' : 'bg-[#0B1228] border-[#1E2A4A] text-slate-400'
+                    }`}
+                  >
+                    Borrowed (Liability)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTxForm(f => ({ ...f, type: 'Lent' }))}
+                    className={`py-2 px-3 rounded-xl border font-bold text-xs ${
+                      txForm.type === 'Lent' ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400' : 'bg-[#0B1228] border-[#1E2A4A] text-slate-400'
+                    }`}
+                  >
+                    Lent (Asset)
+                  </button>
+                </div>
               </div>
-              {(editingTx || editingSettlement) && (
-                <p className="text-[9px] text-slate-500 text-center font-semibold mt-1">
-                  Transaction type cannot be changed after creation.
-                </p>
-              )}
-            </div>
-
-            {txForm.type === 'Settlement' && (
-              <>
-                <div className="space-y-1">
-                  <label className="block text-[10px] text-slate-500 font-bold uppercase">Settlement Type *</label>
-                  <select
-                    disabled={!!editingSettlement}
-                    value={txForm.settlementType}
-                    onChange={e => {
-                      const val = e.target.value;
-                      setTxForm(f => ({ ...f, settlementType: val, parentTxId: '' }));
-                    }}
-                    className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white focus:outline-none focus:ring-1 focus:ring-purple-500 text-xs font-bold"
-                  >
-                    <option value="Repayment Made">Repayment Made (I paid money back)</option>
-                    <option value="Collection Received">Collection Received (I received money back)</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="block text-[10px] text-slate-500 font-bold uppercase">Original Transaction *</label>
-                  <select
-                    disabled={!!editingSettlement}
-                    required
-                    value={txForm.parentTxId}
-                    onChange={e => {
-                      const val = e.target.value;
-                      const targetType = txForm.settlementType === 'Repayment Made' ? 'Borrowed' : 'Lent';
-                      const eligible = transactions.filter(t => t.type === targetType && (t.status !== 'Settled' || String(t.id) === val));
-                      const selectedTx = eligible.find(tx => String(tx.id) === val);
-                      setTxForm(f => ({ 
-                        ...f, 
-                        parentTxId: val,
-                        amount: selectedTx ? String(selectedTx.outstandingAmount) : '',
-                        description: selectedTx ? `Repayment for ${selectedTx.description}` : ''
-                      }));
-                    }}
-                    className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white focus:outline-none focus:ring-1 focus:ring-purple-500 text-xs font-bold"
-                  >
-                    <option value="">-- Select Transaction --</option>
-                    {(() => {
-                      const targetType = txForm.settlementType === 'Repayment Made' ? 'Borrowed' : 'Lent';
-                      const eligible = transactions.filter(t => t.type === targetType && (t.status !== 'Settled' || String(t.id) === txForm.parentTxId));
-                      return eligible.map(tx => (
-                        <option key={tx.id} value={tx.id}>
-                          {tx.description} (Orig: ₹{tx.amount.toLocaleString()} | Rem: ₹{tx.outstandingAmount.toLocaleString()})
-                        </option>
-                      ));
-                    })()}
-                  </select>
-                </div>
-              </>
             )}
 
-            <div className="grid grid-cols-2 gap-3.5">
+            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label className="block text-[10px] text-slate-500 font-bold uppercase">Amount *</label>
+                <label className="block text-[10px] text-slate-400 font-bold uppercase">Amount (₹) *</label>
                 <input
-                  type="number" required min="0" step="any"
+                  type="number" step="any" required
                   value={txForm.amount}
                   onChange={e => setTxForm(f => ({ ...f, amount: e.target.value }))}
-                  placeholder="₹0.00"
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white focus:outline-none focus:ring-1 focus:ring-purple-500 font-bold text-xs"
+                  placeholder="0.00"
+                  className="w-full bg-[#0B1228] border border-[#1E2A4A] rounded-xl py-2 px-3 text-white focus:outline-none focus:ring-1 focus:ring-[#635BFF] font-mono font-bold text-xs"
                 />
-                {(() => {
-                  if (txForm.type === 'Settlement' && txForm.parentTxId) {
-                    const selectedParent = transactions.find(t => String(t.id) === txForm.parentTxId);
-                    if (selectedParent) {
-                      const currentSettledValue = editingSettlement ? Number(editingSettlement.amount) : 0;
-                      const maxAllowed = selectedParent.outstandingAmount + currentSettledValue;
-                      return (
-                        <p className="text-[9px] text-slate-500 mt-1 font-semibold">
-                          Max allowed: <span className="text-purple-400">₹{maxAllowed.toLocaleString('en-IN')}</span>
-                        </p>
-                      );
-                    }
-                  }
-                  return null;
-                })()}
               </div>
+
               <div className="space-y-1">
-                <label className="block text-[10px] text-slate-500 font-bold uppercase">Date *</label>
+                <label className="block text-[10px] text-slate-400 font-bold uppercase">Date *</label>
                 <input
                   type="date" required
                   value={txForm.date}
                   onChange={e => setTxForm(f => ({ ...f, date: e.target.value }))}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white focus:outline-none focus:ring-1 focus:ring-purple-500 font-mono text-[11px]"
+                  className="w-full bg-[#0B1228] border border-[#1E2A4A] rounded-xl py-2 px-3 text-white focus:outline-none focus:ring-1 focus:ring-[#635BFF] text-xs font-semibold"
                 />
               </div>
             </div>
 
             <div className="space-y-1">
-              <label className="block text-[10px] text-slate-500 font-bold uppercase">Description *</label>
+              <label className="block text-[10px] text-slate-400 font-bold uppercase">Description / Title *</label>
               <input
                 type="text" required
                 value={txForm.description}
                 onChange={e => setTxForm(f => ({ ...f, description: e.target.value }))}
-                placeholder="e.g. Car purchase, SBI loan deposit"
-                className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white focus:outline-none focus:ring-1 focus:ring-purple-500 font-bold text-xs"
+                placeholder="e.g. Loan for laptop purchase"
+                className="w-full bg-[#0B1228] border border-[#1E2A4A] rounded-xl py-2.5 px-3 text-white focus:outline-none focus:ring-1 focus:ring-[#635BFF] font-bold text-xs"
               />
             </div>
 
             <div className="space-y-1">
-              <label className="block text-[10px] text-slate-500 font-bold uppercase">Additional Notes</label>
+              <label className="block text-[10px] text-slate-400 font-bold uppercase">Notes / References</label>
               <textarea
                 value={txForm.notes}
                 onChange={e => setTxForm(f => ({ ...f, notes: e.target.value }))}
-                placeholder="Optional notes or details"
-                rows={2}
-                className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 px-3 text-white focus:outline-none focus:ring-1 focus:ring-purple-500 font-bold text-xs"
+                placeholder="Additional audit details..."
+                className="w-full bg-[#0B1228] border border-[#1E2A4A] rounded-xl py-2 px-3 text-white focus:outline-none focus:ring-1 focus:ring-[#635BFF] text-xs h-16"
               />
             </div>
 
-            <div className="flex justify-end space-x-3.5 pt-2">
-              <Button onClick={() => setShowTxModal(false)} variant="ghost">Cancel</Button>
-              <Button type="submit" variant="primary" className="bg-purple-600 hover:bg-purple-700 px-5 text-white">
-                {editingSettlement || editingTx ? 'Save' : 'Log'}
+            <div className="flex justify-end space-x-2 pt-2 border-t border-[#1E2A4A]">
+              <Button type="button" onClick={() => setShowTxModal(false)} variant="ghost" className="border border-[#1E2A4A] text-slate-400 text-xs">
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary" className="bg-[#635BFF] hover:bg-[#5249FF] text-white text-xs font-bold py-2 px-4">
+                Save Record
               </Button>
             </div>
           </form>
