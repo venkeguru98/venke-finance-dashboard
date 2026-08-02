@@ -755,6 +755,8 @@ export const initializeDatabase = async () => {
           try { await execute(`ALTER TABLE lic_policies ADD COLUMN last_automation_run_at TEXT NULL`); } catch (_) {}
           try { await execute(`ALTER TABLE lic_policies ADD COLUMN last_processed_installment INTEGER NULL`); } catch (_) {}
           try { await execute(`ALTER TABLE lic_policies ADD COLUMN last_processed_due_date TEXT NULL`); } catch (_) {}
+          try { await execute(`ALTER TABLE lic_premium_schedule ADD COLUMN automation_attempts INTEGER DEFAULT 0`); } catch (_) {}
+          try { await execute(`ALTER TABLE lic_premium_schedule ADD COLUMN last_attempt_at TEXT NULL`); } catch (_) {}
         }
 
         // Add LIC Automation Execution Audit Ledger Table

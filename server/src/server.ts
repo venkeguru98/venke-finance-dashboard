@@ -131,13 +131,15 @@ function getLocalIpAddress() {
 }
 
 import { startLicAutomationScheduler } from './services/recurringAutomation';
+import { GlobalLicAutopilotService } from './services/GlobalLicAutopilotService';
 
 const startServer = async () => {
   // ─── Initialize Database ─────────────────────────────────────────────────
   try {
     await initializeDatabase();
-    // ─── Initialize Autonomous LIC Automation Scheduler Daemon ──────────────
+    // ─── Initialize Autonomous LIC Automation Scheduler Daemon & 15-Min Ticker ──────────────
     startLicAutomationScheduler(1);
+    GlobalLicAutopilotService.start15MinuteTicker(1);
   } catch (dbErr) {
     console.error('[DB] Failed to initialize database:', dbErr);
   }

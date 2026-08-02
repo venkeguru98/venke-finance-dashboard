@@ -3,6 +3,26 @@ import { LicPolicyScheduleService } from './LicPolicyScheduleService';
 
 export class GlobalLicAutopilotService {
   private static isExecutionLocked: boolean = false;
+  private static tickerTimer: NodeJS.Timeout | null = null;
+
+  // ─── 0. START 15-MINUTE BACKGROUND SCHEDULER TICKER ────────────────────────
+  static start15MinuteTicker(userId: number = 1) {
+    if (GlobalLicAutopilotService.tickerTimer) return;
+    console.log('[GlobalLicAutopilotService] Starting 15-minute autonomous background scheduler ticker...');
+
+    // Run immediate missed execution check on startup
+    GlobalLicAutopilotService.checkAndRecoverMissedExecutions(userId);
+
+    // Schedule 15-minute interval (900,000 ms)
+    GlobalLicAutopilotService.tickerTimer = setInterval(async () => {
+      try {
+        console.log('[GlobalLicAutopilotService 15-Min Ticker] Evaluating active LIC policies...');
+        await GlobalLicAutopilotService.checkAndRecoverMissedExecutions(userId);
+      } catch (err) {
+        console.error('[GlobalLicAutopilotService 15-Min Ticker Error]', err);
+      }
+    }, 15 * 60 * 1000);
+  }
 
   // ─── 1. GET OPERATIONAL HEALTH & AUDIT TELEGRAM METRICS ───────────────────
   static async getOperationalMetrics(userId: number = 1) {

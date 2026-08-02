@@ -73,7 +73,22 @@ export class LicPolicyScheduleService {
       const startMonth = startDate.getMonth() + 1;
 
       const termYears = Number(policy.policy_term || 10);
-      const totalPolicyMonths = termYears * 12;
+      const freq = (policy.frequency || policy.premium_frequency || 'monthly').toLowerCase();
+      
+      let stepMonths = 1;
+      let totalInstallments = termYears * 12;
+
+      if (freq.includes('quarter')) {
+        stepMonths = 3;
+        totalInstallments = termYears * 4;
+      } else if (freq.includes('half') || freq.includes('semi')) {
+        stepMonths = 6;
+        totalInstallments = termYears * 2;
+      } else if (freq.includes('year') || freq.includes('annual')) {
+        stepMonths = 12;
+        totalInstallments = termYears * 1;
+      }
+
       const monthlyAmt = Number(policy.monthly_premium) || 0;
       const dueDay = policy.premium_due_day || 5;
 
@@ -89,7 +104,7 @@ export class LicPolicyScheduleService {
 
       let insertedCount = 0;
 
-      for (let i = 1; i <= totalPolicyMonths; i++) {
+      for (let i = 1; i <= totalInstallments; i++) {
         const dateStr = `${y}-${String(m).padStart(2, '0')}-${String(dueDay).padStart(2, '0')}`;
         
         // Determine status based on historical ledger or past date
@@ -118,7 +133,14 @@ export class LicPolicyScheduleService {
           [policyId, i]
         );
 
-        if (!existingRow) {
+        if (existingRow) {
+          await execute(
+            `UPDATE lic_premium_schedule 
+             SET due_date = ?, month = ?, year = ?, premium_amount = ? 
+             WHERE id = ?`,
+            [dateStr, m, y, monthlyAmt, existingRow.id]
+          );
+        } else {
           await execute(
             `INSERT INTO lic_premium_schedule 
              (policy_id, installment_number, due_date, month, year, premium_amount, status, paid_date, payment_source)
@@ -128,10 +150,11 @@ export class LicPolicyScheduleService {
           insertedCount++;
         }
 
-        m++;
-        if (m > 12) {
-          m = 1;
-          y++;
+        // Increment month by stepMonths
+        m += stepMonths;
+        while (m > 12) {
+          m -= 12;
+          y += 1;
         }
       }
 
@@ -149,11 +172,11 @@ export class LicPolicyScheduleService {
       const pendingRows = Number(finalPendingRes?.count || 0);
       const overdueRows = Number(finalOverdueRes?.count || 0);
 
-      const isValid = totalRows === totalPolicyMonths && (paidRows + pendingRows + overdueRows === totalRows);
+      const isValid = totalRows === totalInstallments && (paidRows + pendingRows + overdueRows === totalRows);
 
       const validation = {
         isValid,
-        totalPolicyMonths,
+        totalPolicyMonths: totalInstallments,
         totalRows,
         paidRows,
         pendingRows,
@@ -161,7 +184,7 @@ export class LicPolicyScheduleService {
       };
 
       if (!isValid) {
-        console.error(`[LicPolicyScheduleService Validation Failed] Policy #${policyId}: Expected ${totalPolicyMonths} rows, got ${totalRows}.`);
+        console.error(`[LicPolicyScheduleService Validation Failed] Policy #${policyId}: Expected ${totalInstallments} rows, got ${totalRows}.`);
       }
 
       await LicPolicyScheduleService.recalculateMetrics(policyId);
