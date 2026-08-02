@@ -1698,17 +1698,19 @@ router.post('/automation/lic/global-toggle', async (req: Request, res: Response)
   }
 });
 
+import { LicAutomationScheduler } from '../services/licAutomationScheduler';
+
 router.post('/automation/lic/global-sync', async (req: Request, res: Response) => {
   const userId = req.user!.id;
   try {
-    // 1. Trigger historical backfill across active policies missing history
-    const activePolicies = await query(`SELECT id FROM lic_policies WHERE user_id = ? AND (status = 'Running' OR status IS NULL OR status != 'Completed')`, [userId]);
+    // 1. Trigger full lifecycle schedule backfill for active policies missing history
+    const activePolicies = await query(`SELECT id FROM lic_policies WHERE user_id = ?`, [userId]);
     for (const p of activePolicies) {
-      await backfillLicHistoricalPremiums(p.id);
+      await LicAutomationScheduler.generateFullSchedule(p.id);
     }
 
-    // 2. Run monthly automation execution
-    const syncRes: any = await runRecurringAutomation(userId, true);
+    // 2. Run manual sync execution via centralized LicAutomationScheduler
+    const syncRes: any = await LicAutomationScheduler.processManualSync(userId);
     const status = await getGlobalLicAutopilotStatus(userId);
     res.json({
       success: true,

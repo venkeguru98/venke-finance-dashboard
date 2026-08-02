@@ -1,25 +1,17 @@
 import { query, execute, get } from '../database';
+import { LicAutomationScheduler } from './licAutomationScheduler';
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 
+// Re-export LicAutomationScheduler methods for backwards compatibility
+export const getLicModuleSummary = LicAutomationScheduler.getSummary;
+export const isPolicyActive = LicAutomationScheduler.isPolicyActive;
+export const backfillLicHistoricalPremiums = LicAutomationScheduler.generateFullSchedule;
+export const recalculateLicMetrics = LicAutomationScheduler.recalculateMetrics;
+
 // Send Telegram Message Helper
 export async function sendTelegramMessage(chatId: string | number, text: string) {
-  if (!TELEGRAM_BOT_TOKEN || !chatId) return false;
-  try {
-    const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text,
-        parse_mode: 'HTML'
-      })
-    });
-    return res.ok;
-  } catch (err: any) {
-    console.error('[Automation Telegram Send Error]', err.message);
-    return false;
-  }
+  return await LicAutomationScheduler.sendTelegram(chatId, text);
 }
 
 // Single Source Helper for Available Balance calculation
@@ -58,31 +50,6 @@ export async function getAvailableBalance(userId: number, monthPrefix: string): 
   }
 }
 
-// Case-Insensitive & Self-Healing Active Policy Helper
-export function isPolicyActive(p: any): boolean {
-  if (!p) return false;
-  const s = (p.status || '').toString().trim().toLowerCase();
-
-  if (['cancelled', 'closed', 'terminated', 'paused'].includes(s)) {
-    return false;
-  }
-
-  // If marked 'completed' or 'matured', verify if there are remaining unpaid months
-  if (s === 'completed' || s === 'matured') {
-    const paidCount = Number(p.premiumsPaid || p.monthsPaid || 0);
-    const totalMonths = Number(p.totalInstallments || (p.policy_term ? p.policy_term * 12 : 0));
-    // If paidCount < totalMonths (e.g. 25 / 180), it is NOT completed — it is ACTIVE!
-    if (totalMonths > 0 && paidCount < totalMonths) {
-      return true;
-    }
-    if (totalMonths > 0 && paidCount >= totalMonths) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
 // ─── RECALCULATE CHIT METRICS HELPER ───────────────────────────────────────
 export async function recalculateChitMetrics(chitId: number) {
   try {
@@ -100,362 +67,30 @@ export async function recalculateChitMetrics(chitId: number) {
     // Keep chit_funds table synchronized
     await execute(
       `UPDATE chit_funds SET total_paid = ? WHERE id = ?`,
-      [totalPaid, chitId]
+      [chitId]
     );
   } catch (err) {
     console.error('[Chit Metrics Recalculation Error]', err);
   }
 }
 
-// ─── COMPLETE LIC SCHEDULE GENERATION & BACKFILL HELPER ───────────────────
-export async function backfillLicHistoricalPremiums(policyId: number) {
-  try {
-    const policy = await get(`SELECT * FROM lic_policies WHERE id = ?`, [policyId]);
-    if (!policy || !policy.start_date) return;
-
-    const now = new Date();
-    const currYear = now.getFullYear();
-    const currMonth = now.getMonth() + 1;
-
-    const startDate = new Date(policy.start_date);
-    const startYear = startDate.getFullYear();
-    const startMonth = startDate.getMonth() + 1;
-
-    const termYears = Number(policy.policy_term || 10);
-    const totalPolicyMonths = termYears * 12;
-
-    const monthlyAmt = Number(policy.monthly_premium) || 0;
-    const dueDay = policy.premium_due_day || 5;
-
-    let y = startYear;
-    let m = startMonth;
-
-    // Generate complete schedule up to totalPolicyMonths (e.g. 180 months)
-    for (let i = 0; i < totalPolicyMonths; i++) {
-      const existing = await get(
-        `SELECT id, status FROM lic_premium_history WHERE policy_id = ? AND month = ? AND year = ?`,
-        [policyId, m, y]
-      );
-
-      // PRESERVE ALL EXISTING ROWS (Manual edits, manual payments, previous automation)
-      if (!existing) {
-        const isPast = (y < currYear) || (y === currYear && m < currMonth);
-        const targetStatus = isPast ? 'Paid' : 'Pending';
-        const pDate = isPast ? `${y}-${String(m).padStart(2, '0')}-${String(dueDay).padStart(2, '0')}` : null;
-
-        await execute(
-          `INSERT INTO lic_premium_history (policy_id, month, year, amount_paid, paid_date, status, remarks)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          [policyId, m, y, monthlyAmt, pDate, targetStatus, isPast ? 'Auto-backfilled historical premium' : 'Scheduled premium']
-        );
-      }
-
-      m++;
-      if (m > 12) {
-        m = 1;
-        y++;
-      }
-    }
-
-    await recalculateLicMetrics(policyId);
-  } catch (err) {
-    console.error('[LIC Backfill Error]', err);
-  }
-}
-
-export async function recalculateLicMetrics(policyId: number) {
-  try {
-    const paidRes = await get(
-      `SELECT COUNT(*) as count, SUM(amount_paid) as total 
-       FROM lic_premium_history WHERE policy_id = ? AND status = 'Paid'`,
-      [policyId]
-    );
-
-    const policy = await get(`SELECT policy_term, monthly_premium, maturity_date, policy_name, user_id FROM lic_policies WHERE id = ?`, [policyId]);
-    if (!policy) return;
-
-    const paidCount = Number(paidRes?.count || 0);
-    const totalPaid = Number(paidRes?.total || 0);
-    const termYears = Number(policy.policy_term || 10);
-    const totalPolicyMonths = termYears * 12;
-
-    await execute(`UPDATE lic_policies SET total_paid = ? WHERE id = ?`, [totalPaid, policyId]);
-
-    // Completion Lock: ONLY if all 180 premiums are paid -> Completed; otherwise Running!
-    if (totalPolicyMonths > 0 && paidCount >= totalPolicyMonths) {
-      const wasCompleted = policy.status === 'Completed';
-      await execute(`UPDATE lic_policies SET status = 'Completed' WHERE id = ?`, [policyId]);
-
-      if (!wasCompleted) {
-        // Send policy maturity Telegram notification
-        const user = await get('SELECT telegram_chat_id FROM users WHERE id = ?', [policy.user_id || 1]);
-        if (user && user.telegram_chat_id) {
-          const msg = `<b>Venke Finance — LIC Policy Matured 🎉</b>\n\n` +
-            `Policy: <b>${policy.policy_name}</b>\n` +
-            `Final premium completed (${totalPolicyMonths}/${totalPolicyMonths} paid).\n` +
-            `Policy marked as Completed.\n\n` +
-            `Venke Finance`;
-          await sendTelegramMessage(user.telegram_chat_id, msg);
-        }
-
-        await execute(
-          `INSERT INTO recurring_automation_logs (user_id, module_type, entity_id, action, amount, period_month, period_year, details)
-           VALUES (?, 'lic', ?, 'Policy Matured', 0, ?, ?, 'All policy premiums fully paid and schedule frozen')`,
-          [policy.user_id || 1, policyId, new Date().getMonth() + 1, new Date().getFullYear()]
-        );
-      }
-    } else {
-      await execute(`UPDATE lic_policies SET status = 'Running' WHERE id = ?`, [policyId]);
-    }
-  } catch (err) {
-    console.error('[LIC Metrics Recalculation Error]', err);
-  }
-}
-
-// ─── SHARED LIC MODULE SUMMARY AGGREGATION SERVICE ─────────────────────────
-export async function getLicModuleSummary(userId: number = 1) {
-  const allPolicies = await query(`SELECT * FROM lic_policies WHERE user_id = ?`, [userId]);
-
-  // Self-Healing Database Repair: Fix policies erroneously marked 'Completed' when paidCount < totalPolicyMonths
-  for (const p of allPolicies) {
-    const paidRes = await get(
-      `SELECT COUNT(*) as count FROM lic_premium_history WHERE policy_id = ? AND status = 'Paid'`,
-      [p.id]
-    );
-    const paidCount = Number(paidRes?.count || 0);
-    const termYears = Number(p.policy_term || 10);
-    const totalPolicyMonths = termYears * 12;
-
-    if (totalPolicyMonths > 0 && paidCount < totalPolicyMonths && (p.status === 'Completed' || p.status === 'completed')) {
-      await execute(`UPDATE lic_policies SET status = 'Running' WHERE id = ?`, [p.id]);
-      p.status = 'Running';
-    } else if (totalPolicyMonths > 0 && paidCount >= totalPolicyMonths && p.status !== 'Completed') {
-      await execute(`UPDATE lic_policies SET status = 'Completed' WHERE id = ?`, [p.id]);
-      p.status = 'Completed';
-    }
-  }
-
-  const activePoliciesList = allPolicies.filter((p: any) => isPolicyActive(p));
-
-  const activePolicies = activePoliciesList.length;
-  const totalPolicies = allPolicies.length;
-
-  let totalPremiumPaid = 0;
-  let totalRemainingPremium = 0;
-  let monthlyPremiumTotal = 0;
-  let totalCoverage = 0;
-  let paidThisYear = 0;
-  let completionPercentageSum = 0;
-
-  const currentYear = new Date().getFullYear();
-  const today = new Date();
-
-  let earliestMaturityDate: Date | null = null;
-
-  for (const p of allPolicies) {
-    const active = isPolicyActive(p);
-    const monthlyAmt = Number(p.monthly_premium || 0);
-    if (active) {
-      monthlyPremiumTotal += monthlyAmt;
-    }
-    totalCoverage += Number(p.sum_assured || 0);
-
-    const paidRes = await get(
-      `SELECT COUNT(*) as count, SUM(amount_paid) as total 
-       FROM lic_premium_history WHERE policy_id = ? AND status = 'Paid'`,
-      [p.id]
-    );
-
-    const yearPaidRes = await get(
-      `SELECT SUM(amount_paid) as total 
-       FROM lic_premium_history WHERE policy_id = ? AND status = 'Paid' AND year = ?`,
-      [p.id, currentYear]
-    );
-
-    const paidCount = Number(paidRes?.count || 0);
-    const paidSum = Number(paidRes?.total || 0);
-    totalPremiumPaid += paidSum;
-    paidThisYear += Number(yearPaidRes?.total || 0);
-
-    const termYears = Number(p.policy_term || 10);
-    const totalPolicyMonths = termYears * 12;
-    const monthsRemaining = Math.max(0, totalPolicyMonths - paidCount);
-    if (active) {
-      totalRemainingPremium += (monthsRemaining * monthlyAmt);
-    }
-
-    const pct = totalPolicyMonths > 0 ? Math.min(100, Math.round((paidCount / totalPolicyMonths) * 100)) : 0;
-    completionPercentageSum += pct;
-
-    if (p.maturity_date && active) {
-      const matDate = new Date(p.maturity_date);
-      if (!earliestMaturityDate || matDate < earliestMaturityDate) {
-        earliestMaturityDate = matDate;
-      }
-    }
-  }
-
-  const completionPercentage = totalPolicies > 0 ? Math.round(completionPercentageSum / totalPolicies) : 0;
-
-  let maturityCountdownDays = 0;
-  if (earliestMaturityDate) {
-    const diff = earliestMaturityDate.getTime() - today.getTime();
-    maturityCountdownDays = Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
-  }
-
-  // Next Premium Due Query across active policies
-  const activeIds = activePoliciesList.map((p: any) => p.id);
-  let nextUnpaidRow = null;
-  if (activeIds.length > 0) {
-    const placeholders = activeIds.map(() => '?').join(',');
-    nextUnpaidRow = await get(
-      `SELECT h.*, p.policy_name, p.premium_due_day 
-       FROM lic_premium_history h
-       JOIN lic_policies p ON h.policy_id = p.id
-       WHERE p.id IN (${placeholders})
-         AND h.status IN ('Pending', 'Scheduled', 'Overdue')
-       ORDER BY h.year ASC, h.month ASC, p.premium_due_day ASC
-       LIMIT 1`,
-      activeIds
-    );
-  }
-
-  let upcomingPremiumDue = 'No upcoming premiums';
-  let nextPremiumDate = null;
-  let nextPremiumAmount = 0;
-  let nextPremiumDueDate = null;
-  let nextPremiumMonth = null;
-  let nextPremiumYear = null;
-
-  if (nextUnpaidRow) {
-    const monthName = new Date(2000, nextUnpaidRow.month - 1).toLocaleString('en-US', { month: 'short' });
-    const dueDay = String(nextUnpaidRow.premium_due_day || 5).padStart(2, '0');
-    upcomingPremiumDue = `${nextUnpaidRow.policy_name} — ₹${Number(nextUnpaidRow.amount_paid).toLocaleString('en-IN')} (Due: ${dueDay} ${monthName} ${nextUnpaidRow.year})`;
-    nextPremiumDate = `${monthName} ${nextUnpaidRow.year}`;
-    nextPremiumAmount = Number(nextUnpaidRow.amount_paid || 0);
-    nextPremiumDueDate = `${dueDay} ${monthName} ${nextUnpaidRow.year}`;
-    nextPremiumMonth = nextUnpaidRow.month;
-    nextPremiumYear = nextUnpaidRow.year;
-  } else if (activePolicies > 0) {
-    upcomingPremiumDue = 'All Premiums Completed ✓';
-  }
-
-  return {
-    activePolicies,
-    totalPolicies,
-    totalPremiumPaid,
-    totalRemainingPremium,
-    monthlyPremiumTotal,
-    upcomingPremiumDue,
-    nextPremiumDate,
-    nextPremiumAmount,
-    nextPremiumDueDate,
-    nextPremiumMonth,
-    nextPremiumYear,
-    paidThisYear,
-    completionPercentage,
-    maturityCountdownDays,
-    totalCoverage
-  };
-}
-
 // ─── RUN AUTOMATION ENGINE (GLOBAL CHETTU & LIC SCHEDULER) ──────────────────
 export async function runRecurringAutomation(userId: number = 1, forceRun: boolean = false) {
+  const licRes = await LicAutomationScheduler.processMonthStartAutoPayment(userId, forceRun);
+
   const now = new Date();
   const currentMonth = now.getMonth() + 1;
   const currentYear = now.getFullYear();
   const dateStr = now.toISOString().split('T')[0];
 
-  let processedCount = 0;
-  let updatedCount = 0;
-  let skippedCount = 0;
-  let failedCount = 0;
+  let processedCount = licRes.processedCount;
+  let updatedCount = licRes.updatedCount;
+  let skippedCount = licRes.skippedCount;
+  let failedCount = licRes.failedCount;
 
   // Fetch user telegram chat ID
   const user = await get('SELECT telegram_chat_id FROM users WHERE id = ?', [userId]);
   const chatId = user?.telegram_chat_id;
-
-  // Process ALL active LIC policies directly to guarantee sync execution across all user policies
-  const allLicPolicies = await query(`SELECT * FROM lic_policies WHERE user_id = ?`, [userId]);
-
-  // Run self-healing database check first
-  await getLicModuleSummary(userId);
-
-  const activeLicPolicies = allLicPolicies.filter((p: any) => isPolicyActive(p));
-
-  for (const policy of activeLicPolicies) {
-    processedCount++;
-    try {
-      // Find or create current month premium history entry
-      let existing = await get(
-        'SELECT * FROM lic_premium_history WHERE policy_id = ? AND month = ? AND year = ?',
-        [policy.id, currentMonth, currentYear]
-      );
-
-      if (!existing) {
-        const amt = Number(policy.monthly_premium) || 0;
-        const dueDay = policy.premium_due_day || 5;
-        await execute(
-          `INSERT INTO lic_premium_history (policy_id, month, year, amount_paid, paid_date, status, remarks)
-           VALUES (?, ?, ?, ?, ?, 'Pending', 'Scheduled premium')`,
-          [policy.id, currentMonth, currentYear, amt, `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(dueDay).padStart(2, '0')}`]
-        );
-        existing = await get(
-          'SELECT * FROM lic_premium_history WHERE policy_id = ? AND month = ? AND year = ?',
-          [policy.id, currentMonth, currentYear]
-        );
-      }
-
-      if (existing) {
-        if (existing.status === 'Paid' && !existing.remarks?.includes('Auto-generated')) {
-          skippedCount++;
-          continue;
-        }
-
-        const amt = Number(policy.monthly_premium) || Number(existing.amount_paid) || 0;
-
-        await execute(
-          `UPDATE lic_premium_history SET status = 'Paid', paid_date = ?, remarks = 'Auto-generated recurring premium' WHERE id = ?`,
-          [dateStr, existing.id]
-        );
-
-        await recalculateLicMetrics(policy.id);
-        updatedCount++;
-
-        // Keep commitment setting updated
-        await execute(
-          `INSERT INTO recurring_commitments (user_id, module_type, entity_id, enabled, auto_create, auto_mark_paid, last_run_date, last_executed_month, last_executed_year)
-           VALUES (?, 'lic', ?, 1, 1, 1, ?, ?, ?)
-           ON CONFLICT(module_type, entity_id) DO UPDATE SET last_run_date = ?, last_executed_month = ?, last_executed_year = ?`,
-          [userId, policy.id, dateStr, currentMonth, currentYear, dateStr, currentMonth, currentYear]
-        );
-
-        let telegramSent = 0;
-        if (chatId) {
-          const monthName = now.toLocaleString('en-US', { month: 'long' });
-          const msg = `<b>Venke Finance — LIC Premium Recorded</b>\n\n` +
-            `Policy: <b>${policy.policy_name}</b> (#${policy.policy_number || 'N/A'})\n` +
-            `Premium: <b>₹${amt.toLocaleString('en-IN')}</b>\n` +
-            `Month: <b>${monthName} ${currentYear}</b>\n` +
-            `Paid Date: <b>${dateStr}</b>\n` +
-            `Status: <b>Auto-paid successfully</b>\n\n` +
-            `Venke Finance`;
-
-          const ok = await sendTelegramMessage(chatId, msg);
-          if (ok) telegramSent = 1;
-        }
-
-        await execute(
-          `INSERT INTO recurring_automation_logs (user_id, module_type, entity_id, action, amount, period_month, period_year, telegram_sent, details)
-           VALUES (?, 'lic', ?, 'Auto-marked Paid', ?, ?, ?, ?, 'Automated LIC premium recorded & synchronized')`,
-          [userId, policy.id, amt, currentMonth, currentYear, telegramSent]
-        );
-      }
-    } catch (err: any) {
-      failedCount++;
-      console.error(`[LIC Automation Error] Policy ID: ${policy.id}`, err);
-    }
-  }
 
   // Fetch active commitment automation settings for Chit & Gold
   const rules = await query(
@@ -622,130 +257,22 @@ export async function runRecurringAutomation(userId: number = 1, forceRun: boole
 
 // ─── GENERATE NEXT MONTH COMMITMENT FORECAST (TELEGRAM) ────────────────────
 export async function generateNextMonthForecast(userId: number = 1, isHeadsUp: boolean = false): Promise<{ text: string; totalCommitments: number }> {
-  const now = new Date();
-  const nextMonthDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-  const nextMonthName = nextMonthDate.toLocaleString('en-US', { month: 'long' });
-  const nextMonthShort = nextMonthDate.toLocaleString('en-US', { month: 'short' });
-  const nextYear = nextMonthDate.getFullYear();
-
-  const currMonthPrefix = now.toISOString().slice(0, 7);
-  const availableBalance = await getAvailableBalance(userId, currMonthPrefix);
-
-  const activeRules = await query(
-    `SELECT * FROM recurring_commitments WHERE user_id = ? AND enabled = 1`,
-    [userId]
-  );
-
-  let cheetuItems: Array<{ name: string; amount: number; dueDay: number }> = [];
-  let licItems: Array<{ name: string; amount: number; dueDay: number }> = [];
-  let goldItems: Array<{ name: string; amount: number; dueDay: number }> = [];
-
-  let cheetuTotal = 0;
-  let licTotal = 0;
-  let goldTotal = 0;
-
-  for (const rule of activeRules) {
-    if (rule.module_type === 'chit') {
-      const chit = await get('SELECT * FROM chit_funds WHERE id = ?', [rule.entity_id]);
-      if (chit && chit.status === 'Running') {
-        const nextPayment = await get(
-          "SELECT * FROM chit_payments WHERE chit_id = ? AND status != 'Paid' ORDER BY year ASC, month ASC LIMIT 1",
-          [rule.entity_id]
-        );
-        const amt = Number(nextPayment?.installment_amount) || Number(chit.monthly_installment) || 0;
-        const dueDay = rule.payment_day || 5;
-        cheetuItems.push({ name: chit.chit_name, amount: amt, dueDay });
-        cheetuTotal += amt;
-      }
-    } else if (rule.module_type === 'lic') {
-      const policy = await get('SELECT * FROM lic_policies WHERE id = ?', [rule.entity_id]);
-      if (policy && isPolicyActive(policy)) {
-        const amt = Number(policy.monthly_premium) || 0;
-        const dueDay = policy.premium_due_day || rule.payment_day || 12;
-        licItems.push({ name: policy.policy_name, amount: amt, dueDay });
-        licTotal += amt;
-      }
-    } else if (rule.module_type === 'gold') {
-      const gold = await get('SELECT * FROM digital_gold WHERE id = ?', [rule.entity_id]);
-      if (gold) {
-        const amt = Number(gold.monthly_amount || 1000);
-        const dueDay = rule.payment_day || 1;
-        goldItems.push({ name: gold.investment_name, amount: amt, dueDay });
-        goldTotal += amt;
-      }
-    }
-  }
-
-  const totalNextCommitment = cheetuTotal + licTotal + goldTotal;
-  const expectedDiff = availableBalance - totalNextCommitment;
-  const isShortfall = expectedDiff < 0;
-
-  if (isHeadsUp) {
-    const headsUpText = `<b>Heads-up: ${nextMonthName} Commitments Forecast</b>\n\n` +
-      `Estimated Next Month Commitments: <b>₹${totalNextCommitment.toLocaleString('en-IN')}</b>\n` +
-      `Current Available Balance: <b>₹${availableBalance.toLocaleString('en-IN')}</b>\n\n` +
-      (isShortfall 
-        ? `⚠️ Estimated Shortfall: <b>₹${Math.abs(expectedDiff).toLocaleString('en-IN')}</b>\nFinal detailed commitment forecast will run on the last day of this month at 8:00 PM.`
-        : `✅ Estimated Surplus: <b>₹${expectedDiff.toLocaleString('en-IN')}</b>\nFinal detailed commitment forecast will run on the last day of this month at 8:00 PM.`) +
-      `\n\nVenke Finance`;
-    return { text: headsUpText, totalCommitments: totalNextCommitment };
-  }
-
-  // Consolidated Forecast Message with explicit LIC line items & Remaining after premiums
-  let text = `<b>Venke Finance — ${nextMonthName} ${nextYear} LIC Forecast</b>\n\n`;
-
-  if (licItems.length > 0) {
-    licItems.sort((a, b) => a.dueDay - b.dueDay).forEach(item => {
-      text += `• ${item.name}: ₹${item.amount.toLocaleString('en-IN')} (Due: ${String(item.dueDay).padStart(2, '0')} ${nextMonthShort})\n`;
-    });
-    text += `\n`;
-  }
-
-  if (cheetuItems.length > 0) {
-    cheetuItems.sort((a, b) => a.dueDay - b.dueDay).forEach(item => {
-      text += `• ${item.name}: ₹${item.amount.toLocaleString('en-IN')} (Due: ${String(item.dueDay).padStart(2, '0')} ${nextMonthShort})\n`;
-    });
-    text += `\n`;
-  }
-
-  if (goldItems.length > 0) {
-    goldItems.sort((a, b) => a.dueDay - b.dueDay).forEach(item => {
-      text += `• ${item.name}: ₹${item.amount.toLocaleString('en-IN')} (${String(item.dueDay).padStart(2, '0')} ${nextMonthShort})\n`;
-    });
-    text += `\n`;
-  }
-
-  text += `Total LIC Commitment: <b>₹${totalNextCommitment.toLocaleString('en-IN')}</b>\n`;
-  text += `Available Balance: <b>₹${availableBalance.toLocaleString('en-IN')}</b>\n`;
-  if (isShortfall) {
-    text += `Expected Shortfall: <b>₹${Math.abs(expectedDiff).toLocaleString('en-IN')}</b>\n`;
-    text += `Recommendation: Keep ₹${Math.abs(expectedDiff).toLocaleString('en-IN')} available before ${nextMonthName} begins.\n\n`;
-  } else {
-    text += `Surplus: <b>₹${expectedDiff.toLocaleString('en-IN')}</b>\n\n`;
-  }
-
-  text += `Venke Finance`;
-
-  return { text, totalCommitments: totalNextCommitment };
+  return await LicAutomationScheduler.generateMonthEndForecast(userId);
 }
 
 // ─── AUTONOMOUS SCHEDULER DAEMON (LIC RECURRING AUTOMATION SERVICE) ─────────
 export function startLicAutomationScheduler(userId: number = 1) {
-  console.log('[LicRecurringAutomationService] Initializing autonomous background scheduler...');
+  console.log('[LicAutomationScheduler Daemon] Initializing autonomous background scheduler...');
 
-  // Check every hour (3600000ms) for month-start auto-payment, 3-day reminders, & month-end forecasts
   const INTERVAL_MS = 60 * 60 * 1000;
 
   const runSchedulerTick = async () => {
     try {
       const now = new Date();
-      const currYear = now.getFullYear();
       const currMonth = now.getMonth() + 1;
+      const currYear = now.getFullYear();
       const currDay = now.getDate();
       const currHour = now.getHours();
-
-      const user = await get('SELECT telegram_chat_id FROM users WHERE id = ?', [userId]);
-      const chatId = user?.telegram_chat_id;
 
       // 1. MONTH-START AUTO-PAYMENT EXECUTION (1st day of month)
       if (currDay === 1) {
@@ -757,47 +284,13 @@ export function startLicAutomationScheduler(userId: number = 1) {
         );
 
         if (!monthStartRan) {
-          console.log(`[LicRecurringAutomationService] Running Month-Start Auto-Payment for ${currMonth}/${currYear}...`);
-          await runRecurringAutomation(userId, true);
+          console.log(`[LicAutomationScheduler] Running Month-Start Auto-Payment for ${currMonth}/${currYear}...`);
+          await LicAutomationScheduler.processMonthStartAutoPayment(userId, true, 'automation');
         }
       }
 
       // 2. 3-DAY DUE DATE REMINDERS (Daily check)
-      const allPolicies = await query(`SELECT * FROM lic_policies WHERE user_id = ?`, [userId]);
-      const activePolicies = allPolicies.filter((p: any) => isPolicyActive(p));
-
-      for (const policy of activePolicies) {
-        const dueDay = policy.premium_due_day || 5;
-        const daysDiff = dueDay - currDay;
-
-        if (daysDiff === 3 && chatId) {
-          const reminderKey = `reminder_sent_${policy.id}_${currMonth}_${currYear}`;
-          const reminderSent = await get(
-            `SELECT id FROM recurring_automation_logs 
-             WHERE user_id = ? AND module_type = 'lic' AND entity_id = ? 
-               AND action = 'Reminder Sent' AND period_month = ? AND period_year = ?`,
-            [userId, policy.id, currMonth, currYear]
-          );
-
-          if (!reminderSent) {
-            const monthName = now.toLocaleString('en-US', { month: 'short' });
-            const dueStr = `${String(dueDay).padStart(2, '0')} ${monthName} ${currYear}`;
-            const msg = `<b>LIC Premium Reminder</b>\n\n` +
-              `Policy: <b>${policy.policy_name}</b>\n` +
-              `Premium: <b>₹${Number(policy.monthly_premium).toLocaleString('en-IN')}</b>\n` +
-              `Due Date: <b>${dueStr}</b>\n\n` +
-              `Reminder: Premium due in 3 days. Please keep ₹${Number(policy.monthly_premium).toLocaleString('en-IN')} available.\n\n` +
-              `Venke Finance`;
-
-            const ok = await sendTelegramMessage(chatId, msg);
-            await execute(
-              `INSERT INTO recurring_automation_logs (user_id, module_type, entity_id, action, amount, period_month, period_year, telegram_sent, details)
-               VALUES (?, 'lic', ?, 'Reminder Sent', ?, ?, ?, ?, '3-day upcoming premium Telegram reminder')`,
-              [userId, policy.id, policy.monthly_premium, currMonth, currYear, ok ? 1 : 0]
-            );
-          }
-        }
-      }
+      await LicAutomationScheduler.processDueReminders(userId);
 
       // 3. MONTH-END FORECAST (Last calendar day at >= 8:00 PM)
       const lastDayOfMonth = new Date(currYear, currMonth, 0).getDate();
@@ -809,23 +302,25 @@ export function startLicAutomationScheduler(userId: number = 1) {
           [userId, currMonth, currYear]
         );
 
-        if (!forecastSent && chatId) {
-          const forecast = await generateNextMonthForecast(userId, false);
-          const ok = await sendTelegramMessage(chatId, forecast.text);
-          await execute(
-            `INSERT INTO recurring_automation_logs (user_id, module_type, entity_id, action, amount, period_month, period_year, telegram_sent, details)
-             VALUES (?, 'lic', 0, 'Forecast Sent', ?, ?, ?, ?, 'Month-end commitment forecast sent via Telegram')`,
-            [userId, forecast.totalCommitments, currMonth, currYear, ok ? 1 : 0]
-          );
+        if (!forecastSent) {
+          const user = await get('SELECT telegram_chat_id FROM users WHERE id = ?', [userId]);
+          if (user && user.telegram_chat_id) {
+            const forecast = await LicAutomationScheduler.generateMonthEndForecast(userId);
+            const ok = await LicAutomationScheduler.sendTelegram(user.telegram_chat_id, forecast.text);
+            await execute(
+              `INSERT INTO recurring_automation_logs (user_id, module_type, entity_id, action, amount, period_month, period_year, telegram_sent, details)
+               VALUES (?, 'lic', 0, 'Forecast Sent', ?, ?, ?, ?, 'Month-end commitment forecast sent via Telegram')`,
+              [userId, forecast.totalCommitments, currMonth, currYear, ok ? 1 : 0]
+            );
+          }
         }
       }
 
     } catch (err: any) {
-      console.error('[LicRecurringAutomationService Tick Error]', err.message);
+      console.error('[LicAutomationScheduler Tick Error]', err.message);
     }
   };
 
-  // Run initial tick on server start, then set interval
   runSchedulerTick();
   setInterval(runSchedulerTick, INTERVAL_MS);
 }
@@ -872,21 +367,15 @@ export async function getGlobalCheetuAutopilotStatus(userId: number = 1) {
 
 // ─── GLOBAL LIC AUTOPILOT STATUS HELPER & ATOMIC POLICY SNAPSHOT ─────────
 export async function getGlobalLicAutopilotStatus(userId: number = 1) {
-  const summary = await getLicModuleSummary(userId);
+  const summary = await LicAutomationScheduler.getSummary(userId);
 
   const allPolicies = await query(`SELECT * FROM lic_policies WHERE user_id = ?`, [userId]);
-  const activePoliciesList = allPolicies.filter((p: any) => isPolicyActive(p));
+  const activePoliciesList = allPolicies.filter((p: any) => LicAutomationScheduler.isPolicyActive(p));
   const activeCount = activePoliciesList.length;
 
-  // Enrich each policy with next unpaid premium using explicit unpaid-status query
   const policySnapshots = [];
   for (const p of activePoliciesList) {
-    const nextUnpaid = await get(
-      `SELECT * FROM lic_premium_history 
-       WHERE policy_id = ? AND status IN ('Pending', 'Overdue', 'Scheduled') 
-       ORDER BY year ASC, month ASC LIMIT 1`,
-      [p.id]
-    );
+    const nextUnpaid = await LicAutomationScheduler.getNextScheduledPremium(p.id);
 
     const paidStats = await get(
       `SELECT COUNT(*) as count, SUM(amount_paid) as total 
