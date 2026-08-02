@@ -23,6 +23,21 @@ export default function GlobalLicAutopilotController({ onSyncComplete }: GlobalL
     logs: []
   });
 
+  const handleRepairSchedules = async () => {
+    setSyncing(true);
+    try {
+      const res = await axios.post(`${API}/records/lic/repair-all-schedules`);
+      if (res.data.status) setData(res.data.status);
+      else fetchGlobalStatus();
+      alert(res.data.message || 'Repaired full LIC schedules successfully.');
+      onSyncComplete();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Error repairing LIC schedules.');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const fetchGlobalStatus = async () => {
     setLoading(true);
     try {
@@ -126,10 +141,19 @@ export default function GlobalLicAutopilotController({ onSyncComplete }: GlobalL
             onClick={handleRunManualSync}
             disabled={syncing}
             className="flex items-center space-x-2 px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-extrabold text-xs shadow-lg shadow-cyan-600/20 transition disabled:opacity-50"
-            title="Execute global scheduler once & backfill historical premiums"
+            title="Execute global scheduler once for current month"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
             <span>{syncing ? 'Syncing Active Policies...' : 'Run Manual Sync'}</span>
+          </button>
+
+          <button
+            onClick={handleRepairSchedules}
+            disabled={syncing}
+            className="flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-purple-950/60 border border-purple-500/30 hover:border-purple-400 text-purple-300 font-bold text-xs transition disabled:opacity-50"
+            title="One-time repair: generates missing future schedule rows up to 180 months without touching paid history"
+          >
+            <span>🛠️ Repair LIC Schedule</span>
           </button>
 
           <button

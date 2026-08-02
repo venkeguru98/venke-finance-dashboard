@@ -1621,6 +1621,32 @@ import {
   runFullAutomationValidationSuite 
 } from '../services/recurringAutomation';
 
+// ─── REPAIR LIC SCHEDULE ONE-TIME MIGRATION ENDPOINT ───────────────────────
+router.post('/lic/:id/repair-schedule', async (req: Request, res: Response) => {
+  const policyId = Number(req.params.id);
+  try {
+    await backfillLicHistoricalPremiums(policyId);
+    const status = await getGlobalLicAutopilotStatus(req.user!.id);
+    res.json({ success: true, message: `Schedule repaired for policy #${policyId}`, status });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/lic/repair-all-schedules', async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  try {
+    const policies = await query(`SELECT id FROM lic_policies WHERE user_id = ?`, [userId]);
+    for (const p of policies) {
+      await backfillLicHistoricalPremiums(p.id);
+    }
+    const status = await getGlobalLicAutopilotStatus(userId);
+    res.json({ success: true, message: `Repaired full schedule for ${policies.length} policies`, status });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── GLOBAL LIC AUTOPILOT ENDPOINTS ──────────────────────────────────────────
 router.get('/automation/lic/global-status', async (req: Request, res: Response) => {
   const userId = req.user!.id;

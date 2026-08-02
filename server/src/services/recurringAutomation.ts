@@ -82,7 +82,7 @@ export async function recalculateChitMetrics(chitId: number) {
   }
 }
 
-// ─── LIC HISTORICAL BACKFILL & METRICS RECALCULATION HELPER ───────────────
+// ─── COMPLETE LIC SCHEDULE GENERATION & BACKFILL HELPER ───────────────────
 export async function backfillLicHistoricalPremiums(policyId: number) {
   try {
     const policy = await get(`SELECT * FROM lic_policies WHERE id = ?`, [policyId]);
@@ -96,13 +96,8 @@ export async function backfillLicHistoricalPremiums(policyId: number) {
     const startYear = startDate.getFullYear();
     const startMonth = startDate.getMonth() + 1;
 
-    let matYear = currYear + 10;
-    let matMonth = startMonth;
-    if (policy.maturity_date) {
-      const matDate = new Date(policy.maturity_date);
-      matYear = matDate.getFullYear();
-      matMonth = matDate.getMonth() + 1;
-    }
+    const termYears = Number(policy.policy_term || 10);
+    const totalPolicyMonths = termYears * 12;
 
     const monthlyAmt = Number(policy.monthly_premium) || 0;
     const dueDay = policy.premium_due_day || 5;
@@ -110,27 +105,23 @@ export async function backfillLicHistoricalPremiums(policyId: number) {
     let y = startYear;
     let m = startMonth;
 
-    while (y < matYear || (y === matYear && m <= matMonth)) {
+    // Generate complete schedule up to totalPolicyMonths (e.g. 180 months)
+    for (let i = 0; i < totalPolicyMonths; i++) {
       const existing = await get(
         `SELECT id, status FROM lic_premium_history WHERE policy_id = ? AND month = ? AND year = ?`,
         [policyId, m, y]
       );
 
-      // Past months -> Paid; Current & Future months -> Pending
-      const isPast = (y < currYear) || (y === currYear && m < currMonth);
-      const targetStatus = isPast ? 'Paid' : (existing ? existing.status : 'Pending');
-      const pDate = isPast ? `${y}-${String(m).padStart(2, '0')}-${String(dueDay).padStart(2, '0')}` : null;
-
+      // PRESERVE ALL EXISTING ROWS (Manual edits, manual payments, previous automation)
       if (!existing) {
+        const isPast = (y < currYear) || (y === currYear && m < currMonth);
+        const targetStatus = isPast ? 'Paid' : 'Pending';
+        const pDate = isPast ? `${y}-${String(m).padStart(2, '0')}-${String(dueDay).padStart(2, '0')}` : null;
+
         await execute(
           `INSERT INTO lic_premium_history (policy_id, month, year, amount_paid, paid_date, status, remarks)
            VALUES (?, ?, ?, ?, ?, ?, ?)`,
           [policyId, m, y, monthlyAmt, pDate, targetStatus, isPast ? 'Auto-backfilled historical premium' : 'Scheduled premium']
-        );
-      } else if (isPast && existing.status !== 'Paid') {
-        await execute(
-          `UPDATE lic_premium_history SET status = 'Paid', paid_date = ? WHERE id = ?`,
-          [pDate, existing.id]
         );
       }
 
@@ -160,15 +151,16 @@ export async function recalculateLicMetrics(policyId: number) {
 
     const paidCount = Number(paidRes?.count || 0);
     const totalPaid = Number(paidRes?.total || 0);
+    const termYears = Number(policy.policy_term || 10);
+    const totalPolicyMonths = termYears * 12;
 
-    const pendingRow = await get(
-      `SELECT id FROM lic_premium_history WHERE policy_id = ? AND status IN ('Pending', 'Overdue', 'Scheduled') LIMIT 1`,
-      [policyId]
-    );
+    await execute(`UPDATE lic_policies SET total_paid = ? WHERE id = ?`, [totalPaid, policyId]);
 
-    // If maturity month is reached and no pending rows exist -> Policy Completed!
-    if (!pendingRow && paidCount > 0) {
+    // Completion Lock: ONLY if all 180 premiums are paid -> Completed
+    if (paidCount >= totalPolicyMonths && totalPolicyMonths > 0) {
       await execute(`UPDATE lic_policies SET status = 'Completed' WHERE id = ?`, [policyId]);
+    } else {
+      await execute(`UPDATE lic_policies SET status = 'Running' WHERE id = ? AND (status IS NULL OR status = 'Completed')`, [policyId]);
     }
   } catch (err) {
     console.error('[LIC Metrics Recalculation Error]', err);
@@ -296,7 +288,7 @@ export async function runRecurringAutomation(userId: number = 1, forceRun: boole
           continue;
         }
 
-        // Manual Sync processes ONLY the CURRENT MONTH row
+        // Manual Sync & Automation process ONLY the CURRENT MONTH row
         let existing = await get(
           'SELECT * FROM lic_premium_history WHERE policy_id = ? AND month = ? AND year = ?',
           [entity_id, currentMonth, currentYear]
@@ -353,8 +345,8 @@ export async function runRecurringAutomation(userId: number = 1, forceRun: boole
             const monthName = now.toLocaleString('en-US', { month: 'short' });
             const msg = `<b>LIC premium recorded</b>\n\n` +
               `Policy: ${policy.policy_name} (#${policy.policy_number})\n` +
-              `Month: ${monthName} ${currentYear}\n` +
               `Premium: ₹${amt.toLocaleString('en-IN')}\n` +
+              `Month: ${monthName} ${currentYear}\n` +
               `Status: ${status}\n\n` +
               `Venke Finance`;
 
@@ -538,7 +530,7 @@ export async function generateNextMonthForecast(userId: number = 1, isHeadsUp: b
 
   text += `Total Premium: <b>₹${totalNextCommitment.toLocaleString('en-IN')}</b>\n`;
   text += `Available Balance: <b>₹${availableBalance.toLocaleString('en-IN')}</b>\n`;
-  text += `Remaining After LIC Premiums: <b>₹${expectedDiff.toLocaleString('en-IN')}</b>\n\n`;
+  text += `Remaining After Premiums: <b>₹${expectedDiff.toLocaleString('en-IN')}</b>\n\n`;
 
   text += `Venke Finance`;
 
@@ -612,11 +604,11 @@ export async function getGlobalLicAutopilotStatus(userId: number = 1) {
     const monthsPaid = Number(paidStats?.count || 0);
     const totalPaid = Number(paidStats?.total || 0);
     const termYears = Number(p.policy_term || 10);
-    const totalMonths = termYears * 12;
-    const monthsRemaining = Math.max(0, totalMonths - monthsPaid);
+    const totalPolicyMonths = termYears * 12;
+    const monthsRemaining = Math.max(0, totalPolicyMonths - monthsPaid);
     const monthlyPremium = Number(p.monthly_premium || 0);
     const totalRemaining = monthsRemaining * monthlyPremium;
-    const completionPct = Math.min(100, Math.round((monthsPaid / totalMonths) * 100));
+    const completionPct = Math.min(100, Math.round((monthsPaid / totalPolicyMonths) * 100));
 
     policySnapshots.push({
       id: p.id,
