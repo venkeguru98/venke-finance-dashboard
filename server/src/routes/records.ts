@@ -290,60 +290,59 @@ router.get('/dashboard', async (req: Request, res: Response) => {
 router.get('/lic', async (req: Request, res: Response) => {
   try {
     const policies = await query(`SELECT * FROM lic_policies WHERE user_id = ? ORDER BY start_date DESC`, [req.user!.id]);
-    
-    // Enrich with computed details
     const enriched = [];
     const today = new Date();
     
     for (const p of policies) {
-      // Check if history schedule exists; if 0 rows, generate full 180-month schedule once
-      const rowCheck = await get(`SELECT COUNT(*) as count FROM lic_premium_history WHERE policy_id = ?`, [p.id]);
-      if (Number(rowCheck?.count || 0) === 0) {
-        await backfillLicHistoricalPremiums(p.id);
-      }
+      // Ensure contract schedule table is initialized
+      await LicPolicyScheduleService.verifyAndRepairScheduleIntegrity(p.id);
 
-      // Premium Paid Details
-      const paidHist = await query(
-        `SELECT SUM(amount_paid) as total, COUNT(*) as count 
-         FROM lic_premium_history WHERE policy_id = ? AND status = 'Paid'`,
+      // Premium Paid Details from lic_premium_schedule
+      const paidHist = await get(
+        `SELECT SUM(premium_amount) as total, COUNT(*) as count 
+         FROM lic_premium_schedule WHERE policy_id = ? AND status = 'Paid'`,
         [p.id]
       );
-      const totalPaid = paidHist[0]?.total || 0;
-      const countPaid = paidHist[0]?.count || 0;
+      const totalPaid = Number(paidHist?.total || 0);
+      const countPaid = Number(paidHist?.count || 0);
 
-      // Policy Term total premium count (term is in years, so term * 12 payments)
       const totalInstallments = p.policy_term * 12;
       const remainingInstallments = Math.max(0, totalInstallments - countPaid);
       const totalRemaining = remainingInstallments * p.monthly_premium;
 
-      // Countdown Days to Maturity
       const maturity = new Date(p.maturity_date);
       const diffTime = maturity.getTime() - today.getTime();
       const daysRemaining = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
       const monthsRemaining = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24 * 30.4375)));
-
       const completionPct = Math.min(100, Math.round((countPaid / totalInstallments) * 100));
 
-      // Check current month status
-      const currentMonth = today.getMonth() + 1;
-      const currentYear = today.getFullYear();
-      const paidThisMonth = await get(
-        `SELECT COUNT(*) as count FROM lic_premium_history 
-         WHERE policy_id = ? AND month = ? AND year = ? AND status = 'Paid'`,
-        [p.id, currentMonth, currentYear]
-      );
+      const isCompleted = totalInstallments > 0 && countPaid >= totalInstallments;
+      const nextScheduledPremium = await LicPolicyScheduleService.getNextScheduledPremium(p.id);
+
+      console.log('\nLIC API RESPONSE', JSON.stringify({
+        policyId: p.id,
+        paidInstallments: countPaid,
+        pendingInstallments: remainingInstallments,
+        isCompleted,
+        nextScheduledPremium
+      }, null, 2));
 
       enriched.push({
         ...p,
         totalInstallments,
         premiumsPaid: countPaid,
+        paidInstallments: countPaid,
         premiumsRemaining: remainingInstallments,
+        pendingInstallments: remainingInstallments,
         totalPaid,
         totalRemaining,
         daysRemaining,
         monthsRemaining,
         completionPct,
-        isPremiumPending: paidThisMonth.count === 0 && isPolicyActive(p)
+        isCompleted,
+        nextScheduledPremium,
+        nextInstallment: nextScheduledPremium,
+        isPremiumPending: !isCompleted && isPolicyActive(p)
       });
     }
 
@@ -431,26 +430,79 @@ router.post('/lic/:id/premiums', async (req: Request, res: Response) => {
   const { month, year, amount_paid, paid_date, status, remarks } = req.body;
   const policyId = Number(req.params.id);
   try {
-    const existing = await get(
+    const policy = await get(`SELECT * FROM lic_policies WHERE id = ?`, [policyId]);
+    if (!policy) return res.status(404).json({ error: 'Policy not found' });
+
+    // 1. Update contract schedule table lic_premium_schedule
+    const targetStatus = status || 'Paid';
+    const pDate = paid_date || new Date().toISOString().split('T')[0];
+
+    const schRow = await get(
+      `SELECT id FROM lic_premium_schedule WHERE policy_id = ? AND month = ? AND year = ?`,
+      [policyId, month, year]
+    );
+
+    if (schRow) {
+      await execute(
+        `UPDATE lic_premium_schedule SET status = ?, paid_date = ?, payment_source = 'manual' WHERE id = ?`,
+        [targetStatus, targetStatus === 'Paid' ? pDate : null, schRow.id]
+      );
+    } else {
+      // Find installment_number from policy start_date
+      const startDate = new Date(policy.start_date);
+      const startY = startDate.getFullYear();
+      const startM = startDate.getMonth() + 1;
+      const instNum = Math.max(1, (year - startY) * 12 + (month - startM) + 1);
+
+      await execute(
+        `INSERT INTO lic_premium_schedule (policy_id, installment_number, due_date, month, year, premium_amount, status, paid_date, payment_source)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'manual')`,
+        [policyId, instNum, `${year}-${String(month).padStart(2, '0')}-05`, month, year, amount_paid || policy.monthly_premium, targetStatus, targetStatus === 'Paid' ? pDate : null]
+      );
+    }
+
+    // 2. Mirror/update execution ledger lic_premium_history
+    const existingHist = await get(
       `SELECT id FROM lic_premium_history WHERE policy_id = ? AND month = ? AND year = ?`,
       [policyId, month, year]
     );
 
-    if (existing) {
+    if (existingHist) {
       await execute(
         `UPDATE lic_premium_history SET amount_paid = ?, paid_date = ?, status = ?, remarks = ? WHERE id = ?`,
-        [amount_paid, paid_date, status, remarks, existing.id]
+        [amount_paid, targetStatus === 'Paid' ? pDate : null, targetStatus, remarks || 'Manual Payment Entry', existingHist.id]
       );
     } else {
       await execute(
         `INSERT INTO lic_premium_history (policy_id, month, year, amount_paid, paid_date, status, remarks) 
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [policyId, month, year, amount_paid, paid_date, status, remarks]
+        [policyId, month, year, amount_paid, targetStatus === 'Paid' ? pDate : null, targetStatus, remarks || 'Manual Payment Entry']
       );
     }
 
-    await recalculateLicMetrics(policyId);
-    res.json({ success: true });
+    // 3. Recalculate metrics
+    await LicPolicyScheduleService.recalculateMetrics(policyId);
+
+    // 4. Dynamically resolve next scheduled premium pointer
+    const nextScheduledPremium = await LicPolicyScheduleService.getNextScheduledPremium(policyId);
+
+    const paidRes = await get(`SELECT COUNT(*) as count FROM lic_premium_schedule WHERE policy_id = ? AND status = 'Paid'`, [policyId]);
+    const pendingRes = await get(`SELECT COUNT(*) as count FROM lic_premium_schedule WHERE policy_id = ? AND status = 'Pending'`, [policyId]);
+
+    const paidInstallments = Number(paidRes?.count || 0);
+    const pendingInstallments = Number(pendingRes?.count || 0);
+    const totalPolicyMonths = Number(policy.policy_term || 15) * 12;
+    const isCompleted = totalPolicyMonths > 0 && paidInstallments >= totalPolicyMonths;
+
+    res.json({
+      success: true,
+      policyId,
+      paidInstallments,
+      pendingInstallments,
+      nextScheduledPremium,
+      nextInstallment: nextScheduledPremium,
+      isCompleted
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -458,11 +510,38 @@ router.post('/lic/:id/premiums', async (req: Request, res: Response) => {
 
 router.delete('/lic/premiums/:premiumId', async (req: Request, res: Response) => {
   try {
-    const p = await get(`SELECT policy_id FROM lic_premium_history WHERE id = ?`, [req.params.premiumId]);
-    await execute(`DELETE FROM lic_premium_history WHERE id = ?`, [req.params.premiumId]);
-    if (p && p.policy_id) {
-      await recalculateLicMetrics(p.policy_id);
+    const hist = await get(`SELECT policy_id, month, year FROM lic_premium_history WHERE id = ?`, [req.params.premiumId]);
+    if (hist) {
+      const policyId = hist.policy_id;
+      // Mark schedule row back to Pending
+      await execute(
+        `UPDATE lic_premium_schedule SET status = 'Pending', paid_date = NULL, payment_source = NULL WHERE policy_id = ? AND month = ? AND year = ?`,
+        [policyId, hist.month, hist.year]
+      );
+      await execute(`DELETE FROM lic_premium_history WHERE id = ?`, [req.params.premiumId]);
+      await LicPolicyScheduleService.recalculateMetrics(policyId);
+
+      const nextScheduledPremium = await LicPolicyScheduleService.getNextScheduledPremium(policyId);
+      const paidRes = await get(`SELECT COUNT(*) as count FROM lic_premium_schedule WHERE policy_id = ? AND status = 'Paid'`, [policyId]);
+      const pendingRes = await get(`SELECT COUNT(*) as count FROM lic_premium_schedule WHERE policy_id = ? AND status = 'Pending'`, [policyId]);
+
+      const policy = await get(`SELECT policy_term FROM lic_policies WHERE id = ?`, [policyId]);
+      const paidInstallments = Number(paidRes?.count || 0);
+      const pendingInstallments = Number(pendingRes?.count || 0);
+      const totalPolicyMonths = Number(policy?.policy_term || 15) * 12;
+      const isCompleted = totalPolicyMonths > 0 && paidInstallments >= totalPolicyMonths;
+
+      return res.json({
+        success: true,
+        policyId,
+        paidInstallments,
+        pendingInstallments,
+        nextScheduledPremium,
+        nextInstallment: nextScheduledPremium,
+        isCompleted
+      });
     }
+    await execute(`DELETE FROM lic_premium_history WHERE id = ?`, [req.params.premiumId]);
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

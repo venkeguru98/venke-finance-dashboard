@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { ShieldCheck, History, CheckCircle2 } from 'lucide-react';
 import { formatDisplayDate } from '../../utils/date';
+import { subscribeLicUpdates } from '../../utils/licEvents';
 
 const API = window.location.port === '5173' ? 'http://localhost:5000/api' : '/api';
 
@@ -49,6 +50,10 @@ export default function ReadOnlyLicAutomationCard({
 
   useEffect(() => {
     if (policyId) fetchLicAutomationInfo();
+    const unsubscribe = subscribeLicUpdates(() => {
+      if (policyId) fetchLicAutomationInfo();
+    });
+    return () => unsubscribe();
   }, [policyId]);
 
   if (loading) {
