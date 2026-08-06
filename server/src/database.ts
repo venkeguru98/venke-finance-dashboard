@@ -3,35 +3,69 @@ import path from 'path';
 import fs from 'fs';
 
 // Check if we are running in PostgreSQL mode
-const isPg = !!process.env.DATABASE_URL;
+let isPg = !!process.env.DATABASE_URL;
 
 let pgPool: Pool | null = null;
 let sqliteDb: any = null;
 
 const dbPath = path.resolve(__dirname, '../../database.sqlite');
 
+const ensureSqlite = () => {
+  if (!sqliteDb) {
+    try {
+      const sqlite3 = require('sqlite3').verbose();
+      sqliteDb = new sqlite3.Database(dbPath, (err: any) => {
+        if (err) {
+          console.error('[DB] Error connecting to local SQLite:', err.message);
+        } else {
+          console.log('[DB] Connected to Local SQLite database.');
+        }
+      });
+    } catch (err: any) {
+      console.error('[DB] sqlite3 module not available for fallback:', err.message);
+    }
+  }
+};
+
+const isConnectionError = (err: any): boolean => {
+  if (!err) return false;
+  const msg = (err.message || '').toLowerCase();
+  const code = (err.code || '').toLowerCase();
+  return (
+    code === 'enotfound' ||
+    code === 'econnrefused' ||
+    code === 'etimedout' ||
+    msg.includes('enotfound') ||
+    msg.includes('getaddrinfo') ||
+    msg.includes('econnrefused') ||
+    msg.includes('connect etimedout') ||
+    msg.includes('password authentication failed')
+  );
+};
+
 if (isPg) {
+  let connectionString = process.env.DATABASE_URL || '';
+  // If connectionString uses internal Render hostname (e.g. dpg-xxx-a) without domain suffix, append .singapore-postgres.render.com
+  if (/@dpg-[a-z0-9]+(?:\/|\?|$)/i.test(connectionString) && !connectionString.includes('.render.com')) {
+    connectionString = connectionString.replace(/@(dpg-[a-z0-9]+)(\/|\?|$)/i, '@$1.singapore-postgres.render.com$2');
+  }
+
   console.log('Connecting to Cloud PostgreSQL Database...');
   pgPool = new Pool({
-    connectionString: process.env.DATABASE_URL,
+    connectionString,
     ssl: process.env.DATABASE_SSL === 'false' ? false : { rejectUnauthorized: false }
   });
+
+  pgPool.on('error', (err: any) => {
+    console.error('[DB] Background PostgreSQL pool error:', err.message);
+    if (isConnectionError(err)) {
+      console.warn('[DB] Switching database mode from PostgreSQL to SQLite fallback.');
+      isPg = false;
+      ensureSqlite();
+    }
+  });
 } else {
-  // Only load sqlite3 when actually needed (prevents crash on cloud where native build fails)
-  try {
-    const sqlite3 = require('sqlite3').verbose();
-    console.log('Connecting to Local SQLite Database...');
-    sqliteDb = new sqlite3.Database(dbPath, (err: any) => {
-      if (err) {
-        console.error('Error connecting to SQLite:', err.message);
-      } else {
-        console.log('Connected to the SQLite database.');
-      }
-    });
-  } catch (err) {
-    console.error('[DB] sqlite3 module not available. Set DATABASE_URL for PostgreSQL.');
-    process.exit(1);
-  }
+  ensureSqlite();
 }
 
 // Convert SQLite '?' parameters and functions to PostgreSQL counterparts
@@ -65,35 +99,60 @@ const convertSql = (sql: string): string => {
 };
 
 export const query = async (sql: string, params: any[] = []): Promise<any[]> => {
-  const converted = convertSql(sql);
   if (isPg && pgPool) {
-    const result = await pgPool.query(converted, params);
-    return result.rows;
-  } else if (sqliteDb) {
+    try {
+      const converted = convertSql(sql);
+      const result = await pgPool.query(converted, params);
+      return result.rows;
+    } catch (err: any) {
+      if (isConnectionError(err)) {
+        console.warn(`[DB Fallback] PostgreSQL error (${err.message}). Switching to local SQLite database...`);
+        isPg = false;
+        ensureSqlite();
+        return query(sql, params);
+      }
+      throw err;
+    }
+  } else {
+    ensureSqlite();
+    const converted = convertSql(sql);
     return new Promise((resolve, reject) => {
+      if (!sqliteDb) return resolve([]);
       sqliteDb.all(converted, params, (err: any, rows: any[]) => {
         if (err) reject(err);
-        else resolve(rows);
+        else resolve(rows || []);
       });
     });
   }
-  return [];
 };
 
 export const execute = async (sql: string, params: any[] = []): Promise<any> => {
-  const converted = convertSql(sql);
   if (isPg && pgPool) {
-    // For INSERT statements, add RETURNING * to get the inserted row's ID regardless of column name
-    let pgSql = converted;
-    if (/^\s*INSERT/i.test(pgSql) && !/RETURNING/i.test(pgSql)) {
-      pgSql = pgSql.replace(/;?\s*$/, ' RETURNING *');
+    try {
+      const converted = convertSql(sql);
+      // For INSERT statements, add RETURNING * to get the inserted row's ID regardless of column name
+      let pgSql = converted;
+      if (/^\s*INSERT/i.test(pgSql) && !/RETURNING/i.test(pgSql)) {
+        pgSql = pgSql.replace(/;?\s*$/, ' RETURNING *');
+      }
+      const result = await pgPool.query(pgSql, params);
+      const row = result.rows[0];
+      const lastID = row ? (row.id ?? row.execution_id ?? Object.values(row)[0]) : null;
+      return { lastID, changes: result.rowCount };
+    } catch (err: any) {
+      if (isConnectionError(err)) {
+        console.warn(`[DB Fallback] PostgreSQL error (${err.message}). Switching to local SQLite database...`);
+        isPg = false;
+        ensureSqlite();
+        return execute(sql, params);
+      }
+      throw err;
     }
-    const result = await pgPool.query(pgSql, params);
-    const row = result.rows[0];
-    const lastID = row ? (row.id ?? row.execution_id ?? Object.values(row)[0]) : null;
-    return { lastID, changes: result.rowCount };
-  } else if (sqliteDb) {
+  } else {
+    ensureSqlite();
+    const converted = convertSql(sql);
     return new Promise((resolve, reject) => {
+      if (!sqliteDb) return resolve({ lastID: null, changes: 0 });
       sqliteDb.run(converted, params, function (this: any, err: any) {
         if (err) reject(err);
         else resolve({ lastID: this.lastID, changes: this.changes });
@@ -103,19 +162,31 @@ export const execute = async (sql: string, params: any[] = []): Promise<any> => 
 };
 
 export const get = async (sql: string, params: any[] = []): Promise<any> => {
-  const converted = convertSql(sql);
   if (isPg && pgPool) {
-    const result = await pgPool.query(converted, params);
-    return result.rows[0] || null;
-  } else if (sqliteDb) {
+    try {
+      const converted = convertSql(sql);
+      const result = await pgPool.query(converted, params);
+      return result.rows[0] || null;
+    } catch (err: any) {
+      if (isConnectionError(err)) {
+        console.warn(`[DB Fallback] PostgreSQL error (${err.message}). Switching to local SQLite database...`);
+        isPg = false;
+        ensureSqlite();
+        return get(sql, params);
+      }
+      throw err;
+    }
+  } else {
+    ensureSqlite();
+    const converted = convertSql(sql);
     return new Promise((resolve, reject) => {
+      if (!sqliteDb) return resolve(null);
       sqliteDb.get(converted, params, (err: any, row: any) => {
         if (err) reject(err);
-        else resolve(row);
+        else resolve(row || null);
       });
     });
   }
-  return null;
 };
 
 // Initialize schema (works for both SQLite & PostgreSQL)

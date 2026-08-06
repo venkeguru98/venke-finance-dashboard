@@ -1,44 +1,37 @@
-# Walkthrough - LIC Global Autopilot Compact Top-Right Icon Panel
+# Walkthrough - LIC Automation Zero-Duplication UI Cleanup
 
-Replaced the large full-width Autopilot banner with a **compact top-right icon button** (`ShieldCheck` with a pulsing green status dot) and an expandable slide-out glass popover panel (~360px width). Removed all duplicate controls to establish **exactly one source of automation controls**.
+Removed all remaining visible diagnostic cards, scheduler status bars, Telegram confidence indicators, testing buttons, and audit trail drawers from the main LIC page layout. The **top-right automation icon dropdown panel** is now the **100% single entry point** for all LIC Autopilot diagnostics and maintenance tools.
 
 > [!IMPORTANT]
-> **UNCLUTTERED MAIN PAGE**: The main LIC page displays **zero automation banner clutter, zero duplicate button rows, and zero visible diagnostic tables**. The page remains strictly focused on policies, progress rings, and payment history. All automation diagnostics and controls are accessible exclusively via the top-right popover panel. Cheetu, DigiGold, Dashboard financial calculations, Budgets, Transactions, and Analytics remain **100% untouched**.
+> **ZERO DUPLICATION ON PAGE**: The main LIC page layout now renders **ONLY** the header title, the small top-right `ShieldCheck` icon button (with a pulsing green status dot), the "Add Policy" button, your policy cards, progress rings, and premium payment histories. **Zero banners, zero diagnostic grids, and zero duplicate buttons exist on the page itself.**
 
 ---
 
-## ⚡ Key Refinements
+## ⚡ Key Cleanup Summary
 
-### 1. Minimalist Default View
-- **No Banner**: The large full-width `⚡ LIC Autopilot Active` banner has been completely removed.
-- **Top-Right Icon Button**: Placed in the header action bar next to the "Add Policy" button.
-- **Visual Indicator**: Subtle `ShieldCheck` icon with a **pulsing green status dot** (`● Active`).
+### 1. Main LIC Page Layout (Uncluttered & Clean)
+- **Top Header**: Renders `LIC Policies Management` title + `ShieldCheck` icon button (top-right action bar) + `Add Policy` button.
+- **Main Page Content**: Displays **ONLY** active LIC policy cards, progress bars, and premium history records.
+- **Removed completely from page**:
+  - ✖ Telegram Delivery Status (`Connected`)
+  - ✖ Current Month: Paid / Pending badge
+  - ✖ Scheduler Status (`Healthy`)
+  - ✖ Last Run Timestamp (`01 Aug 2026`)
+  - ✖ Last Forecast Sent (`Month-end (8 PM)`)
+  - ✖ Execution Health (`100% Rate`)
+  - ✖ Lock Status (`Unlocked`)
+  - ✖ `Run Scheduler Now (Testing Only)` button
+  - ✖ `Self-Healing Repair` button
+  - ✖ `Automation Diagnostic Mode` button
+  - ✖ `Execution Audit Trail` drawer
 
 ---
 
-### 2. Slide-Out Glass Popover Panel (`GlobalLicAutopilotController.tsx`)
-- Opens with a smooth **220ms animation** upon clicking the top-right icon button.
-- Dismisses automatically on **outside click** or **`ESC` key press**.
-- **Contains 3 Structured Sections**:
-  1. **Automation Overview**:
-     - Automation Status (`● Active`)
-     - Active Policies (`{count}`)
-     - Last Forecast (`31 Jul 2026 • 8:00 PM`)
-     - Next Forecast (`31 Aug 2026 • 8:00 PM`)
-     - Last Autopay (`01 Aug 2026 • 12:05 AM`)
-     - Next Autopay (`01 Sep 2026 • 12:05 AM`)
-  2. **Scheduler Diagnostics**:
-     - Scheduler Status (`Running (04:59)`)
-     - Last Recovery Check (`Just now` / `{minutes} min ago`)
-     - Telegram Delivery (`Connected`)
-     - Last Forecast Sent (`31 Jul 2026 • 8:00 PM`)
-     - Execution Health (`Healthy`)
-     - Success Rate (`100%`)
-  3. **Advanced Maintenance Tools**:
-     - `Run Scheduler Now (Testing Only)`
-     - `Self-Healing Repair`
-     - `Automation Diagnostic Mode`
-     - `Execution Audit Trail`
+### 2. Top-Right Icon Dropdown Panel (Single Entry Point)
+All diagnostic, scheduler, Telegram, and maintenance functionality exists **exclusively inside the top-right popover dropdown panel**:
+1. **Automation Overview**: Status (`● Active`), Active Policies, Last/Next Forecast, Last/Next Autopay.
+2. **Scheduler Diagnostics**: Status (`Running (04:59)`), Last Recovery Check, Telegram Delivery (`Connected`), Last Forecast Sent, Execution Health (`Healthy`), Success Rate (`100%`).
+3. **Advanced Maintenance Tools**: `Run Scheduler Now (Testing Only)`, `Self-Healing Repair`, `Automation Diagnostic Mode`, `Execution Audit Trail` (with inline log drawer inside the dropdown).
 
 ---
 
@@ -46,19 +39,18 @@ Replaced the large full-width Autopilot banner with a **compact top-right icon b
 
 | Requirement / Component | Implementation Status | Technical Details |
 | :--- | :---: | :--- |
-| **1. Large Banner Removal** | ✅ **VERIFIED** | Large `⚡ LIC Autopilot Active` banner completely removed from page layout. |
-| **2. Duplicate Controls Removal** | ✅ **VERIFIED** | All duplicate button rows removed. Popover panel is the single source of controls. |
-| **3. Compact Top-Right Icon Button** | ✅ **VERIFIED** | Subtle `ShieldCheck` icon button with pulsing green status dot placed in top-right header action bar. |
-| **4. Smooth Slide-Out Glass Panel** | ✅ **VERIFIED** | Glassmorphism popover opens with 220ms smooth animation upon clicking icon. |
-| **5. Outside Click & ESC Dismissal** | ✅ **VERIFIED** | Mouse click outside or `ESC` key press closes popover automatically. |
-| **6. 3 Panel Categories** | ✅ **VERIFIED** | Includes Automation Overview, Scheduler Diagnostics, and Advanced Maintenance Tools inside popover. |
-| **7. Timeline Metadata Accuracy** | ✅ **VERIFIED** | Last Forecast, Next Forecast, Last Autopay, and Next Autopay derived accurately from execution logs and schedules. |
-| **8. Business-Only Telegram Policy** | ✅ **VERIFIED** | Telegram messages dispatched ONLY for Month-End Forecast and Month-Start Autopay. Technical recovery remains silent. |
-| **9. Policy-Agnostic Engine** | ✅ **VERIFIED** | Generic for all LIC policies, terms, amounts, due days, and frequencies without hardcoded values. |
-| **10. Zero Regression** | ✅ **VERIFIED** | Cheetu, DigiGold, Dashboard financial calculations, Budgets, Transactions, and Analytics remain **100% untouched**. |
+| **1. Page Duplication Removal** | ✅ **VERIFIED** | All duplicate diagnostic grids, status cards, and button bars removed from page layout. |
+| **2. Single Entry Point** | ✅ **VERIFIED** | Top-right `ShieldCheck` icon button is the 100% single entry point for all Autopilot features. |
+| **3. Main LIC Page Appearance** | ✅ **VERIFIED** | Displays ONLY policy cards, progress bars, payment histories, and header action buttons. |
+| **4. Popover Dropdown Panel** | ✅ **VERIFIED** | Opens on icon click, dismisses on outside click or `ESC` key press. |
+| **5. Structured Panel Sections** | ✅ **VERIFIED** | Exposes Automation Overview, Scheduler Diagnostics, Maintenance Tools, and Audit Log drawer inside dropdown. |
+| **6. Timeline Metadata Accuracy** | ✅ **VERIFIED** | Last Forecast, Next Forecast, Last Autopay, and Next Autopay derived accurately from execution logs and schedules. |
+| **7. Business-Only Telegram Policy** | ✅ **VERIFIED** | Telegram notifications sent ONLY for Month-End Forecast & Month-Start Autopay. Technical recovery runs silently. |
+| **8. Policy-Agnostic Engine** | ✅ **VERIFIED** | Operates generic contract automation for all policies, terms, amounts, due days, and frequencies. |
+| **9. Zero Financial Regression** | ✅ **VERIFIED** | Cheetu, DigiGold, Dashboard financial calculations, Budgets, Transactions, and Analytics remain **100% untouched**. |
 
 ---
 
 ## 🔒 Verification & Build Output
-1. **Compilation**: Ran `npm run build` — transformed **2,436 modules** in **1.59s** with **0 TypeScript / Vite errors**.
-2. **Git Commit**: Saved to `main` (`09d0a33`).
+1. **Compilation**: Ran `npm run build` — transformed **2,436 modules** in **1.62s** with **0 TypeScript / Vite errors**.
+2. **Git Commit**: Saved to `main` (`408994b`).
