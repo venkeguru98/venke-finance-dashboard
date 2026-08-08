@@ -1204,21 +1204,42 @@ router.get('/system/status', async (req, res) => {
     }
     const files = fs.existsSync(backupsDir) ? fs.readdirSync(backupsDir) : [];
     let lastBackup = 'Never';
+    let lastBackupFilename = '';
     if (files.length > 0) {
       const sorted = files
         .map(f => ({ name: f, time: fs.statSync(path.join(backupsDir, f)).mtime }))
         .sort((a, b) => b.time.getTime() - a.time.getTime());
       lastBackup = sorted[0].time.toLocaleString('en-IN');
+      lastBackupFilename = sorted[0].name;
     }
+
+    // Get total records across primary tables
+    let totalRecords = 0;
+    try {
+      const txCount = await get('SELECT COUNT(*) as count FROM transactions');
+      const catCount = await get('SELECT COUNT(*) as count FROM categories');
+      const licCount = await get('SELECT COUNT(*) as count FROM lic_policies');
+      totalRecords = Number(txCount?.count || 0) + Number(catCount?.count || 0) + Number(licCount?.count || 0);
+    } catch (_) {}
+
+    const isNeonPg = !!process.env.DATABASE_URL;
+
     res.json({
       appVersion: '3.0.0',
       serverStatus: 'Running',
       databaseStatus: 'Connected',
+      databaseEngine: isNeonPg ? 'Neon PostgreSQL (Cloud DB)' : 'SQLite (Local DB)',
       databaseSize: dbSize,
       cloudStorage: CLOUDINARY_ENABLED ? 'Cloudinary' : 'Local Disk',
       localIp: getLocalIpAddress(),
       serverPort: process.env.PORT || 5000,
       lastBackupDate: lastBackup,
+      lastBackupFilename,
+      localBackupPath: backupsDir,
+      localBackupCount: files.length,
+      autoBackupInterval: 'Every 6 Hours & On Server Startup',
+      totalRecords,
+      isNeonPg
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -1227,12 +1248,47 @@ router.get('/system/status', async (req, res) => {
 
 router.post('/system/backup', async (_req, res) => {
   try {
-    const dbFilePath = path.resolve(__dirname, '../../../database.sqlite');
-    if (!fs.existsSync(dbFilePath)) return res.status(400).json({ error: 'SQLite database not found. (Cloud DB does not support local backup.)' });
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const backupPath = path.join(backupsDir, `database-backup-${timestamp}.sqlite`);
-    fs.copyFileSync(dbFilePath, backupPath);
-    res.json({ success: true, filename: `database-backup-${timestamp}.sqlite` });
+    const backupJsonFilename = `backup-snapshot-${timestamp}.json`;
+    const backupJsonPath = path.join(backupsDir, backupJsonFilename);
+
+    // Query all tables and dump to JSON
+    const tables = [
+      'users', 'categories', 'recurring_rules', 'transactions', 
+      'savings_investments', 'budgets', 'goals', 'notifications', 
+      'debts_loans', 'debts', 'deposits', 'chit_funds', 'lic_policies', 
+      'chit_payments', 'digital_gold', 'digital_gold_transactions', 'mutual_funds', 'mutual_fund_transactions'
+    ];
+
+    const backupData: any = {};
+    let totalCount = 0;
+    for (const table of tables) {
+      try {
+        const rows = await query(`SELECT * FROM ${table}`);
+        backupData[table] = rows || [];
+        totalCount += (rows || []).length;
+      } catch (_) {}
+    }
+
+    const payload = {
+      metadata: {
+        timestamp: new Date().toISOString(),
+        totalRecords: totalCount,
+        tablesCount: Object.keys(backupData).length
+      },
+      data: backupData
+    };
+
+    fs.writeFileSync(backupJsonPath, JSON.stringify(payload, null, 2), 'utf-8');
+
+    // Also backup SQLite file if exists
+    const dbFilePath = path.resolve(__dirname, '../../../database.sqlite');
+    if (fs.existsSync(dbFilePath)) {
+      const backupSqlitePath = path.join(backupsDir, `database-backup-${timestamp}.sqlite`);
+      fs.copyFileSync(dbFilePath, backupSqlitePath);
+    }
+
+    res.json({ success: true, filename: backupJsonFilename, totalRecords: totalCount });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -1250,6 +1306,15 @@ router.get('/system/backups', async (_req, res) => {
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
+});
+
+router.get('/system/backups/download/:filename', (req, res) => {
+  const safeFilename = path.basename(req.params.filename);
+  const filePath = path.join(backupsDir, safeFilename);
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: 'Backup file not found.' });
+  }
+  res.download(filePath, safeFilename);
 });
 
 router.post('/system/restore', async (req, res) => {

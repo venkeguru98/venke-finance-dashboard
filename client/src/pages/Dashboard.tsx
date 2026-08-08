@@ -386,13 +386,18 @@ export default function Dashboard() {
       setRules(rulesRes.data || []);
       setLastUpdated(new Date().toLocaleTimeString());
 
-      // Auto-set selected month if not stored in localStorage and transactions exist
-      if (!localStorage.getItem('dashboard_selected_month') && txRes.data && txRes.data.length > 0) {
+      // Auto-set selected month to latest month with transactions if current month has no transactions
+      if (txRes.data && txRes.data.length > 0) {
         const sorted = [...txRes.data].sort((a, b) => b.date.localeCompare(a.date));
         const latestDateStr = sorted[0].date;
-        const parsed = new Date(latestDateStr.slice(0, 7) + '-02');
-        if (!isNaN(parsed.getTime())) {
-          setNow(parsed);
+        const latestPrefix = latestDateStr.slice(0, 7);
+        const currPrefix = formatLocalYYYYMM(now);
+        const currMonthTx = txRes.data.filter((t: any) => t.date.startsWith(currPrefix));
+        if (currMonthTx.length === 0) {
+          const parsed = new Date(latestPrefix + '-02');
+          if (!isNaN(parsed.getTime())) {
+            setNow(parsed);
+          }
         }
       }
     } catch (e: any) {
