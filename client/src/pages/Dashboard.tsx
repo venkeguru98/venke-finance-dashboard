@@ -204,6 +204,7 @@ export default function Dashboard() {
   const [kpiMaxAmount, setKpiMaxAmount] = useState('');
   const [kpiDateStart, setKpiDateStart] = useState('');
   const [kpiDateEnd, setKpiDateEnd] = useState('');
+  const [activeSeries, setActiveSeries] = useState<string | null>(null);
 
   // Drawer resets & defaults
   useEffect(() => {
@@ -1579,19 +1580,43 @@ export default function Dashboard() {
 
       {/* TREND CHART & SPENDING HEATMAP SPLIT */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Line Chart */}
+        {/* Section 1: Cash Flow Trends Animation */}
         {widgets.cashFlow && (
           <div className="lg:col-span-2 bg-white dark:bg-slate-950 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
-            <div className="flex justify-between items-center mb-6">
+            <style>{`
+              @keyframes pulseGradient {
+                0%, 100% { stop-opacity: 0.35; }
+                50% { stop-opacity: 0.15; }
+              }
+              .animate-pulse-grad-inc { animation: pulseGradient 7s ease-in-out infinite; }
+              .animate-pulse-grad-exp { animation: pulseGradient 7.5s ease-in-out infinite; }
+              .animate-pulse-grad-sav { animation: pulseGradient 8s ease-in-out infinite; }
+              .animate-pulse-grad-net { animation: pulseGradient 6.5s ease-in-out infinite; }
+            `}</style>
+            <div className="flex justify-between items-center mb-6 flex-wrap gap-2">
               <div>
                 <h3 className="text-base font-bold text-slate-900 dark:text-white">Cash Flow Trends</h3>
                 <p className="text-xs text-slate-500 mt-0.5 font-medium">Income Received, Living Expenses, Savings Commitments, and Net Monthly Savings</p>
               </div>
+              {/* Interactive Series Legend Filter */}
               <div className="flex items-center flex-wrap gap-x-3 gap-y-1 text-[10px] font-bold">
-                <span className="flex items-center text-emerald-400"><span className="w-2 h-2 rounded-full bg-emerald-500 mr-1"></span> Income Received</span>
-                <span className="flex items-center text-rose-400"><span className="w-2 h-2 rounded-full bg-rose-500 mr-1"></span> Living Expenses</span>
-                <span className="flex items-center text-purple-400"><span className="w-2 h-2 rounded-full bg-purple-500 mr-1"></span> Savings Commitments</span>
-                <span className="flex items-center text-blue-400"><span className="w-2 h-2 rounded-full bg-blue-500 mr-1"></span> Net Monthly Savings</span>
+                {[
+                  { key: 'incomeReceived', label: 'Income Received', color: 'bg-emerald-500', text: 'text-emerald-400' },
+                  { key: 'livingExpenses', label: 'Living Expenses', color: 'bg-rose-500', text: 'text-rose-400' },
+                  { key: 'savingsCommitments', label: 'Savings Commitments', color: 'bg-purple-500', text: 'text-purple-400' },
+                  { key: 'netMonthlySavings', label: 'Net Monthly Savings', color: 'bg-blue-500', text: 'text-blue-400' },
+                ].map(item => (
+                  <button
+                    key={item.key}
+                    onClick={() => setActiveSeries(activeSeries === item.key ? null : item.key)}
+                    className={`flex items-center ${item.text} cursor-pointer hover:opacity-100 transition-all ${
+                      activeSeries && activeSeries !== item.key ? 'opacity-30' : 'opacity-100'
+                    }`}
+                  >
+                    <span className={`w-2 h-2 rounded-full ${item.color} mr-1.5`}></span>
+                    {item.label}
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -1611,19 +1636,19 @@ export default function Dashboard() {
                   >
                     <defs>
                       <linearGradient id="colorInc" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#10B981" stopOpacity={0.25}/>
+                        <stop offset="5%" stopColor="#10B981" className="animate-pulse-grad-inc" stopOpacity={0.35}/>
                         <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
                       </linearGradient>
                       <linearGradient id="colorExp" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#F43F5E" stopOpacity={0.25}/>
+                        <stop offset="5%" stopColor="#F43F5E" className="animate-pulse-grad-exp" stopOpacity={0.35}/>
                         <stop offset="95%" stopColor="#F43F5E" stopOpacity={0}/>
                       </linearGradient>
                       <linearGradient id="colorSavCommit" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#A855F7" stopOpacity={0.2}/>
+                        <stop offset="5%" stopColor="#A855F7" className="animate-pulse-grad-sav" stopOpacity={0.3}/>
                         <stop offset="95%" stopColor="#A855F7" stopOpacity={0}/>
                       </linearGradient>
                       <linearGradient id="colorSav" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.25}/>
+                        <stop offset="5%" stopColor="#3B82F6" className="animate-pulse-grad-net" stopOpacity={0.35}/>
                         <stop offset="95%" stopColor="#3B82F6" stopOpacity={0}/>
                       </linearGradient>
                     </defs>
@@ -1631,10 +1656,58 @@ export default function Dashboard() {
                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 11}}/>
                     <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 11}} tickFormatter={v => `₹${(v/1000).toFixed(0)}k`}/>
                     <Tooltip content={<StandardChartTooltip />} />
-                    <Area type="monotone" dataKey="incomeReceived" name="Income Received" stroke="#10B981" strokeWidth={2.5} fillOpacity={1} fill="url(#colorInc)"/>
-                    <Area type="monotone" dataKey="livingExpenses" name="Living Expenses" stroke="#F43F5E" strokeWidth={2.5} fillOpacity={1} fill="url(#colorExp)"/>
-                    <Area type="monotone" dataKey="savingsCommitments" name="Savings Commitments" stroke="#A855F7" strokeWidth={2.0} fillOpacity={1} fill="url(#colorSavCommit)"/>
-                    <Area type="monotone" dataKey="netMonthlySavings" name="Net Monthly Savings" stroke="#3B82F6" strokeWidth={2.5} fillOpacity={1} fill="url(#colorSav)"/>
+                    <Area
+                      type="monotone"
+                      dataKey="incomeReceived"
+                      name="Income Received"
+                      stroke="#10B981"
+                      strokeWidth={activeSeries === 'incomeReceived' ? 3.5 : 2.5}
+                      strokeOpacity={activeSeries && activeSeries !== 'incomeReceived' ? 0.2 : 1}
+                      fillOpacity={activeSeries && activeSeries !== 'incomeReceived' ? 0.05 : 1}
+                      fill="url(#colorInc)"
+                      isAnimationActive={true}
+                      animationDuration={1100}
+                      animationEasing="ease-out"
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="livingExpenses"
+                      name="Living Expenses"
+                      stroke="#F43F5E"
+                      strokeWidth={activeSeries === 'livingExpenses' ? 3.5 : 2.5}
+                      strokeOpacity={activeSeries && activeSeries !== 'livingExpenses' ? 0.2 : 1}
+                      fillOpacity={activeSeries && activeSeries !== 'livingExpenses' ? 0.05 : 1}
+                      fill="url(#colorExp)"
+                      isAnimationActive={true}
+                      animationDuration={1100}
+                      animationEasing="ease-out"
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="savingsCommitments"
+                      name="Savings Commitments"
+                      stroke="#A855F7"
+                      strokeWidth={activeSeries === 'savingsCommitments' ? 3.5 : 2.0}
+                      strokeOpacity={activeSeries && activeSeries !== 'savingsCommitments' ? 0.2 : 1}
+                      fillOpacity={activeSeries && activeSeries !== 'savingsCommitments' ? 0.05 : 1}
+                      fill="url(#colorSavCommit)"
+                      isAnimationActive={true}
+                      animationDuration={1100}
+                      animationEasing="ease-out"
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="netMonthlySavings"
+                      name="Net Monthly Savings"
+                      stroke="#3B82F6"
+                      strokeWidth={activeSeries === 'netMonthlySavings' ? 3.5 : 2.5}
+                      strokeOpacity={activeSeries && activeSeries !== 'netMonthlySavings' ? 0.2 : 1}
+                      fillOpacity={activeSeries && activeSeries !== 'netMonthlySavings' ? 0.05 : 1}
+                      fill="url(#colorSav)"
+                      isAnimationActive={true}
+                      animationDuration={1100}
+                      animationEasing="ease-out"
+                    />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
@@ -1642,14 +1715,19 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Net Balance Trend Widget */}
+        {/* Section 2: Net Balance Trend Animation */}
         {widgets.heatmapWidget && (
           <div className="bg-[#0B1228]/80 backdrop-blur-xl p-6 rounded-2xl border border-[#1E2A4A]/50 shadow-2xl flex flex-col justify-between h-[285px]">
-            <div className="mb-2">
-              <h3 className="text-base font-bold text-white flex items-center">
-                <TrendingUp className="w-5 h-5 text-purple-400 mr-2" /> Net Balance Trend
-              </h3>
-              <p className="text-xs text-slate-400 mt-0.5 font-medium">Monthly evolution of your available net balance</p>
+            <div className="mb-2 flex justify-between items-start">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center">
+                  <TrendingUp className="w-5 h-5 text-purple-400 mr-2" /> Net Balance Trend
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5 font-medium">Monthly evolution of your available net balance</p>
+              </div>
+              <span className="text-xs font-black text-purple-300 bg-purple-500/15 border border-purple-500/30 px-2.5 py-1 rounded-xl font-mono">
+                <AnimatedNumber value={availableBalance} />
+              </span>
             </div>
 
             {!hasData ? (
@@ -1665,8 +1743,8 @@ export default function Dashboard() {
                   <AreaChart data={cashFlowChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                     <defs>
                       <linearGradient id="colorNet" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#8B5CF6" stopOpacity={0.3}/>
-                        <stop offset="95%" stopColor="#8B5CF6" stopOpacity={0}/>
+                        <stop offset="5%" stopColor="#8B5CF6" stopOpacity={0.4}/>
+                        <stop offset="95%" stopColor="#8B5CF6" stopOpacity={0.01}/>
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.15} vertical={false} />
@@ -1693,23 +1771,25 @@ export default function Dashboard() {
                       dataKey="availableBalance" 
                       name="Net Balance"
                       stroke="#8B5CF6" 
-                      strokeWidth={2.5} 
+                      strokeWidth={2.8} 
                       fillOpacity={1}
                       fill="url(#colorNet)"
-                      dot={({ payload, cx, cy }) => {
-                        const isSelected = payload.monthPrefix === formatLocalYYYYMM(now);
-                        if (isSelected) {
+                      isAnimationActive={true}
+                      animationDuration={1100}
+                      animationEasing="ease-in-out"
+                      dot={({ payload, cx, cy, index }) => {
+                        const isLatest = index === cashFlowChartData.length - 1;
+                        if (isLatest) {
                           return (
                             <g key={payload.monthPrefix}>
-                              <circle cx={cx} cy={cy} r={7} fill="#8B5CF6" opacity={0.3} />
-                              <circle cx={cx} cy={cy} r={4} fill="#8B5CF6" stroke="#fff" strokeWidth={1.5} />
+                              <circle cx={cx} cy={cy} r={10} fill="#8B5CF6" opacity={0.35} className="animate-ping" />
+                              <circle cx={cx} cy={cy} r={6} fill="#8B5CF6" stroke="#fff" strokeWidth={2} />
                             </g>
                           );
                         }
-                        return <circle key={payload.monthPrefix} cx={cx} cy={cy} r={3} fill="#8B5CF6" stroke="#fff" strokeWidth={1} />;
+                        return <circle key={payload.monthPrefix} cx={cx} cy={cy} r={3.5} fill="#8B5CF6" stroke="#fff" strokeWidth={1} />;
                       }}
-                      activeDot={{ r: 6, stroke: '#8B5CF6', strokeWidth: 2, fill: '#fff' }}
-                      animationDuration={1000} 
+                      activeDot={{ r: 7, stroke: '#8B5CF6', strokeWidth: 2, fill: '#fff' }}
                     />
                   </AreaChart>
                 </ResponsiveContainer>
@@ -1764,13 +1844,15 @@ export default function Dashboard() {
                 );
               }
 
-              // Urgency Sorting Order:
-              // 1. Overspent (>100%)
-              // 2. Near Limit (95-99%)
-              // 3. Near Limit (80-94%)
-              // 4. Fixed Commitments Pending
-              // 5. Remaining Budget
-              // 6. Completed / On Track
+              // Summary Strip metrics
+              const nearLimitCount = monthBudgets.filter(b => {
+                const eff = b.effectiveLimit || b.limit_amount;
+                const pct = eff > 0 ? (b.spent / eff) * 100 : 0;
+                return pct >= 80;
+              }).length;
+              const onTrackCount = monthBudgets.length - nearLimitCount;
+
+              // Urgency Sorting Order
               const sortedWatchlist = [...monthBudgets].sort((a, b) => {
                 const effA = a.effectiveLimit || a.limit_amount;
                 const effB = b.effectiveLimit || b.limit_amount;
@@ -1783,66 +1865,107 @@ export default function Dashboard() {
                   if (pct >= 80) return 3;  // Near Limit (80-94%)
                   const matchCat = categories.find(c => c.id === budget.category_id);
                   const grp = matchCat ? getCategoryGroup(matchCat) : 'Expenses';
-                  if (isFixedCommitment(budget.category_name, grp) && budget.spent < eff) return 4; // Fixed commitment pending
-                  if (budget.spent > 0 && budget.spent < eff) return 5; // Remaining Budget
-                  return 6; // Completed / Not started
+                  if (isFixedCommitment(budget.category_name, grp) && budget.spent < eff) return 4;
+                  if (budget.spent > 0 && budget.spent < eff) return 5;
+                  return 6;
                 };
 
                 return getUrgencyScore(a, pctA, effA) - getUrgencyScore(b, pctB, effB);
               }).slice(0, 5);
 
               return (
-                <div className="space-y-3 py-2">
+                <div className="space-y-3 py-1">
+                  {/* Summary Strip */}
+                  <div className="flex items-center justify-between text-[11px] font-bold px-3.5 py-2 bg-slate-50/90 dark:bg-slate-900/60 rounded-xl border border-slate-200/60 dark:border-slate-800/80">
+                    <span className="text-slate-600 dark:text-slate-400 font-extrabold flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-primary animate-pulse" /> Budget Health
+                    </span>
+                    <div className="flex items-center space-x-3 text-[10px]">
+                      <span className="text-slate-500 font-semibold">{monthBudgets.length} Tracked</span>
+                      <span className="text-amber-500 font-bold">{nearLimitCount} Near Limit / Over</span>
+                      <span className="text-emerald-500 font-bold">{onTrackCount} On Track</span>
+                    </div>
+                  </div>
+
+                  {/* Horizontal Analytics Rows */}
                   {sortedWatchlist.map(b => {
                     const effLimit = b.effectiveLimit || b.limit_amount;
                     const pct = effLimit > 0 ? (b.spent / effLimit) * 100 : 0;
                     const remaining = effLimit - b.spent;
 
-                    let badgeColor = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
-                    let badgeText = 'Completed ✓';
-                    let barColor = 'bg-emerald-500';
+                    let barColor = 'bg-blue-500';
+                    let chipColor = 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20';
+                    let chipText = 'On Track ✓';
 
-                    if (b.spent === 0) {
-                      badgeColor = 'bg-slate-800 text-slate-400 border-slate-700';
-                      badgeText = 'Not Started';
-                      barColor = 'bg-slate-700';
-                    } else if (b.spent > effLimit) {
-                      badgeColor = 'bg-rose-500/10 text-rose-400 border-rose-500/20';
-                      badgeText = `Overspent by ₹${(b.spent - effLimit).toLocaleString('en-IN')}`;
-                      barColor = 'bg-rose-500';
+                    if (b.spent > effLimit) {
+                      barColor = 'bg-rose-600 shadow-[0_0_10px_rgba(225,29,72,0.6)] animate-pulse';
+                      chipColor = 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30';
+                      chipText = 'Over Budget 💥';
                     } else if (pct >= 95) {
-                      badgeColor = 'bg-rose-500/10 text-rose-400 border-rose-500/20';
-                      badgeText = `Near Limit (₹${remaining.toLocaleString('en-IN')} remaining)`;
-                      barColor = 'bg-rose-500';
+                      barColor = 'bg-red-500';
+                      chipColor = 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20';
+                      chipText = 'Near Limit 🚨';
                     } else if (pct >= 80) {
-                      badgeColor = 'bg-amber-500/10 text-amber-400 border-amber-500/20';
-                      badgeText = `Near Limit (₹${remaining.toLocaleString('en-IN')} remaining)`;
+                      barColor = 'bg-orange-500';
+                      chipColor = 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20';
+                      chipText = 'Near Limit ⚠️';
+                    } else if (pct >= 60) {
                       barColor = 'bg-amber-500';
-                    } else {
-                      badgeColor = 'bg-blue-500/10 text-blue-400 border-blue-500/20';
-                      badgeText = `Remaining Budget: ₹${remaining.toLocaleString('en-IN')}`;
-                      barColor = 'bg-blue-500';
+                      chipColor = 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20';
+                      chipText = 'Caution ⚡';
                     }
 
                     return (
                       <div
                         key={b.id}
                         onClick={() => navigate('/budgets', { state: { month: selectedMonthNum, year: selectedYearNum } })}
-                        className="p-3 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-xl space-y-1.5 hover:border-primary/40 cursor-pointer transition"
+                        className="group relative p-3.5 bg-slate-50/80 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800/80 rounded-[16px] transition-all duration-180 hover:-translate-y-0.5 hover:shadow-md hover:border-primary/40 cursor-pointer space-y-2"
+                        title={`Remaining: ₹${remaining > 0 ? remaining.toLocaleString('en-IN') : 0}`}
                       >
-                        <div className="flex justify-between items-center text-xs font-semibold">
-                          <span className="text-slate-900 dark:text-white font-extrabold">{b.category_name}</span>
-                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${badgeColor}`}>
-                            {badgeText}
-                          </span>
+                        <div className="flex items-center justify-between gap-3">
+                          {/* Left: Category Icon & Name */}
+                          <div className="flex items-center space-x-2.5 min-w-[130px] shrink-0">
+                            <span className="text-lg p-1.5 bg-white dark:bg-slate-950 rounded-xl border border-slate-200/60 dark:border-slate-800/60 shadow-sm shrink-0">
+                              {getCategoryIcon(b.category_name)}
+                            </span>
+                            <span className="text-xs font-black text-slate-900 dark:text-white truncate max-w-[110px]">
+                              {b.category_name}
+                            </span>
+                          </div>
+
+                          {/* Center: Horizontal Progress Bar & % */}
+                          <div className="flex-1 hidden sm:flex items-center space-x-2.5">
+                            <div className="flex-1 h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all duration-800 ease-out ${barColor}`}
+                                style={{ width: `${Math.min(pct, 100)}%` }}
+                              />
+                            </div>
+                            <span className="text-[10px] font-extrabold text-slate-500 font-mono shrink-0 min-w-[36px] text-right">
+                              {pct.toFixed(1)}%
+                            </span>
+                          </div>
+
+                          {/* Right: Amounts & Compact Chip Badge */}
+                          <div className="flex items-center space-x-3 shrink-0">
+                            <div className="text-right leading-tight">
+                              <span className="text-xs font-extrabold text-slate-900 dark:text-white font-mono block">
+                                ₹{b.spent.toLocaleString('en-IN')} <span className="text-[10px] text-slate-400 font-semibold">/ ₹{effLimit.toLocaleString('en-IN')}</span>
+                              </span>
+                              <span className="text-[9px] text-slate-400 font-medium sm:hidden block">
+                                {pct.toFixed(1)}% used
+                              </span>
+                            </div>
+                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border shrink-0 ${chipColor}`}>
+                              {chipText}
+                            </span>
+                          </div>
                         </div>
-                        <div className="flex justify-between items-center text-[10px] text-slate-400 font-mono">
-                          <span>{pct.toFixed(0)}% used</span>
-                          <span>₹{b.spent.toLocaleString('en-IN')} of ₹{effLimit.toLocaleString('en-IN')}</span>
-                        </div>
-                        <div className="h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+
+                        {/* Mobile progress bar view */}
+                        <div className="sm:hidden h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden mt-1">
                           <div
-                            className={`h-full rounded-full transition-all duration-300 ${barColor}`}
+                            className={`h-full rounded-full transition-all duration-800 ease-out ${barColor}`}
                             style={{ width: `${Math.min(pct, 100)}%` }}
                           />
                         </div>
