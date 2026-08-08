@@ -1182,29 +1182,34 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-4.5 animate-in fade-in duration-300">
-      {/* Personalized Greeting Header */}
-      <div className="flex justify-between items-center flex-wrap gap-3 animate-banner-shimmer bg-gradient-to-r from-primary/10 via-purple-500/15 to-indigo-500/10 py-3.5 px-5 rounded-2xl border border-primary/15 relative overflow-hidden transition-all duration-300">
-        <div className="space-y-0.5 max-w-[72%]">
-          <h1 className="text-xl font-extrabold text-slate-900 dark:text-white tracking-tight flex items-center gap-2 flex-wrap">
+      {/* Flagship Hero Greeting Header with Glass Depth System */}
+      <div className="flex justify-between items-center flex-wrap gap-3 py-4 px-6 rounded-3xl bg-gradient-to-r from-[#8B5CF6]/15 via-[#4F7CFF]/15 to-[#A855F7]/15 border border-[#8B5CF6]/30 shadow-[0_12px_40px_rgba(0,0,0,0.45),0_0_0_1px_rgba(255,255,255,0.08)] backdrop-blur-2xl relative overflow-hidden transition-all duration-300 group">
+        
+        {/* Soft Ambient Light Sweep */}
+        <div className="absolute -top-24 -left-24 w-60 h-60 rounded-full bg-[#8B5CF6]/20 blur-3xl pointer-events-none group-hover:scale-125 transition-transform duration-700" />
+        <div className="absolute -bottom-24 -right-24 w-60 h-60 rounded-full bg-[#4F7CFF]/20 blur-3xl pointer-events-none group-hover:scale-125 transition-transform duration-700" />
+
+        <div className="space-y-1 max-w-[72%] relative z-10">
+          <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2 flex-wrap">
             {getGreeting()}
-            <span className="text-[10px] font-black text-primary bg-primary/15 px-2 py-0.5 rounded-lg border border-primary/20 uppercase tracking-wider">{currentMonthLabel}</span>
+            <span className="text-[10px] font-black text-[#8B5CF6] bg-[#8B5CF6]/15 px-2.5 py-0.5 rounded-lg border border-[#8B5CF6]/30 uppercase tracking-widest">{currentMonthLabel}</span>
           </h1>
-          <p className="text-[11px] font-bold text-slate-600 dark:text-slate-300">
+          <p className="text-xs font-bold text-slate-300">
             {totalsData.current.balance >= 0 
               ? `You saved ₹${totalsData.current.balance.toLocaleString('en-IN')} this month. Keep it up! 🚀`
               : `You spent ₹${Math.abs(totalsData.current.balance).toLocaleString('en-IN')} over your income this month. Keep an eye on budgets! ⚠️`}
           </p>
-          <div className="text-[9px] text-slate-400 mt-1 font-medium flex items-center">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-500 mr-1.5 animate-status-breath" />
+          <div className="text-[10px] text-slate-400 font-semibold flex items-center pt-0.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.8)] mr-2 animate-pulse" />
             Last Updated: {lastUpdated}
           </div>
         </div>
 
-        <div className="flex items-center space-x-2 self-center flex-wrap gap-y-2">
-          {/* Rotating AI Projections Ticker Capsule */}
+        <div className="flex items-center space-x-2.5 self-center flex-wrap gap-y-2 relative z-10">
+          {/* Editorial AI Projections Ticker Capsule */}
           {aiInsightsList.length > 0 && (
-            <div className="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-indigo-500/10 dark:bg-indigo-500/15 border border-indigo-500/20 text-indigo-800 dark:text-indigo-200 text-xs font-bold shadow-sm backdrop-blur-md min-h-[34px] max-w-full sm:max-w-md overflow-hidden">
-              <Sparkles className="w-3.5 h-3.5 text-indigo-500 shrink-0 animate-pulse" />
+            <div className="flex items-center space-x-2 px-3.5 py-2 rounded-2xl bg-[#081226]/90 border border-[#8B5CF6]/30 text-slate-200 text-xs font-bold shadow-lg backdrop-blur-2xl min-h-[38px] max-w-full sm:max-w-md overflow-hidden">
+              <Sparkles className="w-4 h-4 text-[#8B5CF6] shrink-0 animate-pulse" />
               <div className="overflow-hidden relative w-full">
                 <div
                   className={`transition-all duration-300 transform ${
@@ -1219,18 +1224,18 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* Enhancement 1: Transaction Activity Badge */}
+          {/* Transaction Activity Glass Button */}
           <button
             onClick={() => navigate('/transactions')}
-            className="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-white/80 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800 hover:border-primary/50 transition-all duration-150 hover:-translate-y-0.5 active:scale-[0.97] group cursor-pointer backdrop-blur-md shadow-sm"
+            className="flex items-center space-x-2 px-3.5 py-2 rounded-2xl bg-[#0D1830]/80 border border-[#1E2A44] hover:border-[#8B5CF6]/60 transition-all duration-200 hover:-translate-y-1 active:scale-95 group cursor-pointer backdrop-blur-xl shadow-md"
             title={`View ${transactions.filter(t => t.date.startsWith(formatLocalYYYYMM(now))).length} transactions for ${currentMonthLabel}`}
           >
-            <div className="p-1 rounded-lg bg-primary/10 text-primary group-hover:bg-primary group-hover:text-white transition-colors">
+            <div className="p-1.5 rounded-xl bg-[#8B5CF6]/15 text-[#8B5CF6] group-hover:bg-[#8B5CF6] group-hover:text-white transition-colors">
               <ArrowRightLeft className="w-3.5 h-3.5" />
             </div>
             <div className="text-left leading-tight">
               <div className="flex items-center space-x-1">
-                <span className="font-extrabold text-xs text-slate-900 dark:text-white">
+                <span className="font-extrabold text-xs text-white">
                   {transactions.filter(t => t.date.startsWith(formatLocalYYYYMM(now))).length} Tx
                 </span>
                 {(() => {
@@ -1241,7 +1246,7 @@ export default function Dashboard() {
                   const diff = currCount - prevCount;
                   if (prevCount === 0 || diff === 0) return null;
                   return (
-                    <span className={`text-[9px] font-bold px-1 rounded ${diff > 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-slate-500/10 text-slate-400'}`}>
+                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md ${diff > 0 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-500/20 text-slate-400'}`}>
                       {diff > 0 ? `+${diff}` : diff}
                     </span>
                   );
