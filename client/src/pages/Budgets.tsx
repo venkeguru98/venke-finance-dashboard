@@ -150,6 +150,7 @@ export default function Budgets() {
   const [isRemainingModalOpen, setIsRemainingModalOpen] = useState(false);
   const [remainingSearchQuery, setRemainingSearchQuery] = useState('');
   const [remainingFilterGroup, setRemainingFilterGroup] = useState('all');
+  const [remainingFilterStatus, setRemainingFilterStatus] = useState<string>('all');
   const [editingId, setEditingId] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -1460,6 +1461,17 @@ export default function Budgets() {
                 <option value="Debt">💳 Debt</option>
                 <option value="Insurance">🛡 Insurance</option>
               </select>
+
+              <select
+                value={remainingFilterStatus}
+                onChange={e => setRemainingFilterStatus(e.target.value)}
+                className="bg-[#050816] border border-[#1E2A4A] text-xs font-bold text-slate-300 rounded-xl px-3 py-1.5 focus:outline-none"
+              >
+                <option value="all">All Statuses (Completed & Remaining)</option>
+                <option value="remaining">🟢 Remaining Budget Only (Active)</option>
+                <option value="completed">✅ Completed (100% Spent)</option>
+                <option value="overspent">⚠️ Overspent</option>
+              </select>
             </div>
 
             {/* MODAL CATEGORY LIST CONTENT */}
@@ -1468,9 +1480,21 @@ export default function Budgets() {
                 const filteredBudgets = budgets.filter(b => {
                   const matchCat = categories.find(c => c.id === b.category_id);
                   const grp = matchCat ? getCategoryGroup(matchCat) : 'Expenses';
+                  const effLimit = b.effectiveLimit || b.limit_amount;
+                  const remaining = effLimit - b.spent;
+                  const isCompleted = b.spent >= effLimit && effLimit > 0 && remaining === 0;
+                  const isOver = b.spent > effLimit;
+                  const isRemaining = remaining > 0;
+
                   const matchesSearch = b.category_name.toLowerCase().includes(remainingSearchQuery.toLowerCase());
                   const matchesGroup = remainingFilterGroup === 'all' || grp === remainingFilterGroup;
-                  return matchesSearch && matchesGroup;
+                  
+                  let matchesStatus = true;
+                  if (remainingFilterStatus === 'remaining') matchesStatus = isRemaining;
+                  else if (remainingFilterStatus === 'completed') matchesStatus = isCompleted;
+                  else if (remainingFilterStatus === 'overspent') matchesStatus = isOver;
+
+                  return matchesSearch && matchesGroup && matchesStatus;
                 });
 
                 if (filteredBudgets.length === 0) {
@@ -1488,6 +1512,7 @@ export default function Budgets() {
                   const remaining = effLimit - b.spent;
                   const pct = effLimit > 0 ? Math.min(100, (b.spent / effLimit) * 100) : 0;
                   const isOver = b.spent > effLimit;
+                  const isCompleted = b.spent >= effLimit && effLimit > 0 && remaining === 0;
 
                   return (
                     <div 
@@ -1495,7 +1520,7 @@ export default function Budgets() {
                       className={`p-4 rounded-2xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
                         isOver 
                           ? 'bg-rose-500/10 border-rose-500/30' 
-                          : remaining === 0
+                          : isCompleted
                             ? 'bg-[#0B1228] border-[#1E2A4A]' 
                             : 'bg-[#0D1830] border-emerald-500/30'
                       }`}
@@ -1503,11 +1528,28 @@ export default function Budgets() {
                       <div className="flex items-center space-x-3">
                         <span className="w-3.5 h-3.5 rounded-full shrink-0" style={{ backgroundColor: b.category_color }} />
                         <div>
-                          <div className="flex items-center space-x-2">
+                          <div className="flex items-center space-x-2 flex-wrap gap-1.5">
                             <span className="font-extrabold text-white text-sm">{b.category_name}</span>
                             <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase bg-white/10 text-slate-300">
                               {grp}
                             </span>
+
+                            {/* COMPLETED / REMAINING / OVERSPENT STATUS BADGE */}
+                            {isCompleted && (
+                              <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                Completed ✅
+                              </span>
+                            )}
+                            {remaining > 0 && (
+                              <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                                Remaining 🟢
+                              </span>
+                            )}
+                            {isOver && (
+                              <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                                Overspent ⚠️
+                              </span>
+                            )}
                           </div>
                           <p className="text-[10px] text-slate-400 font-mono mt-0.5">
                             Spent ₹{b.spent.toLocaleString('en-IN')} / ₹{effLimit.toLocaleString('en-IN')} planned
@@ -1521,7 +1563,7 @@ export default function Budgets() {
                           <div className="h-1.5 w-full bg-[#050816] rounded-full overflow-hidden">
                             <div 
                               className={`h-full rounded-full transition-all duration-300 ${
-                                isOver ? 'bg-rose-500' : 'bg-emerald-400'
+                                isOver ? 'bg-rose-500' : isCompleted ? 'bg-purple-500' : 'bg-emerald-400'
                               }`} 
                               style={{ width: `${pct}%` }} 
                             />
