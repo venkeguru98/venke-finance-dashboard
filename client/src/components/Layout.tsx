@@ -1,56 +1,65 @@
-import { useState, useEffect, type ReactNode, useMemo, useRef } from 'react';
+import { useState, useEffect, type ReactNode, useMemo, memo } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, ReceiptText, Upload, Settings, Bell, Search, UserCircle, 
   Wallet, Target, LineChart, CalendarDays, PieChart, X, CalendarRange,
-  Command, Sliders
+  Sliders
 } from 'lucide-react';
 
+// Memoized Nav Tab Component to prevent unnecessary parent re-renders
+const NavTab = memo(({ 
+  to, icon, label, badge, isActive 
+}: { 
+  to: string; icon: ReactNode; label: string; badge: string | null; isActive: boolean 
+}) => {
+  return (
+    <NavLink
+      to={to}
+      className={`relative flex items-center space-x-2 px-3.5 py-2 rounded-full font-bold text-xs transition-all duration-200 shrink-0 group ${
+        isActive
+          ? 'bg-gradient-to-r from-[#7C5CFF] to-blue-600 text-white shadow-md shadow-[#7C5CFF]/30'
+          : 'text-slate-400 hover:text-white hover:bg-white/5'
+      }`}
+    >
+      <span className="transition-transform duration-200 group-hover:scale-110 shrink-0">
+        {icon}
+      </span>
+      <span className="whitespace-nowrap font-medium text-xs tracking-tight">
+        {label}
+      </span>
+      {badge && (
+        <span className={`text-[9px] font-black rounded-full px-1.5 py-0.5 ml-1 shrink-0 ${
+          isActive ? 'bg-white/20 text-white' : 'bg-[#7C5CFF]/20 text-[#7C5CFF]'
+        }`}>
+          {badge}
+        </span>
+      )}
+    </NavLink>
+  );
+});
+
 export default function Layout({ children, onLogout }: { children: ReactNode; onLogout?: () => void }) {
-  const [isExpanded, setIsExpanded] = useState(false);
   const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false);
   const [isCmdKOpen, setIsCmdKOpen] = useState(false);
   const [cmdQuery, setCmdQuery] = useState('');
   
-  // Dock Cursor Lighting & Mouse State
-  const [cursorPos, setCursorPos] = useState({ x: 0, y: 0, opacity: 0 });
-  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
-  const [pressedIndex, setPressedIndex] = useState<number | null>(null);
-
   const location = useLocation();
   const navigate = useNavigate();
-  const dockRef = useRef<HTMLDivElement>(null);
 
   const financeNavItems = [
-    { to: '/', icon: <LayoutDashboard size={20} />, label: 'Dashboard', badge: null },
-    { to: '/transactions', icon: <ReceiptText size={20} />, label: 'Transactions', badge: null },
-    { to: '/financial-records', icon: <Wallet size={20} />, label: 'Records', badge: '3' },
-    { to: '/budgets', icon: <PieChart size={20} />, label: 'Budgets', badge: null },
-    { to: '/goals', icon: <Target size={20} />, label: 'Goals', badge: null },
-    { to: '/bills', icon: <CalendarRange size={20} />, label: 'Bills', badge: '2' },
-    { to: '/analytics', icon: <LineChart size={20} />, label: 'Analytics', badge: null },
-    { to: '/calendar', icon: <CalendarDays size={20} />, label: 'Calendar', badge: null },
-    { to: '/import', icon: <Upload size={20} />, label: 'Import', badge: null },
+    { to: '/', icon: <LayoutDashboard size={18} />, label: 'Dashboard', badge: null },
+    { to: '/transactions', icon: <ReceiptText size={18} />, label: 'Transactions', badge: null },
+    { to: '/financial-records', icon: <Wallet size={18} />, label: 'Records', badge: '3' },
+    { to: '/budgets', icon: <PieChart size={18} />, label: 'Budgets', badge: null },
+    { to: '/goals', icon: <Target size={18} />, label: 'Goals', badge: null },
+    { to: '/bills', icon: <CalendarRange size={18} />, label: 'Bills', badge: '2' },
+    { to: '/analytics', icon: <LineChart size={18} />, label: 'Analytics', badge: null },
+    { to: '/calendar', icon: <CalendarDays size={18} />, label: 'Calendar', badge: null },
+    { to: '/import', icon: <Upload size={18} />, label: 'Import', badge: null },
+    { to: '/settings', icon: <Settings size={18} />, label: 'Settings', badge: null },
   ];
 
-  // Mouse move handler for dock lighting
-  const handleDockMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!dockRef.current) return;
-    const rect = dockRef.current.getBoundingClientRect();
-    setCursorPos({
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
-      opacity: 0.12
-    });
-  };
-
-  const handleDockMouseLeave = () => {
-    setCursorPos(prev => ({ ...prev, opacity: 0 }));
-    setIsExpanded(false);
-    setHoveredIndex(null);
-  };
-
-  // Cmd / Ctrl + K Listener
+  // Cmd / Ctrl + K Keyboard Shortcut Listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -65,7 +74,7 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Command palette navigation search items
+  // Command Palette Items Filter
   const cmdResults = useMemo(() => {
     const items = [
       { title: 'Dashboard', route: '/', cat: 'Navigation' },
@@ -83,24 +92,10 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
   }, [cmdQuery]);
 
   return (
-    <div className="w-screen min-h-screen flex bg-slate-50 dark:bg-[#050814] text-slate-900 dark:text-slate-100 font-sans relative overflow-x-hidden">
+    <div className="w-full min-h-screen bg-slate-50 dark:bg-[#050814] text-slate-900 dark:text-slate-100 font-sans relative overflow-x-hidden">
       
-      {/* Dynamic Keyframes for Breathing Animation and Spring Physics */}
+      {/* CSS Utility for Scrollbar Masking */}
       <style>{`
-        @keyframes dockBreathing {
-          0%, 100% { transform: scale(1.000); }
-          50% { transform: scale(1.006); }
-        }
-        @keyframes pulseBorder {
-          0%, 100% { border-color: rgba(124, 92, 255, 0.4); }
-          50% { border-color: rgba(124, 92, 255, 0.8); }
-        }
-        .animate-dock-breath {
-          animation: dockBreathing 4.5s ease-in-out infinite;
-        }
-        .animate-pulse-border {
-          animation: pulseBorder 8s ease-in-out infinite;
-        }
         .no-scrollbar::-webkit-scrollbar {
           display: none;
         }
@@ -110,188 +105,80 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
         }
       `}</style>
 
-      {/* ── 1. FLOATING OVERLAY NAVIGATION DOCK (z-100, Fixed Position) ────── */}
-      <aside
-        ref={dockRef}
-        onMouseMove={handleDockMouseMove}
-        onMouseEnter={() => setIsExpanded(true)}
-        onMouseLeave={handleDockMouseLeave}
-        className={`fixed left-5 top-5 bottom-5 z-[100] hidden md:flex flex-col justify-between backdrop-blur-2xl bg-[#080a12]/85 dark:bg-[#080a12]/90 border border-white/10 rounded-[28px] shadow-[0_20px_60px_rgba(0,0,0,0.5)] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] animate-dock-breath relative overflow-hidden will-change-transform ${
-          isExpanded ? 'w-64 p-4' : 'w-[72px] p-3'
-        }`}
-      >
-        {/* Dynamic Cursor Proximity Radial Light Overlay */}
-        <div
-          className="pointer-events-none absolute inset-0 transition-opacity duration-300"
-          style={{
-            background: `radial-gradient(180px circle at ${cursorPos.x}px ${cursorPos.y}px, rgba(124, 92, 255, ${cursorPos.opacity}), transparent 80%)`
-          }}
-        />
+      {/* ── 1. TOP-CENTERED FLOATING SEGMENTED NAVIGATION BAR ───────────────── */}
+      <nav className="fixed top-4 left-1/2 -translate-x-1/2 z-[1000] hidden md:flex items-center space-x-1 p-1.5 rounded-full backdrop-blur-2xl bg-[#080a12]/85 dark:bg-[#080a12]/90 border border-white/10 shadow-[0_12px_40px_rgba(0,0,0,0.45)] max-w-[92vw] overflow-x-auto no-scrollbar will-change-transform">
+        {financeNavItems.map((item) => {
+          const isActive = location.pathname === item.to || (item.to !== '/' && location.pathname.startsWith(item.to));
+          return (
+            <NavTab
+              key={item.to}
+              to={item.to}
+              icon={item.icon}
+              label={item.label}
+              badge={item.badge}
+              isActive={isActive}
+            />
+          );
+        })}
+      </nav>
 
-        {/* Dock Header (Brand Capsule) */}
-        <div className="flex items-center space-x-3 overflow-hidden pb-4 border-b border-white/10 relative z-10">
-          <div 
-            onClick={() => navigate('/')}
-            className="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#7C5CFF] via-purple-600 to-blue-600 flex items-center justify-center text-white shadow-lg shadow-[#7C5CFF]/40 shrink-0 cursor-pointer hover:scale-105 active:scale-95 transition-all duration-200"
-          >
+      {/* ── 2. FULL-WIDTH HEADER BAR (Brand Left, Quick Controls Right) ─────── */}
+      <header className="fixed top-0 left-0 right-0 h-16 flex items-center justify-between px-6 sm:px-8 z-40 border-b border-slate-200/80 dark:border-slate-800/80 bg-white/70 dark:bg-[#050814]/70 backdrop-blur-md w-full">
+        
+        {/* Left: Brand Capsule */}
+        <div 
+          onClick={() => navigate('/')} 
+          className="flex items-center space-x-3 cursor-pointer group shrink-0"
+        >
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#7C5CFF] to-blue-600 flex items-center justify-center text-white shadow-md shadow-[#7C5CFF]/30 group-hover:scale-105 transition-transform">
             <Wallet className="w-5 h-5 text-white" />
           </div>
-
-          {isExpanded && (
-            <div className="flex flex-col overflow-hidden transition-all duration-220 ease-out">
-              <span className="font-extrabold text-xs tracking-tight text-white uppercase leading-none font-sans">
-                VENKE FINANCE
-              </span>
-              <span className="text-[8px] font-black uppercase tracking-widest text-[#7C5CFF] mt-1">
-                Track • Save • Grow
-              </span>
-            </div>
-          )}
+          <div className="flex flex-col">
+            <span className="font-extrabold text-xs tracking-tight text-slate-900 dark:text-white uppercase leading-none font-sans">
+              VENKE FINANCE
+            </span>
+            <span className="text-[8px] font-black uppercase tracking-widest text-[#7C5CFF] mt-0.5">
+              Track • Save • Grow
+            </span>
+          </div>
         </div>
 
-        {/* Navigation Items List */}
-        <nav className="flex-1 my-4 space-y-1.5 overflow-y-auto no-scrollbar relative z-10 [mask-image:linear-gradient(to_bottom,transparent,black_12px,black_calc(100%-12px),transparent)]">
-          {financeNavItems.map((item, index) => {
-            const isActive = location.pathname === item.to || (item.to !== '/' && location.pathname.startsWith(item.to));
-            const isHovered = hoveredIndex === index;
-            const isPressed = pressedIndex === index;
-
-            return (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                onMouseEnter={() => setHoveredIndex(index)}
-                onMouseLeave={() => setHoveredIndex(null)}
-                onMouseDown={() => setPressedIndex(index)}
-                onMouseUp={() => setPressedIndex(null)}
-                className={`group relative flex items-center rounded-2xl transition-all duration-200 font-bold text-xs ${
-                  isExpanded ? 'px-3.5 py-2.5 space-x-3' : 'w-11 h-11 justify-center mx-auto'
-                } ${
-                  isPressed ? 'scale-95' : isHovered ? 'scale-[1.04]' : 'scale-100'
-                } ${
-                  isActive
-                    ? 'bg-gradient-to-r from-[#7C5CFF] to-blue-600 text-white shadow-lg shadow-[#7C5CFF]/35 animate-pulse-border'
-                    : 'text-slate-400 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                {/* Active Indicator Bar */}
-                {isActive && (
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-white rounded-r-full shadow-md" />
-                )}
-
-                {/* Magnetic Hover Icon */}
-                <span className={`transition-transform duration-200 shrink-0 ${isHovered ? 'scale-110 -translate-y-0.5' : ''}`}>
-                  {item.icon}
-                </span>
-
-                {/* Label */}
-                {isExpanded && (
-                  <span className="truncate flex-1 text-xs font-bold transition-all duration-200">
-                    {item.label}
-                  </span>
-                )}
-
-                {/* Badge */}
-                {item.badge && (
-                  <span className={`text-[9px] font-black rounded-full px-1.5 py-0.5 shrink-0 transition-transform ${
-                    isActive ? 'bg-white/20 text-white' : 'bg-[#7C5CFF]/20 text-[#7C5CFF]'
-                  }`}>
-                    {item.badge}
-                  </span>
-                )}
-
-                {/* Floating Glass Tooltip (Collapsed state) */}
-                {!isExpanded && (
-                  <div className="absolute left-16 px-3 py-1.5 rounded-xl bg-[#0b1228] border border-white/10 text-white text-xs font-bold shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-200 pointer-events-none whitespace-nowrap z-50 translate-x-1 group-hover:translate-x-0">
-                    {item.label}
-                  </div>
-                )}
-              </NavLink>
-            );
-          })}
-        </nav>
-
-        {/* Dock Footer (Settings & Controls) */}
-        <div className="pt-3 border-t border-white/10 space-y-2 relative z-10">
-          <button
+        {/* Right: Quick Actions & Profile */}
+        <div className="flex items-center space-x-3 shrink-0">
+          {/* Cmd + K Trigger */}
+          <div 
             onClick={() => setIsCmdKOpen(true)}
-            className={`w-full flex items-center rounded-2xl bg-white/5 border border-white/10 hover:border-[#7C5CFF] text-slate-400 hover:text-white transition-all duration-200 ${
-              isExpanded ? 'px-3 py-2 space-x-2' : 'w-11 h-11 justify-center mx-auto'
-            }`}
-            title="Command Palette (Cmd + K)"
+            className="flex items-center rounded-full px-3.5 py-1.5 text-xs border border-slate-200 dark:border-slate-800 bg-slate-100/80 dark:bg-[#0b1228]/80 text-slate-400 hover:border-[#7C5CFF] cursor-pointer transition shadow-sm"
           >
-            <Command className="w-4 h-4 text-[#7C5CFF] shrink-0" />
-            {isExpanded && <span className="text-xs font-bold flex-1 text-left">Search OS</span>}
-            {isExpanded && <span className="text-[9px] font-mono text-slate-500 border border-white/10 px-1.5 py-0.5 rounded">⌘K</span>}
+            <Search className="w-3.5 h-3.5 text-slate-400 mr-2 shrink-0" />
+            <span className="hidden sm:inline font-medium text-slate-400">Search OS...</span>
+            <span className="text-[10px] font-mono text-[#7C5CFF] border border-[#7C5CFF]/30 px-1.5 py-0.5 rounded font-bold ml-1.5">⌘K</span>
+          </div>
+
+          <button className="p-2 rounded-full relative transition hover:bg-slate-100 dark:hover:bg-slate-800">
+            <Bell className="w-4.5 h-4.5 text-slate-400" />
+            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#7C5CFF] rounded-full animate-pulse" />
           </button>
 
-          <NavLink
-            to="/settings"
-            className={`group relative flex items-center rounded-2xl transition-all duration-200 font-bold text-xs ${
-              isExpanded ? 'px-3.5 py-2.5 space-x-3' : 'w-11 h-11 justify-center mx-auto'
-            } ${
-              location.pathname === '/settings'
-                ? 'bg-gradient-to-r from-[#7C5CFF] to-blue-600 text-white shadow-lg shadow-[#7C5CFF]/35'
-                : 'text-slate-400 hover:text-white hover:bg-white/5'
-            }`}
+          <div 
+            onClick={() => { if(window.confirm('Are you sure you want to sign out?')) onLogout?.(); }}
+            className="flex items-center space-x-2 cursor-pointer p-1 pr-3 rounded-full transition hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800"
+            title="Click to logout"
           >
-            <Settings className="w-5 h-5 shrink-0" />
-            {isExpanded && <span className="truncate">Settings</span>}
-            {!isExpanded && (
-              <div className="absolute left-16 px-3 py-1.5 rounded-xl bg-[#0b1228] border border-white/10 text-white text-xs font-bold shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-200 pointer-events-none whitespace-nowrap z-50">
-                Settings
-              </div>
-            )}
-          </NavLink>
+            <UserCircle className="w-7 h-7 text-[#7C5CFF]" />
+            <span className="text-xs font-bold hidden sm:block">Venke</span>
+          </div>
         </div>
-      </aside>
+      </header>
 
-      {/* ── 2. FLUID FULL-VIEWPORT DEDICATED CONTENT WRAPPER ────────────────── */}
-      <div 
-        className="w-full min-w-0 min-h-screen flex flex-col transition-[padding-left] duration-280 ease-[cubic-bezier(0.22,1,0.36,1)]"
-        style={{
-          paddingLeft: window.innerWidth >= 768 ? (isExpanded ? '284px' : '116px') : '0px'
-        }}
-      >
-        
-        {/* Full-Width Top Navbar */}
-        <header className="h-16 flex items-center justify-between px-4 sm:px-8 z-30 flex-shrink-0 border-b border-slate-200/80 dark:border-slate-800/80 bg-white/70 dark:bg-[#050814]/70 backdrop-blur-md sticky top-0 w-full">
-          <div className="flex items-center space-x-3 flex-1 max-w-xl">
-            <div 
-              onClick={() => setIsCmdKOpen(true)}
-              className="flex items-center rounded-full px-4 py-2 w-full text-xs border border-slate-200 dark:border-slate-800 bg-slate-100/80 dark:bg-[#0b1228]/80 text-slate-400 hover:border-[#7C5CFF] cursor-pointer transition shadow-sm"
-            >
-              <Search className="w-3.5 h-3.5 text-slate-400 mr-2 flex-shrink-0" />
-              <span className="flex-1 font-medium truncate">Search transactions, records, budgets...</span>
-              <span className="text-[10px] font-mono text-[#7C5CFF] border border-[#7C5CFF]/30 px-1.5 py-0.5 rounded font-bold ml-2">⌘K</span>
-            </div>
-          </div>
-
-          <div className="flex items-center space-x-3 ml-4">
-            <button className="p-2 rounded-full relative transition hover:bg-slate-100 dark:hover:bg-slate-800">
-              <Bell className="w-4.5 h-4.5 text-slate-400" />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#7C5CFF] rounded-full animate-pulse"></span>
-            </button>
-            <div 
-              onClick={() => { if(window.confirm('Are you sure you want to sign out?')) onLogout?.(); }}
-              className="flex items-center space-x-2 cursor-pointer p-1 pr-3 rounded-full transition hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800"
-              title="Click to logout"
-            >
-              <UserCircle className="w-7 h-7 text-[#7C5CFF]" />
-              <span className="text-xs font-bold hidden sm:block">Venke</span>
-            </div>
-          </div>
-        </header>
-
-        {/* Fluid Edge-to-Edge Main Content Workspace (No max-w-7xl, No mx-auto) */}
-        <main className="flex-1 p-4 sm:p-6 md:p-8 w-full min-w-0 pb-24 md:pb-8">
-          <div className="w-full min-w-0 h-full">
-            {children}
-          </div>
+      {/* ── 3. FULL-WIDTH PAGE CONTAINER (Top Padding 96px for Floating Nav) ──── */}
+      <div className="w-full min-h-screen pt-24 px-4 sm:px-8 pb-24 md:pb-8">
+        <main className="w-full max-w-[1600px] mx-auto">
+          {children}
         </main>
       </div>
 
-      {/* ── 3. FLOATING MOBILE BOTTOM DOCK (Mobile Only) ────────────────────── */}
+      {/* ── 4. FLOATING MOBILE BOTTOM DOCK (Mobile Only) ────────────────────── */}
       <nav className="fixed bottom-4 left-4 right-4 h-16 backdrop-blur-2xl bg-[#080a12]/90 border border-white/10 rounded-full shadow-2xl z-50 md:hidden flex justify-around items-center px-4">
         {[
           { to: '/', icon: <LayoutDashboard size={20} />, label: 'Home' },
@@ -370,7 +257,7 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
         </div>
       )}
 
-      {/* ── 4. GLOBAL COMMAND PALETTE MODAL (Ctrl / Cmd + K) ────────────────── */}
+      {/* ── 5. GLOBAL COMMAND PALETTE MODAL (Ctrl / Cmd + K) ────────────────── */}
       {isCmdKOpen && (
         <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 bg-black/75 backdrop-blur-md p-4 animate-in fade-in duration-150">
           <div className="bg-[#0b1228] border border-white/10 w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden flex flex-col">
