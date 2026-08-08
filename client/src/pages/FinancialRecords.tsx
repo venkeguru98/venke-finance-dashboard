@@ -13,14 +13,13 @@ const GoldModule = lazy(() => import('../components/records/GoldModule'));
 const ChitModule = lazy(() => import('../components/records/ChitModule'));
 const SavingsModule = lazy(() => import('../components/records/SavingsModule'));
 const DebtModule = lazy(() => import('../components/records/DebtModule'));
-const MutualModule = lazy(() => import('../components/records/MutualModule'));
 
 const API = window.location.port === '5173' ? 'http://localhost:5000/api' : '/api';
 const COLORS = ['#635BFF', '#06B6D4', '#F59E0B', '#10B981', '#EC4899', '#EF4444', '#3B82F6'];
 
 export default function FinancialRecords() {
   const [subView, setSubView] = useState<null | 'lic' | 'gold' | 'chit' | 'savings' | 'debt' | 'mutual'>(null);
-  const [selectedCategory, setSelectedCategory] = useState<'lic' | 'gold' | 'chit' | 'savings' | 'debt' | 'mutual'>('mutual');
+  const [selectedCategory, setSelectedCategory] = useState<'lic' | 'gold' | 'chit' | 'savings' | 'debt' | 'mutual'>('lic');
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'assets' | 'liabilities' | 'investments'>('all');
 
   const [dashboardData, setDashboardData] = useState<any>({
@@ -95,7 +94,6 @@ export default function FinancialRecords() {
         {subView === 'chit' && <ChitModule onBack={() => setSubView(null)} />}
         {subView === 'savings' && <SavingsModule onBack={() => setSubView(null)} />}
         {subView === 'debt' && <DebtModule onBack={() => setSubView(null)} />}
-        {subView === 'mutual' && <MutualModule onBack={() => setSubView(null)} />}
       </Suspense>
     );
   }
@@ -104,19 +102,6 @@ export default function FinancialRecords() {
 
   // Record Master Definitions
   const recordCategories = [
-    {
-      id: 'mutual' as const,
-      title: 'Mutual Funds & SIPs',
-      group: 'investments',
-      code: '# REC-MUTUAL',
-      amount: stats.mutualFundsValue || 0,
-      amountLabel: `₹${(stats.mutualFundsValue || 0).toLocaleString('en-IN')}`,
-      subtext: 'Lump-sum & SIP growth portfolio',
-      badge: 'Active Portfolio',
-      icon: TrendingUp,
-      color: '#8B5CF6', // Purple
-      accentBg: 'bg-purple-500/10 text-purple-400 border-purple-500/20'
-    },
     {
       id: 'lic' as const,
       title: 'LIC Life Insurance Policies',

@@ -452,14 +452,46 @@ export default function Import() {
 
       {/* STEP 1: UPLOAD AREA */}
       {step === 'upload' && (
-        <div className="bg-white dark:bg-slate-950 p-12 rounded-3xl border border-slate-200 dark:border-slate-800/80 shadow-sm text-center max-w-xl mx-auto space-y-6">
-          <div className="w-20 h-20 bg-slate-50 dark:bg-slate-900 rounded-full flex items-center justify-center mx-auto border border-slate-200/50 dark:border-slate-800/50">
-            {status === 'parsing' ? (
-              <Loader2 className="w-10 h-10 text-primary animate-spin" />
-            ) : (
-              <UploadCloud className="w-10 h-10 text-primary opacity-80" />
-            )}
+        <div className="space-y-6 max-w-2xl mx-auto">
+          {/* 🏦 Bank Statement Preset Selector */}
+          <div className="bg-white dark:bg-slate-950 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-black uppercase text-slate-900 dark:text-white tracking-wider flex items-center gap-2">
+                🏦 1-Click Bank Statement Presets
+              </h2>
+              <span className="text-[10px] text-slate-400 font-bold uppercase">Select Bank</span>
+            </div>
+            <p className="text-xs text-slate-500 font-medium">
+              Supported Indian bank CSV formats with auto-column mapping:
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pt-1">
+              {[
+                { name: 'HDFC Bank', color: 'bg-blue-600', format: 'Date, Narration, Chq/Ref, Withdrawal, Deposit' },
+                { name: 'Canara Bank', color: 'bg-amber-600', format: 'Txn Date, Remarks, Debit, Credit, Balance' },
+                { name: 'SBI Bank', color: 'bg-cyan-600', format: 'Txn Date, Description, Ref No, Debit, Credit' },
+                { name: 'ICICI Bank', color: 'bg-orange-600', format: 'Value Date, Transaction Remarks, Withdrawal, Deposit' },
+                { name: 'Axis Bank', color: 'bg-rose-600', format: 'Tran Date, Particulars, DR, CR, Balance' },
+                { name: 'TMB Bank', color: 'bg-emerald-600', format: 'Post Date, Description, Debit, Credit, Balance' },
+              ].map(bank => (
+                <div key={bank.name} className="p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl hover:border-primary transition group cursor-pointer">
+                  <div className="flex items-center space-x-2">
+                    <div className={`w-2.5 h-2.5 rounded-full ${bank.color}`}></div>
+                    <span className="font-bold text-xs text-slate-800 dark:text-slate-200">{bank.name}</span>
+                  </div>
+                  <span className="text-[9px] text-slate-400 font-semibold block mt-1 truncate">{bank.format}</span>
+                </div>
+              ))}
+            </div>
           </div>
+
+          <div className="bg-white dark:bg-slate-950 p-12 rounded-3xl border border-slate-200 dark:border-slate-800/80 shadow-sm text-center space-y-6">
+            <div className="w-20 h-20 bg-slate-50 dark:bg-slate-900 rounded-full flex items-center justify-center mx-auto border border-slate-200/50 dark:border-slate-800/50">
+              {status === 'parsing' ? (
+                <Loader2 className="w-10 h-10 text-primary animate-spin" />
+              ) : (
+                <UploadCloud className="w-10 h-10 text-primary opacity-80" />
+              )}
+            </div>
           
           <div className="space-y-2">
             <h3 className="text-base font-bold text-slate-800 dark:text-white">Upload your transaction statements</h3>
@@ -490,6 +522,7 @@ export default function Import() {
             </div>
           )}
         </div>
+      </div>
       )}
 
       {/* STEP 2: WIZARD DATA & MAPPING AREA */}

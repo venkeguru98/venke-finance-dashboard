@@ -177,6 +177,21 @@ export default function Settings() {
   // Computed Local App URL for QR code scan
   const mobileAccessUrl = `http://${systemStatus.localIp}:${systemStatus.serverPort}`;
 
+  const [diagnosticResult, setDiagnosticResult] = useState<any>(null);
+  const [runningDiagnostic, setRunningDiagnostic] = useState(false);
+
+  const handleRunDiagnostic = async () => {
+    setRunningDiagnostic(true);
+    try {
+      const res = await axios.get(`${API}/admin/migration/verify`);
+      setDiagnosticResult(res.data);
+    } catch (err: any) {
+      alert('Failed to run system diagnostic.');
+    } finally {
+      setRunningDiagnostic(false);
+    }
+  };
+
   return (
     <div className="space-y-8 max-w-3xl animate-in fade-in duration-300">
       <div>
@@ -191,6 +206,9 @@ export default function Settings() {
             <Database className="w-5 h-5 mr-2 text-primary" /> Automated Data Protection & Cloud Backup Center
           </h2>
           <div className="flex space-x-2">
+            <Button variant="ghost" size="sm" onClick={handleRunDiagnostic} disabled={runningDiagnostic}>
+              {runningDiagnostic ? 'Scanning...' : '🩺 System Diagnostic'}
+            </Button>
             <Button variant="secondary" size="sm" onClick={handleCreateBackup} disabled={backingUp}>
               {backingUp ? 'Backing Up...' : '⚡ Backup & Sync Now'}
             </Button>
@@ -278,6 +296,37 @@ export default function Settings() {
               </div>
             )}
           </div>
+
+          {/* Diagnostic Result Modal/Card */}
+          {diagnosticResult && (
+            <div className="p-4 bg-slate-900 border border-emerald-500/30 rounded-2xl space-y-3 text-xs animate-in fade-in duration-200">
+              <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+                <span className="font-extrabold text-emerald-400 flex items-center gap-1.5 text-sm">
+                  🩺 System Integrity Diagnostic Report
+                </span>
+                <button onClick={() => setDiagnosticResult(null)} className="text-slate-400 hover:text-white font-bold text-xs">✕ Close</button>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-slate-300">
+                <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+                  <span className="text-[9px] uppercase text-slate-400 block font-bold">Migration Status</span>
+                  <span className="font-black text-emerald-400">{diagnosticResult.migrationStatus}</span>
+                </div>
+                <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+                  <span className="text-[9px] uppercase text-slate-400 block font-bold">Foreign Keys</span>
+                  <span className="font-black text-emerald-400">{diagnosticResult.foreignKeyIntegrity?.healthy ? 'HEALTHY (0 Orphans)' : 'Warning'}</span>
+                </div>
+                <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+                  <span className="text-[9px] uppercase text-slate-400 block font-bold">Sequence Status</span>
+                  <span className="font-black text-emerald-400">{diagnosticResult.sequenceIntegrity?.status || 'Verified'}</span>
+                </div>
+                <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+                  <span className="text-[9px] uppercase text-slate-400 block font-bold">Autopilot Health</span>
+                  <span className="font-black text-emerald-400">{diagnosticResult.automationStatus?.status || 'Active'}</span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </section>
 

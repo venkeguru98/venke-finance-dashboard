@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
-import { Plus, Search, RefreshCw, Flame, LayoutGrid, CheckCircle2, Target, AlertTriangle, TrendingUp, Info, X, ChevronLeft, ChevronRight, ArrowRightLeft } from 'lucide-react';
+import { Plus, Search, RefreshCw, Flame, LayoutGrid, CheckCircle2, Target, AlertTriangle, TrendingUp, Info, X, ChevronLeft, ChevronRight, ArrowRightLeft, Sparkles } from 'lucide-react';
 import axios from 'axios';
 import Button from '../components/ui/Button';
 
@@ -1039,6 +1039,27 @@ export default function Dashboard() {
         </div>
 
         <div className="flex items-center space-x-2 self-center flex-wrap gap-y-2">
+          {/* AI Monthly Spending Insights Banner (Top-Right) */}
+          {(() => {
+            if (categoryData.length === 0) return null;
+            const decInsight = categoryData.find(c => c.pctChange < 0 && c.currMonthTotal > 0);
+            let insightText = '';
+            if (decInsight) {
+              insightText = `Your ${decInsight.name} expenses decreased by ${Math.abs(decInsight.pctChange)}% compared to ${decInsight.prevMonthLabel || 'last month'}! ✨`;
+            } else if (totalsData.metrics.expenses.pctChange < 0) {
+              insightText = `Overall spending decreased by ${Math.abs(totalsData.metrics.expenses.pctChange)}% vs ${totalsData.metrics.expenses.prevMonthLabel || 'last month'}! 🎉`;
+            } else if (categoryData[0]) {
+              insightText = `Top expense: ${categoryData[0].name} (₹${categoryData[0].currMonthTotal.toLocaleString('en-IN')}) 💡`;
+            }
+            if (!insightText) return null;
+            return (
+              <div className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-700 dark:text-indigo-300 text-xs font-bold shadow-sm animate-pulse">
+                <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+                <span>{insightText}</span>
+              </div>
+            );
+          })()}
+
           {/* Enhancement 1: Transaction Activity Badge */}
           <button
             onClick={() => navigate('/transactions')}

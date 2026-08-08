@@ -109,28 +109,40 @@ export default function CalendarView() {
               const isToday = isCurrentMonth && today.getDate() === day;
               const isSelected = selectedDay === day;
 
+              // Cashflow Heatmap Styling
+              let heatmapBg = 'hover:bg-slate-50 dark:hover:bg-slate-800/30';
+              if (data) {
+                if (data.income > 0 && data.income >= data.expense) {
+                  heatmapBg = 'bg-emerald-500/10 dark:bg-emerald-950/25 border-emerald-500/20';
+                } else if (data.expense > 1000) {
+                  heatmapBg = 'bg-red-600/20 dark:bg-red-900/40 border-red-500/40';
+                } else if (data.expense > 0) {
+                  heatmapBg = 'bg-red-500/10 dark:bg-red-950/20 border-red-500/20';
+                }
+              }
+
               return (
                 <div
                   key={day}
                   onClick={() => setSelectedDay(selectedDay === day ? null : day)}
-                  className={`min-h-[90px] p-1.5 border-r border-b border-slate-100 dark:border-slate-800/50 cursor-pointer transition-all ${
-                    isSelected ? 'bg-primary/5 ring-2 ring-primary ring-inset' : 'hover:bg-slate-50 dark:hover:bg-slate-800/30'
+                  className={`min-h-[90px] p-1.5 border-r border-b border-slate-100 dark:border-slate-800/50 cursor-pointer transition-all ${heatmapBg} ${
+                    isSelected ? 'ring-2 ring-primary ring-inset' : ''
                   }`}
                 >
                   <span className={`inline-flex w-7 h-7 items-center justify-center text-sm font-medium rounded-full ${
-                    isToday ? 'bg-primary text-white' : 'text-slate-700 dark:text-slate-300'
+                    isToday ? 'bg-primary text-white font-extrabold shadow-md' : 'text-slate-700 dark:text-slate-300'
                   }`}>{day}</span>
 
                   {data && (
                     <div className="mt-1 space-y-0.5">
                       {data.income > 0 && (
-                        <div className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-semibold truncate">
+                        <div className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-extrabold truncate">
                           +₹{data.income.toLocaleString('en-IN')}
                         </div>
                       )}
                       {data.expense > 0 && (
-                        <div className={`text-[10px] px-1.5 py-0.5 rounded font-semibold truncate ${
-                          data.isHigh ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                        <div className={`text-[10px] px-1.5 py-0.5 rounded font-extrabold truncate ${
+                          data.expense > 1000 ? 'bg-red-500/30 text-red-700 dark:text-red-300' : 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
                         }`}>
                           -₹{data.expense.toLocaleString('en-IN')}
                         </div>

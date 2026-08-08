@@ -258,6 +258,139 @@ export default function Analytics() {
         </div>
       </div>
 
+      {/* 🔮 Financial Forecasting Engine & 🔄 Month-over-Month Comparison */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* 🔮 Financial Forecasting Engine */}
+        <div className="bg-white dark:bg-slate-950 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+          <div className="flex justify-between items-center">
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <span className="text-primary">🔮</span> 6 & 12-Month Financial Forecasting
+            </h3>
+            <span className="px-2.5 py-0.5 bg-primary/10 text-primary font-black rounded-full text-[10px] uppercase">
+              AI Projection
+            </span>
+          </div>
+          <p className="text-xs text-slate-500 font-medium">
+            Based on your historical spending curves, here is your projected net capital growth:
+          </p>
+
+          {(() => {
+            const avgMonthlyNet = monthlyData.length > 0 
+              ? monthlyData.reduce((s, d) => s + (d.income - d.expense), 0) / monthlyData.length 
+              : 0;
+            const forecast6Mo = Math.round(avgMonthlyNet * 6);
+            const forecast12Mo = Math.round(avgMonthlyNet * 12);
+
+            const forecastChartData = [
+              { month: 'Current', amount: 0 },
+              { month: '+3 Months', amount: Math.round(avgMonthlyNet * 3) },
+              { month: '+6 Months', amount: forecast6Mo },
+              { month: '+9 Months', amount: Math.round(avgMonthlyNet * 9) },
+              { month: '+12 Months', amount: forecast12Mo },
+            ];
+
+            return (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+                    <span className="text-[10px] uppercase font-black tracking-wider text-emerald-600 dark:text-emerald-400 block">6-Month Projection</span>
+                    <span className="text-lg font-extrabold text-slate-900 dark:text-white">
+                      ₹{forecast6Mo.toLocaleString('en-IN')}
+                    </span>
+                  </div>
+                  <div className="p-3.5 bg-purple-500/10 border border-purple-500/20 rounded-xl">
+                    <span className="text-[10px] uppercase font-black tracking-wider text-purple-600 dark:text-purple-400 block">12-Month Projection</span>
+                    <span className="text-lg font-extrabold text-slate-900 dark:text-white">
+                      ₹{forecast12Mo.toLocaleString('en-IN')}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="h-[140px] pt-2">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={forecastChartData}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.3} />
+                      <XAxis dataKey="month" tick={{ fill: '#94a3b8', fontSize: 11 }} />
+                      <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} tickFormatter={v => `₹${(v / 1000).toFixed(0)}k`} />
+                      <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderRadius: '12px', color: '#fff' }} formatter={(v: any) => [`₹${Number(v).toLocaleString('en-IN')}`, 'Projected Growth']} />
+                      <Line type="monotone" dataKey="amount" stroke="#10B981" strokeWidth={3} dot={{ fill: '#10B981', r: 4 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+
+        {/* 🔄 Month-over-Month Comparison Mode */}
+        <div className="bg-white dark:bg-slate-950 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+          <div className="flex justify-between items-center">
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <span className="text-primary">🔄</span> Month-over-Month Comparison
+            </h3>
+            <span className="px-2.5 py-0.5 bg-purple-500/10 text-purple-500 font-black rounded-full text-[10px] uppercase">
+              Side-by-Side
+            </span>
+          </div>
+
+          {(() => {
+            if (monthlyData.length < 2) {
+              return (
+                <div className="h-44 flex items-center justify-center text-slate-400 text-xs font-semibold">
+                  Requires at least 2 months of transaction history for comparative analysis.
+                </div>
+              );
+            }
+
+            const monthA = monthlyData[monthlyData.length - 2] || monthlyData[0];
+            const monthB = monthlyData[monthlyData.length - 1] || monthlyData[monthlyData.length - 1];
+
+            const expDiff = monthB.expense - monthA.expense;
+            const expPct = monthA.expense > 0 ? ((expDiff / monthA.expense) * 100).toFixed(1) : '0';
+
+            const incDiff = monthB.income - monthA.income;
+            const incPct = monthA.income > 0 ? ((incDiff / monthA.income) * 100).toFixed(1) : '0';
+
+            return (
+              <div className="space-y-3.5 text-xs">
+                <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 text-center font-bold">
+                  <div>
+                    <span className="text-slate-400 block text-[10px] uppercase">Base Month</span>
+                    <span className="text-slate-900 dark:text-white">{monthA.month}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[10px] uppercase">Comparison Month</span>
+                    <span className="text-slate-900 dark:text-white">{monthB.month}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-2 font-semibold">
+                  <div className="flex justify-between items-center p-2.5 rounded-lg bg-slate-50/50 dark:bg-slate-900/40">
+                    <span className="text-slate-600 dark:text-slate-400">Total Income</span>
+                    <div className="text-right">
+                      <span className="text-slate-900 dark:text-white font-bold block">₹{monthB.income.toLocaleString('en-IN')} (vs ₹{monthA.income.toLocaleString('en-IN')})</span>
+                      <span className={`text-[10px] ${Number(incPct) >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                        {Number(incPct) >= 0 ? `+${incPct}%` : `${incPct}%`}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between items-center p-2.5 rounded-lg bg-slate-50/50 dark:bg-slate-900/40">
+                    <span className="text-slate-600 dark:text-slate-400">Total Expenses</span>
+                    <div className="text-right">
+                      <span className="text-slate-900 dark:text-white font-bold block">₹{monthB.expense.toLocaleString('en-IN')} (vs ₹{monthA.expense.toLocaleString('en-IN')})</span>
+                      <span className={`text-[10px] ${Number(expPct) <= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                        {Number(expPct) > 0 ? `+${expPct}%` : `${expPct}%`}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      </div>
+
       {/* Category distribution */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white dark:bg-slate-950 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
