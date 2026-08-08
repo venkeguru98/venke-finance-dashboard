@@ -1,10 +1,10 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Sparkles, CheckCircle2, Circle, Clock, Flame, Target, 
   Calendar as CalendarIcon, BookOpen, UserCheck, Folder, 
-  TrendingUp, Plus, X, Send, 
-  ArrowUpRight, Smile, Heart, Zap, Play, Pause
+  TrendingUp, Plus, X, Search, Send, 
+  ArrowUpRight, Smile, Heart, Zap, Play, Pause, Command, Moon, Sun, Sunrise, Sunset
 } from 'lucide-react';
 import axios from 'axios';
 
@@ -41,19 +41,23 @@ export default function PersonalDashboard() {
   const [tasks, setTasks] = useState<any[]>([]);
   const [financeSummary, setFinanceSummary] = useState<any>({ income: 0, expenses: 0, balance: 0 });
 
-  // Active View Tab in Today Section
+  // Command Palette State (Cmd + K)
+  const [isCmdKOpen, setIsCmdKOpen] = useState(false);
+  const [cmdSearchQuery, setCmdSearchQuery] = useState('');
+
+  // Active View Tab in Task Engine
   const [taskTab, setTaskTab] = useState<'today' | 'next7' | 'later' | 'completed'>('today');
 
   // Morning Routine Checklist Local State
   const [routineItems, setRoutineItems] = useState([
-    { id: 1, text: 'Drink 500ml Water on Waking', done: true },
-    { id: 2, text: '15 Mins Morning Mindfulness / Meditation', done: true },
-    { id: 3, text: 'Review Today Priority Tasks & Calendar', done: true },
-    { id: 4, text: '45 Mins Physical Exercise / Workout', done: false },
-    { id: 5, text: 'Read 20 Pages of Tech / Career Book', done: false },
+    { id: 1, text: 'Drink 500ml Water on Waking', done: true, category: 'Health' },
+    { id: 2, text: '15 Mins Morning Mindfulness / Meditation', done: true, category: 'Mind' },
+    { id: 3, text: 'Review Today Priority Tasks & Calendar', done: true, category: 'Productivity' },
+    { id: 4, text: '45 Mins Physical Exercise / Workout', done: false, category: 'Fitness' },
+    { id: 5, text: 'Read 20 Pages of Tech / Career Book', done: false, category: 'Learning' },
   ]);
 
-  // Deep Work Timer State
+  // Deep Work Velocity Timer State
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [timerSeconds, setTimerSeconds] = useState(4.5 * 3600); // 4.5 hrs default
   const [plannedWorkHours] = useState(6.0);
@@ -63,7 +67,7 @@ export default function PersonalDashboard() {
   const [aiMessages, setAiMessages] = useState<Array<{ sender: 'user' | 'ai'; text: string; time: string }>>([
     {
       sender: 'ai',
-      text: 'Good evening Venke! 👋 Based on your current cash flow and interview schedule, today’s top priority should be System Design interview preparation and keeping living expenses focused on essentials.',
+      text: 'Good evening Venke! 👋 Your peak cognitive focus window is active. Recommended priority: System Design interview prep & keeping living expenses focused on essentials.',
       time: 'Just now'
     }
   ]);
@@ -84,11 +88,70 @@ export default function PersonalDashboard() {
     '💰 Your savings rate increased by 12% compared to last month.',
     '⚡ You have 3 high-priority career & interview tasks due tomorrow.',
     '😴 Sleep quality is 8.5% above your 30-day trailing average (7.5 hrs).',
-    '📚 Read 18 pages of "Designing Data-Intensive Applications" today.'
+    '📚 Read 18 pages of "Designing Data-Intensive Applications" today.',
+    '💡 Ambient AI: Your peak deep work productivity window is 09:00 - 11:30 AM.'
   ], []);
 
   const [insightIndex, setInsightIndex] = useState(0);
   const [insightFade, setInsightFade] = useState(false);
+
+  // Time of Day Dynamic Atmosphere Engine (Morning, Afternoon, Evening, Night)
+  const timeOfDayTheme = useMemo(() => {
+    const hour = nowTime.getHours();
+    if (hour >= 5 && hour < 12) {
+      return {
+        name: 'Morning Sunrise',
+        icon: Sunrise,
+        bgGradient: 'from-amber-950/40 via-[#0B1228] to-[#050816]',
+        accentColor: 'text-amber-400',
+        badgeBg: 'bg-amber-500/20 border-amber-500/30 text-amber-300',
+        skyTone: 'Warm Sunlight Horizon 🌅'
+      };
+    } else if (hour >= 12 && hour < 17) {
+      return {
+        name: 'Daylight Focus',
+        icon: Sun,
+        bgGradient: 'from-blue-950/40 via-[#0B1228] to-[#050816]',
+        accentColor: 'text-cyan-400',
+        badgeBg: 'bg-cyan-500/20 border-cyan-500/30 text-cyan-300',
+        skyTone: 'Clear Daylight Sky ☀️'
+      };
+    } else if (hour >= 17 && hour < 21) {
+      return {
+        name: 'Cyber Evening Dusk',
+        icon: Sunset,
+        bgGradient: 'from-purple-950/50 via-indigo-950/40 to-[#050816]',
+        accentColor: 'text-purple-400',
+        badgeBg: 'bg-purple-500/20 border-purple-500/30 text-purple-300',
+        skyTone: 'Purple Sunset Horizon 🌆'
+      };
+    } else {
+      return {
+        name: 'Indigo Night City Lights',
+        icon: Moon,
+        bgGradient: 'from-[#0B1228] via-[#050816] to-[#02040A]',
+        accentColor: 'text-[#7C5CFF]',
+        badgeBg: 'bg-[#7C5CFF]/20 border-[#7C5CFF]/30 text-[#7C5CFF]',
+        skyTone: 'Deep Indigo City Skyline 🌃'
+      };
+    }
+  }, [nowTime]);
+
+  // Keyboard Shortcuts Listener (Cmd + K, Esc)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setIsCmdKOpen(prev => !prev);
+      } else if (e.key === 'Escape') {
+        setIsCmdKOpen(false);
+        setIsAiPanelOpen(false);
+        setIsQuickAddModal(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Live Digital Clock Timer
   useEffect(() => {
@@ -122,7 +185,7 @@ export default function PersonalDashboard() {
   }, [isTimerRunning]);
 
   // Fetch Real Data from Server
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
     try {
       const [dashRes, tasksRes, finRes] = await Promise.all([
         axios.get(`${API}/personal/dashboard`),
@@ -136,11 +199,11 @@ export default function PersonalDashboard() {
     } catch (err: any) {
       console.warn('[Personal HQ Data]', err.message);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchDashboardData();
-  }, []);
+  }, [fetchDashboardData]);
 
   // Quick Add Form Handler
   const handleQuickAddSubmit = async (e: React.FormEvent) => {
@@ -208,22 +271,41 @@ export default function PersonalDashboard() {
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   };
 
+  const TimeIcon = timeOfDayTheme.icon;
+
+  // Filter Command Palette Items
+  const cmdPaletteItems = useMemo(() => [
+    { title: 'Open Tasks Engine', category: 'Module', action: () => navigate('/personal-assist/tasks') },
+    { title: 'Open Intelligent Calendar', category: 'Module', action: () => navigate('/personal-assist/calendar') },
+    { title: 'Open Wellness & Bio-Health', category: 'Module', action: () => navigate('/personal-assist/wellness') },
+    { title: 'Open Habit Tracker', category: 'Module', action: () => navigate('/personal-assist/habits') },
+    { title: 'Open Life Goals Engine', category: 'Module', action: () => navigate('/personal-assist/goals') },
+    { title: 'Open Personal Notes & Vault', category: 'Module', action: () => navigate('/personal-assist/notes') },
+    { title: 'View Personal Finance Dashboard', category: 'Finance', action: () => navigate('/') },
+    { title: 'Ask AI Personal Assistant', category: 'AI', action: () => setIsAiPanelOpen(true) },
+    { title: '+ Add New High Priority Task', category: 'Quick Add', action: () => { setQuickAddType('task'); setIsQuickAddModal(true); } },
+    { title: '+ Add New Habit Streak', category: 'Quick Add', action: () => { setQuickAddType('habit'); setIsQuickAddModal(true); } },
+  ].filter(item => item.title.toLowerCase().includes(cmdSearchQuery.toLowerCase())), [cmdSearchQuery, navigate]);
+
   return (
     <div className="min-h-screen bg-[#050816] text-slate-100 p-3 sm:p-6 space-y-6 font-sans relative overflow-x-hidden">
       
-      {/* ── 1. CINEMATIC HERO COMMAND HEADER (Full Width) ────────────────────── */}
-      <div className="relative rounded-3xl bg-gradient-to-r from-[#7C5CFF]/20 via-[#0B1228] to-[#101935] border border-[#1E2A4A] p-6 shadow-2xl overflow-hidden backdrop-blur-xl">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-[#7C5CFF]/10 rounded-full blur-3xl pointer-events-none" />
+      {/* ── 1. DYNAMIC LIVING WORKSPACE SCENE HERO HEADER ───────────────────── */}
+      <div className={`relative rounded-3xl bg-gradient-to-r ${timeOfDayTheme.bgGradient} border border-[#1E2A4A] p-6 shadow-2xl overflow-hidden backdrop-blur-xl transition-all duration-700`}>
         
+        {/* Animated Living Room Window Ambient Background Glow */}
+        <div className="absolute top-0 right-0 w-[500px] h-[300px] bg-[#7C5CFF]/15 rounded-full blur-[120px] pointer-events-none animate-pulse" />
+        <div className="absolute -bottom-20 right-20 w-80 h-80 bg-cyan-500/10 rounded-full blur-[100px] pointer-events-none" />
+
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
           
           {/* Greeting & Focus */}
-          <div className="space-y-2 max-w-xl">
-            <div className="flex items-center space-x-2">
-              <span className="px-2.5 py-0.5 rounded-full bg-[#7C5CFF]/20 border border-[#7C5CFF]/30 text-[#7C5CFF] text-[10px] font-black uppercase tracking-wider">
-                Personal Operating System v3.0
+          <div className="space-y-2.5 max-w-xl">
+            <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+              <span className={`px-2.5 py-0.5 rounded-full border text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 ${timeOfDayTheme.badgeBg}`}>
+                <TimeIcon className="w-3 h-3" /> {timeOfDayTheme.name}
               </span>
-              <span className="text-xs text-slate-400 font-medium">· 28°C Chennai ☀️</span>
+              <span className="text-xs text-slate-400 font-medium">· 28°C Chennai · {timeOfDayTheme.skyTone}</span>
             </div>
             
             <h1 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight">
@@ -234,14 +316,26 @@ export default function PersonalDashboard() {
               Today is <span className="text-slate-200 font-bold">{formatLongDate(selectedDate)}</span>
             </p>
 
-            <div className="inline-flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-[#101935] border border-[#1E2A4A] text-xs text-purple-300 font-semibold mt-2">
-              <Zap className="w-4 h-4 text-[#7C5CFF] animate-pulse" />
-              <span>Current Focus: <strong>Financial discipline & career growth 🚀</strong></span>
+            {/* Current Focus Banner & Cmd+K Trigger */}
+            <div className="flex items-center space-x-3 pt-1 flex-wrap gap-y-2">
+              <div className="inline-flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-[#101935] border border-[#1E2A4A] text-xs text-purple-300 font-semibold">
+                <Zap className="w-4 h-4 text-[#7C5CFF] animate-pulse" />
+                <span>Current Focus: <strong>Financial discipline & career growth 🚀</strong></span>
+              </div>
+
+              <button
+                onClick={() => setIsCmdKOpen(true)}
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-[#101935]/90 border border-[#1E2A4A] hover:border-[#7C5CFF] text-xs text-slate-400 hover:text-white transition shadow-sm"
+              >
+                <Command className="w-3.5 h-3.5 text-[#7C5CFF]" />
+                <span className="font-bold">Cmd + K</span>
+                <span className="text-[10px] text-slate-500 font-mono">Search</span>
+              </button>
             </div>
           </div>
 
           {/* Live Digital Clock & Daily Quote */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 bg-[#0B1228]/80 p-4 rounded-2xl border border-[#1E2A4A] backdrop-blur-md">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 bg-[#0B1228]/90 p-4 rounded-2xl border border-[#1E2A4A] backdrop-blur-md shadow-xl">
             <div className="text-center font-mono">
               <div className="text-2xl sm:text-3xl font-black text-white tracking-wider">
                 {nowTime.toLocaleTimeString('en-IN')}
@@ -259,34 +353,34 @@ export default function PersonalDashboard() {
 
         {/* Hero Quick Bio-Metrics Bar */}
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 mt-6 pt-5 border-t border-[#1E2A4A]/60">
-          <div className="p-2.5 bg-[#101935]/80 border border-[#1E2A4A] rounded-xl text-center">
+          <div className="p-2.5 bg-[#101935]/80 border border-[#1E2A4A] rounded-xl text-center backdrop-blur-sm">
             <span className="text-[9px] text-slate-400 font-bold uppercase block">⚡ Energy</span>
             <span className="text-sm font-extrabold text-[#00D68F]">88% High</span>
           </div>
-          <div className="p-2.5 bg-[#101935]/80 border border-[#1E2A4A] rounded-xl text-center">
+          <div className="p-2.5 bg-[#101935]/80 border border-[#1E2A4A] rounded-xl text-center backdrop-blur-sm">
             <span className="text-[9px] text-slate-400 font-bold uppercase block">😊 Mood</span>
             <span className="text-sm font-extrabold text-purple-400">⚡ Peak</span>
           </div>
-          <div className="p-2.5 bg-[#101935]/80 border border-[#1E2A4A] rounded-xl text-center">
+          <div className="p-2.5 bg-[#101935]/80 border border-[#1E2A4A] rounded-xl text-center backdrop-blur-sm">
             <span className="text-[9px] text-slate-400 font-bold uppercase block">😴 Sleep</span>
             <span className="text-sm font-extrabold text-blue-400">7.5 hrs</span>
           </div>
-          <div className="p-2.5 bg-[#101935]/80 border border-[#1E2A4A] rounded-xl text-center">
+          <div className="p-2.5 bg-[#101935]/80 border border-[#1E2A4A] rounded-xl text-center backdrop-blur-sm">
             <span className="text-[9px] text-slate-400 font-bold uppercase block">🧠 Deep Work</span>
             <span className="text-sm font-extrabold text-amber-400">{(timerSeconds / 3600).toFixed(1)} hrs</span>
           </div>
-          <div className="p-2.5 bg-[#101935]/80 border border-[#1E2A4A] rounded-xl text-center">
+          <div className="p-2.5 bg-[#101935]/80 border border-[#1E2A4A] rounded-xl text-center backdrop-blur-sm">
             <span className="text-[9px] text-slate-400 font-bold uppercase block">📋 Tasks</span>
             <span className="text-sm font-extrabold text-slate-200">{dashboardStats.todayTasksCompleted} / {dashboardStats.todayTasksTotal}</span>
           </div>
-          <div className="p-2.5 bg-[#101935]/80 border border-[#1E2A4A] rounded-xl text-center">
+          <div className="p-2.5 bg-[#101935]/80 border border-[#1E2A4A] rounded-xl text-center backdrop-blur-sm">
             <span className="text-[9px] text-slate-400 font-bold uppercase block">🔥 Habit Streak</span>
             <span className="text-sm font-extrabold text-rose-400">{dashboardStats.currentStreak} Days</span>
           </div>
         </div>
       </div>
 
-      {/* ── 2. ROTATING DYNAMIC INSIGHT RIBBON ────────────────────────────────── */}
+      {/* ── 2. ROTATING DYNAMIC INSIGHT RIBBON WITH AMBIENT AI ────────────────── */}
       <div className="bg-[#0B1228] border border-[#1E2A4A] rounded-2xl px-4 py-2.5 flex items-center justify-between shadow-md">
         <div className="flex items-center space-x-2.5 overflow-hidden">
           <div className="p-1.5 rounded-lg bg-[#7C5CFF]/20 text-[#7C5CFF] shrink-0">
@@ -588,7 +682,49 @@ export default function PersonalDashboard() {
 
       </div>
 
-      {/* ── 5. PERSISTENT AI PERSONAL ASSISTANT PANEL (Drawer / Right Side) ──── */}
+      {/* ── 5. GLOBAL COMMAND PALETTE MODAL (Cmd + K) ────────────────────────── */}
+      {isCmdKOpen && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 bg-black/70 backdrop-blur-md p-4 animate-in fade-in duration-150">
+          <div className="bg-[#0B1228] border border-[#1E2A4A] w-full max-w-xl rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+            <div className="p-4 border-b border-[#1E2A4A] flex items-center space-x-3 bg-[#101935]">
+              <Search className="w-5 h-5 text-[#7C5CFF] shrink-0" />
+              <input
+                type="text"
+                autoFocus
+                placeholder="Type a command or search Personal HQ..."
+                value={cmdSearchQuery}
+                onChange={e => setCmdSearchQuery(e.target.value)}
+                className="w-full bg-transparent text-sm text-white placeholder:text-slate-500 outline-none font-medium"
+              />
+              <span className="text-[10px] font-mono text-slate-400 border border-[#1E2A4A] px-2 py-0.5 rounded">ESC to close</span>
+            </div>
+
+            <div className="max-h-80 overflow-y-auto p-2 space-y-1">
+              {cmdPaletteItems.length === 0 ? (
+                <div className="p-8 text-center text-xs text-slate-500 font-semibold">
+                  No matching commands found.
+                </div>
+              ) : (
+                cmdPaletteItems.map((item, idx) => (
+                  <div
+                    key={idx}
+                    onClick={() => {
+                      item.action();
+                      setIsCmdKOpen(false);
+                    }}
+                    className="p-3 rounded-xl bg-[#101935]/60 hover:bg-[#7C5CFF]/20 border border-transparent hover:border-[#7C5CFF]/40 cursor-pointer flex justify-between items-center group transition"
+                  >
+                    <span className="text-xs font-bold text-slate-200 group-hover:text-white">{item.title}</span>
+                    <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-[#1E2A4A] text-[#7C5CFF]">{item.category}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 6. PERSISTENT AI PERSONAL ASSISTANT PANEL ───────────────────────── */}
       {isAiPanelOpen && (
         <div className="fixed inset-y-0 right-0 z-50 w-full sm:w-96 bg-[#0B1228] border-l border-[#1E2A4A] shadow-2xl flex flex-col justify-between animate-in slide-in-from-right duration-200">
           <div className="px-5 py-4 border-b border-[#1E2A4A] flex justify-between items-center bg-[#101935]">
@@ -656,7 +792,7 @@ export default function PersonalDashboard() {
         </div>
       )}
 
-      {/* ── 6. FLOATING QUICK ACTION FAB (Bottom-Right) ───────────────────────── */}
+      {/* ── 7. FLOATING QUICK ACTION FAB ────────────────────────────────────── */}
       <div className="fixed bottom-6 right-6 z-40">
         {isFabOpen && (
           <div className="mb-3 space-y-2 animate-in slide-in-from-bottom duration-200 flex flex-col items-end">
@@ -692,7 +828,7 @@ export default function PersonalDashboard() {
         </button>
       </div>
 
-      {/* ── 7. QUICK ADD MODAL ────────────────────────────────────────────────── */}
+      {/* ── 8. QUICK ADD MODAL ────────────────────────────────────────────────── */}
       {isQuickAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="bg-[#0B1228] border border-[#1E2A4A] w-full max-w-md rounded-2xl shadow-2xl overflow-hidden">
