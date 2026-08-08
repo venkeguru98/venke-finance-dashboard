@@ -27,14 +27,14 @@ const NavTab = memo(({
       onClick={handleClick}
       onMouseDown={() => setIsPressed(true)}
       onMouseUp={() => setIsPressed(false)}
-      className={`relative flex items-center justify-center rounded-full font-bold text-xs transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] shrink-0 group ${
+      className={`relative flex items-center justify-center rounded-full font-bold text-xs transition-all duration-180 ease-[cubic-bezier(0.16,1,0.3,1)] shrink-0 group ${
         showLabel ? 'px-3.5 py-2 space-x-2' : 'w-11 h-11'
       } ${
-        isPressed ? 'scale-95' : 'scale-100'
+        isPressed ? 'scale-[0.96]' : 'scale-100'
       } ${
         isActive
-          ? 'bg-gradient-to-r from-[#6C63FF] via-[#8B5CF6] to-[#A855F7] text-white shadow-lg shadow-[#8B5CF6]/40'
-          : 'text-slate-400 hover:text-white hover:bg-white/10'
+          ? 'bg-gradient-to-r from-[#8B5CF6] via-[#4F7CFF] to-[#A855F7] text-white shadow-lg shadow-[#8B5CF6]/35'
+          : 'text-slate-400 hover:text-white hover:bg-white/10 hover:-translate-y-0.5'
       }`}
     >
       {/* Radial Gradient Ripple Feedback on Click */}
@@ -42,13 +42,13 @@ const NavTab = memo(({
         <span className="absolute inset-0 rounded-full bg-white/20 animate-ping pointer-events-none" />
       )}
 
-      {/* Active Indicator Left Accent Glow */}
+      {/* Active Indicator Accent Glow */}
       {isActive && !showLabel && (
         <span className="absolute bottom-1.5 w-1.5 h-1.5 rounded-full bg-white shadow-sm" />
       )}
 
       {/* Icon with Rotate & Scale Animation */}
-      <span className="transition-transform duration-200 group-hover:scale-110 group-hover:rotate-2 shrink-0">
+      <span className="transition-transform duration-180 group-hover:scale-110 group-hover:rotate-2 shrink-0">
         {icon}
       </span>
 
@@ -63,14 +63,14 @@ const NavTab = memo(({
       {badge && (
         <span className={`text-[9px] font-black rounded-full px-1.5 py-0.5 shrink-0 animate-pulse ${
           isActive ? 'bg-white/20 text-white' : 'bg-[#8B5CF6]/30 text-[#8B5CF6]'
-        } ${showLabel ? 'ml-1' : 'absolute -top-1 -right-1 border border-[#080c1c]'}`}>
+        } ${showLabel ? 'ml-1' : 'absolute -top-1 -right-1 border border-[#081226]'}`}>
           {badge}
         </span>
       )}
 
       {/* Floating Glass Tooltip when Collapsed */}
       {!showLabel && (
-        <div className="absolute top-14 px-3 py-1.5 rounded-xl bg-[#080c1c] border border-white/10 text-white text-xs font-bold shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-200 pointer-events-none whitespace-nowrap z-50">
+        <div className="absolute top-14 px-3 py-1.5 rounded-xl bg-[#081226] border border-[#1E2A44] text-white text-xs font-bold shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-180 pointer-events-none whitespace-nowrap z-50">
           {label}
         </div>
       )}
@@ -110,7 +110,7 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
     { to: '/settings', icon: <Settings size={18} />, label: 'Settings', badge: null },
   ];
 
-  // Immediate Scroll-Intent Detection Logic (Instant response, no threshold delay)
+  // Immediate Scroll-Intent Detection Logic
   useEffect(() => {
     let lastY = window.scrollY;
     let ticking = false;
@@ -121,19 +121,15 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
           const currentY = window.scrollY;
           const diff = currentY - lastY;
 
-          // Filter out micro subpixel jitter (< 1px)
           if (Math.abs(diff) >= 1) {
             if (currentY <= 5) {
-              // Page Top: Expand fully
               setIsAtTop(true);
               setIsHeaderVisible(true);
             } else {
               setIsAtTop(false);
               if (diff > 0) {
-                // FIRST downward scroll movement -> HIDE IMMEDIATELY!
                 setIsHeaderVisible(false);
               } else if (diff < 0) {
-                // FIRST upward scroll movement -> SHOW IMMEDIATELY!
                 setIsHeaderVisible(true);
               }
             }
@@ -150,13 +146,11 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // Mouse Enter Dock: Expand immediately & clear auto-hide timer
   const handleDockMouseEnter = () => {
     if (autoHideTimerRef.current) clearTimeout(autoHideTimerRef.current);
     setIsHovered(true);
   };
 
-  // Mouse Leave Dock: Start 2.5s Auto-Hide collapse timer if unpinned
   const handleDockMouseLeave = () => {
     if (isPinned) return;
     autoHideTimerRef.current = setTimeout(() => {
@@ -164,7 +158,6 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
     }, 2500);
   };
 
-  // Toggle Dock Pin state
   const togglePin = () => {
     const next = !isPinned;
     setIsPinned(next);
@@ -172,7 +165,7 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
     if (next) setIsHovered(true);
   };
 
-  // Cmd / Ctrl + K Shortcut Listener
+  // Cmd / Ctrl + K Listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -187,7 +180,6 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Command Palette Items Filter
   const cmdResults = useMemo(() => {
     const items = [
       { title: 'Dashboard', route: '/', cat: 'Navigation' },
@@ -207,13 +199,22 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
   const showLabels = isPinned || isHovered;
 
   return (
-    <div className="w-full min-h-screen bg-slate-50 dark:bg-[#050814] text-slate-900 dark:text-slate-100 font-sans relative overflow-x-hidden">
+    <div className="w-full min-h-screen bg-[#040816] text-slate-100 font-sans relative overflow-x-hidden">
       
-      {/* Keyframes for Logo Glow & Scroll Masking */}
+      {/* ── AMBIENT BACKGROUND LIGHTING LAYER ─────────────────────────────────── */}
+      <div className="fixed inset-0 pointer-events-none z-[-1] overflow-hidden">
+        {/* Slow 25s Animated Ambient Light Bloom */}
+        <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[900px] h-[500px] bg-radial from-[#8B5CF6]/15 via-[#4F7CFF]/10 to-transparent blur-[140px] animate-pulse" style={{ animationDuration: '25s' }} />
+        <div className="absolute top-1/3 right-0 w-[500px] h-[500px] bg-radial from-[#A855F7]/10 to-transparent blur-[160px]" />
+        {/* Subtle Vignette Overlay */}
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(4,8,22,0.6)_100%)] pointer-events-none" />
+      </div>
+
+      {/* Dynamic Keyframes for Breathing Glow & Scrollbar Masking */}
       <style>{`
         @keyframes logoGlow {
-          0%, 100% { box-shadow: 0 0 15px rgba(108, 99, 255, 0.4); }
-          50% { box-shadow: 0 0 30px rgba(168, 85, 247, 0.7); }
+          0%, 100% { box-shadow: 0 0 15px rgba(139, 92, 246, 0.4); }
+          50% { box-shadow: 0 0 30px rgba(79, 124, 255, 0.7); }
         }
         .animate-logo-glow {
           animation: logoGlow 5.5s ease-in-out infinite;
@@ -227,10 +228,10 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
         }
       `}</style>
 
-      {/* ── 1. IMMEDIATE SCROLL-INTENT FLOATING HEADER WITH COMMAND DOCK ────── */}
+      {/* ── 1. THREE-ZONE HEADER WITH SCROLL-AWARE FLOATING COMMAND DOCK ─────── */}
       <header
-        className={`fixed top-0 left-0 right-0 flex items-center justify-between px-4 sm:px-8 z-[1000] border-b border-slate-200/80 dark:border-slate-800/80 bg-white/80 dark:bg-[#050814]/85 backdrop-blur-xl w-full transition-all duration-220 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-          isAtTop ? 'h-[72px]' : 'h-[58px] shadow-2xl'
+        className={`fixed top-0 left-0 right-0 flex items-center justify-between px-4 sm:px-8 z-[1000] border-b border-[#1E2A44]/80 bg-[#081226]/85 backdrop-blur-2xl w-full transition-all duration-220 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+          isAtTop ? 'h-[72px]' : 'h-[58px] shadow-[0_16px_40px_rgba(0,0,0,0.5)]'
         } ${
           isHeaderVisible
             ? 'translate-y-0 opacity-100 scale-100 blur-0 pointer-events-auto'
@@ -244,13 +245,13 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
             onClick={() => navigate('/')} 
             className="flex items-center space-x-3 cursor-pointer group"
           >
-            <div className={`rounded-xl bg-gradient-to-br from-[#6C63FF] via-[#8B5CF6] to-[#A855F7] flex items-center justify-center text-white animate-logo-glow group-hover:scale-105 transition-all duration-200 shrink-0 ${
+            <div className={`rounded-xl bg-gradient-to-br from-[#8B5CF6] via-[#4F7CFF] to-[#A855F7] flex items-center justify-center text-white animate-logo-glow group-hover:scale-105 transition-all duration-200 shrink-0 ${
               isAtTop ? 'w-10 h-10' : 'w-8 h-8'
             }`}>
               <Wallet className={isAtTop ? "w-5 h-5" : "w-4 h-4"} />
             </div>
             <div className="flex flex-col">
-              <span className="font-extrabold text-xs tracking-tight text-slate-900 dark:text-white uppercase leading-none font-sans">
+              <span className="font-extrabold text-xs tracking-tight text-white uppercase leading-none font-sans">
                 VENKE FINANCE
               </span>
               {isAtTop && (
@@ -267,7 +268,7 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
           <nav
             onMouseEnter={handleDockMouseEnter}
             onMouseLeave={handleDockMouseLeave}
-            className={`flex items-center space-x-1.5 px-3 rounded-[24px] backdrop-blur-[18px] bg-[#080c1c]/80 border border-white/10 shadow-[0_16px_50px_rgba(0,0,0,0.45)] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] max-w-full overflow-x-auto no-scrollbar will-change-transform ${
+            className={`flex items-center space-x-1.5 px-3 rounded-[24px] backdrop-blur-2xl bg-[#081226]/90 border border-[#1E2A44] shadow-[0_16px_50px_rgba(0,0,0,0.5)] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] max-w-full overflow-x-auto no-scrollbar will-change-transform ${
               isAtTop ? 'h-[64px]' : 'h-[48px]'
             } ${
               showLabels ? 'px-4' : 'px-2.5'
@@ -295,7 +296,7 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
           {/* Cmd + K Trigger */}
           <div 
             onClick={() => setIsCmdKOpen(true)}
-            className="flex items-center rounded-full px-3 py-1.5 text-xs border border-slate-200 dark:border-slate-800 bg-slate-100/80 dark:bg-[#0b1228]/80 text-slate-400 hover:border-[#8B5CF6] cursor-pointer transition shadow-sm"
+            className="flex items-center rounded-full px-3 py-1.5 text-xs border border-[#1E2A44] bg-[#0D1830] text-slate-400 hover:border-[#8B5CF6] cursor-pointer transition shadow-sm"
           >
             <Search className="w-3.5 h-3.5 text-slate-400 mr-1.5 shrink-0" />
             <span className="hidden lg:inline font-medium text-slate-400">Search...</span>
@@ -303,16 +304,16 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
           </div>
 
           {/* Notification Bell */}
-          <button className="p-2 rounded-full relative transition-transform hover:rotate-6 hover:bg-slate-100 dark:hover:bg-slate-800">
+          <button className="p-2 rounded-full relative transition-transform hover:rotate-6 hover:bg-[#0D1830]">
             <Bell className="w-4.5 h-4.5 text-slate-400" />
             <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#8B5CF6] rounded-full animate-pulse" />
           </button>
 
-          {/* Optional Dock Pin Toggle */}
+          {/* Dock Pin Toggle */}
           <button 
             onClick={togglePin}
             className={`p-2 rounded-full hidden md:flex transition ${
-              isPinned ? 'bg-[#8B5CF6]/20 text-[#8B5CF6] border border-[#8B5CF6]/40' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+              isPinned ? 'bg-[#8B5CF6]/20 text-[#8B5CF6] border border-[#8B5CF6]/40' : 'text-slate-400 hover:bg-[#0D1830]'
             }`}
             title={isPinned ? 'Unpin Dock Auto-Hide' : 'Pin Dock Always Expanded'}
           >
@@ -322,7 +323,7 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
           {/* User Profile */}
           <div 
             onClick={() => { if(window.confirm('Are you sure you want to sign out?')) onLogout?.(); }}
-            className="flex items-center space-x-2 cursor-pointer p-1 pr-3 rounded-full transition-all duration-200 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 hover:border-[#8B5CF6]/40"
+            className="flex items-center space-x-2 cursor-pointer p-1 pr-3 rounded-full transition-all duration-200 hover:bg-[#0D1830] border border-[#1E2A44] hover:border-[#8B5CF6]/40"
             title="Click to logout"
           >
             <UserCircle className="w-7 h-7 text-[#8B5CF6]" />
@@ -331,15 +332,15 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
         </div>
       </header>
 
-      {/* ── 2. FULL-WIDTH WORKSPACE CONTAINER (Top Padding 96px for Header) ───── */}
+      {/* ── 2. FULL-WIDTH WORKSPACE CONTAINER ────────────────────────────────── */}
       <div className="w-full min-h-screen pt-24 px-4 sm:px-8 pb-24 md:pb-8">
         <main className="w-full max-w-[1600px] mx-auto">
           {children}
         </main>
       </div>
 
-      {/* ── 3. IMMEDIATE SCROLL-INTENT MOBILE BOTTOM DOCK (Mobile Only) ──────── */}
-      <nav className={`fixed bottom-4 left-4 right-4 h-16 backdrop-blur-2xl bg-[#080a12]/90 border border-white/10 rounded-full shadow-2xl z-50 md:hidden flex justify-around items-center px-4 transition-all duration-220 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+      {/* ── 3. MOBILE FLOATING BOTTOM DOCK ───────────────────────────────────── */}
+      <nav className={`fixed bottom-4 left-4 right-4 h-16 backdrop-blur-2xl bg-[#081226]/95 border border-[#1E2A44] rounded-full shadow-2xl z-50 md:hidden flex justify-around items-center px-4 transition-all duration-220 ease-[cubic-bezier(0.16,1,0.3,1)] ${
         isHeaderVisible ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-20 opacity-0 scale-95 pointer-events-none'
       }`}>
         {[
@@ -374,8 +375,8 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
 
       {/* Mobile Full-Screen Navigation Sheet */}
       {isMobileSheetOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xl p-6 flex flex-col justify-between animate-in fade-in duration-200 md:hidden">
-          <div className="flex justify-between items-center pb-4 border-b border-white/10">
+        <div className="fixed inset-0 z-50 bg-[#040816]/90 backdrop-blur-2xl p-6 flex flex-col justify-between animate-in fade-in duration-200 md:hidden">
+          <div className="flex justify-between items-center pb-4 border-b border-[#1E2A44]">
             <div className="flex items-center space-x-2">
               <Wallet className="w-6 h-6 text-[#8B5CF6]" />
               <span className="font-extrabold text-sm tracking-tight text-white uppercase">VENKE FINANCE</span>
@@ -393,7 +394,7 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
                   navigate(item.to);
                   setIsMobileSheetOpen(false);
                 }}
-                className="p-4 rounded-2xl bg-[#0b1228] border border-white/10 text-white flex items-center space-x-3 cursor-pointer hover:border-[#8B5CF6]"
+                className="p-4 rounded-2xl bg-[#081226] border border-[#1E2A44] text-white flex items-center space-x-3 cursor-pointer hover:border-[#8B5CF6]"
               >
                 <span className="text-[#8B5CF6]">{item.icon}</span>
                 <span className="text-xs font-bold">{item.label}</span>
@@ -401,7 +402,7 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
             ))}
           </div>
 
-          <div className="pt-4 border-t border-white/10 flex justify-between items-center">
+          <div className="pt-4 border-t border-[#1E2A44] flex justify-between items-center">
             <button
               onClick={() => { navigate('/settings'); setIsMobileSheetOpen(false); }}
               className="flex items-center space-x-2 text-xs font-bold text-slate-400"
@@ -422,8 +423,8 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
       {/* ── 4. GLOBAL COMMAND PALETTE MODAL (Ctrl / Cmd + K) ────────────────── */}
       {isCmdKOpen && (
         <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 bg-black/75 backdrop-blur-md p-4 animate-in fade-in duration-150">
-          <div className="bg-[#0b1228] border border-white/10 w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden flex flex-col">
-            <div className="p-4 border-b border-white/10 flex items-center space-x-3 bg-[#080a12]">
+          <div className="bg-[#081226] border border-[#1E2A44] w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden flex flex-col">
+            <div className="p-4 border-b border-[#1E2A44] flex items-center space-x-3 bg-[#040816]">
               <Search className="w-5 h-5 text-[#8B5CF6] shrink-0" />
               <input
                 type="text"
@@ -433,7 +434,7 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
                 onChange={e => setCmdQuery(e.target.value)}
                 className="w-full bg-transparent text-sm text-white placeholder:text-slate-500 outline-none font-medium"
               />
-              <span className="text-[10px] font-mono text-slate-400 border border-white/10 px-2 py-0.5 rounded">ESC</span>
+              <span className="text-[10px] font-mono text-slate-400 border border-[#1E2A44] px-2 py-0.5 rounded">ESC</span>
             </div>
 
             <div className="max-h-80 overflow-y-auto p-2 space-y-1">

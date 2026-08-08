@@ -3123,9 +3123,20 @@ function SummaryCard({
   const accent = cardKey ? accentBorders[cardKey] : accentBorders['savingsrate'];
   const accentClasses = accent ? `${accent.border} ${accent.hover} transition-all duration-250` : '';
 
+  const glowMap: Record<string, string> = {
+    income: 'hover:shadow-[0_12px_32px_rgba(79,124,255,0.22)] border-[#1E2A44] hover:border-[#4F7CFF]/60',
+    expenses: 'hover:shadow-[0_12px_32px_rgba(239,68,68,0.22)] border-[#1E2A44] hover:border-[#EF4444]/60',
+    savings: 'hover:shadow-[0_12px_32px_rgba(34,197,94,0.22)] border-[#1E2A44] hover:border-[#22C55E]/60',
+    balance: 'hover:shadow-[0_12px_32px_rgba(245,158,11,0.22)] border-[#1E2A44] hover:border-[#F59E0B]/60',
+    netbalance: 'hover:shadow-[0_12px_32px_rgba(139,92,246,0.22)] border-[#1E2A44] hover:border-[#8B5CF6]/60',
+    savingsrate: 'hover:shadow-[0_12px_32px_rgba(168,85,247,0.22)] border-[#1E2A44] hover:border-[#A855F7]/60',
+  };
+
+  const cardGlow = cardKey ? glowMap[cardKey] : glowMap['savingsrate'];
+
   return (
     <div
-      className={`bg-white dark:bg-slate-950 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm dashboard-card-hover animate-fade-in-up hover:shadow-xl hover:border-primary/40 hover:ring-2 hover:ring-primary/10 transition-all duration-200 relative overflow-visible group ${accentClasses} ${onClick ? 'cursor-pointer' : ''}`}
+      className={`bg-[#081226] p-5 rounded-2xl border shadow-[0_4px_20px_rgba(0,0,0,0.35),0_0_0_1px_rgba(255,255,255,0.06)] hover:-translate-y-2 transition-all duration-200 relative overflow-visible group ${cardGlow} ${accentClasses} ${onClick ? 'cursor-pointer' : ''}`}
       onClick={onClick}
     >
       {/* Decorative background circle inside wrapper to clip bounds correctly */}
