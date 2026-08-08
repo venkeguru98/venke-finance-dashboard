@@ -3,7 +3,7 @@ import {
   Plus, Pencil, Trash2, CheckCircle2, FileSpreadsheet,
   Sparkles, PieChart as PieChartIcon, Search,
   Zap, Copy, AlertTriangle, RefreshCw, ChevronDown, ChevronUp,
-  Lock, ShoppingBag, Calendar
+  Lock, ShoppingBag, Calendar, X
 } from 'lucide-react';
 import axios from 'axios';
 import Button from '../components/ui/Button';
@@ -1399,6 +1399,168 @@ export default function Budgets() {
           </form>
         </div>
       )}
+
+      {/* ── CATEGORY REMAINING BUDGET BREAKDOWN MODAL ────────────────────────────── */}
+      {isRemainingModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xl animate-in fade-in duration-200">
+          <div className="bg-[#081226] border border-[#1E2A4A] w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            
+            {/* MODAL HEADER */}
+            <div className="p-6 border-b border-[#1E2A4A] bg-[#050816] flex justify-between items-center shrink-0">
+              <div>
+                <div className="flex items-center space-x-2">
+                  <PieChartIcon className="w-5 h-5 text-emerald-400" />
+                  <h3 className="font-extrabold text-base text-white tracking-tight">
+                    Remaining Amount to Spend — Category Breakdown
+                  </h3>
+                </div>
+                <p className="text-xs text-slate-400 mt-1">
+                  {selectedMonthLabel} {selectedYear} • {budgets.length} Budgeted Categories
+                </p>
+              </div>
+
+              <div className="flex items-center space-x-3">
+                <div className="bg-[#0B1228] border border-[#1E2A4A] px-3.5 py-1.5 rounded-xl text-right">
+                  <span className="text-[9px] font-bold text-slate-400 uppercase block">Total Remaining</span>
+                  <span className={`text-base font-black font-mono ${remainingBudgetValue >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    ₹{remainingBudgetValue.toLocaleString('en-IN')}
+                  </span>
+                </div>
+                <button 
+                  onClick={() => setIsRemainingModalOpen(false)}
+                  className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* MODAL SEARCH & FILTERS BAR */}
+            <div className="p-4 bg-[#0B1228]/90 border-b border-[#1E2A4A] flex flex-wrap items-center justify-between gap-3 shrink-0">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Filter by category name..."
+                  value={remainingSearchQuery}
+                  onChange={e => setRemainingSearchQuery(e.target.value)}
+                  className="w-full bg-[#050816] border border-[#1E2A4A] text-xs font-bold text-white rounded-xl py-1.5 pl-8 pr-3 focus:outline-none"
+                />
+              </div>
+
+              <select
+                value={remainingFilterGroup}
+                onChange={e => setRemainingFilterGroup(e.target.value)}
+                className="bg-[#050816] border border-[#1E2A4A] text-xs font-bold text-slate-300 rounded-xl px-3 py-1.5 focus:outline-none"
+              >
+                <option value="all">All Category Groups</option>
+                <option value="Expenses">🍽 Expenses</option>
+                <option value="Savings">💰 Savings</option>
+                <option value="Investments">📈 Investments</option>
+                <option value="Debt">💳 Debt</option>
+                <option value="Insurance">🛡 Insurance</option>
+              </select>
+            </div>
+
+            {/* MODAL CATEGORY LIST CONTENT */}
+            <div className="p-6 overflow-y-auto space-y-3 custom-scrollbar flex-1">
+              {(() => {
+                const filteredBudgets = budgets.filter(b => {
+                  const matchCat = categories.find(c => c.id === b.category_id);
+                  const grp = matchCat ? getCategoryGroup(matchCat) : 'Expenses';
+                  const matchesSearch = b.category_name.toLowerCase().includes(remainingSearchQuery.toLowerCase());
+                  const matchesGroup = remainingFilterGroup === 'all' || grp === remainingFilterGroup;
+                  return matchesSearch && matchesGroup;
+                });
+
+                if (filteredBudgets.length === 0) {
+                  return (
+                    <div className="text-center py-12 text-slate-400 text-xs font-bold">
+                      No matching category remaining budgets found.
+                    </div>
+                  );
+                }
+
+                return filteredBudgets.map(b => {
+                  const matchCat = categories.find(c => c.id === b.category_id);
+                  const grp = matchCat ? getCategoryGroup(matchCat) : 'Expenses';
+                  const effLimit = b.effectiveLimit || b.limit_amount;
+                  const remaining = effLimit - b.spent;
+                  const pct = effLimit > 0 ? Math.min(100, (b.spent / effLimit) * 100) : 0;
+                  const isOver = b.spent > effLimit;
+
+                  return (
+                    <div 
+                      key={b.id} 
+                      className={`p-4 rounded-2xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
+                        isOver 
+                          ? 'bg-rose-500/10 border-rose-500/30' 
+                          : remaining === 0
+                            ? 'bg-[#0B1228] border-[#1E2A4A]' 
+                            : 'bg-[#0D1830] border-emerald-500/30'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-3">
+                        <span className="w-3.5 h-3.5 rounded-full shrink-0" style={{ backgroundColor: b.category_color }} />
+                        <div>
+                          <div className="flex items-center space-x-2">
+                            <span className="font-extrabold text-white text-sm">{b.category_name}</span>
+                            <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase bg-white/10 text-slate-300">
+                              {grp}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+                            Spent ₹{b.spent.toLocaleString('en-IN')} / ₹{effLimit.toLocaleString('en-IN')} planned
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center space-x-6 justify-between sm:justify-end shrink-0">
+                        {/* PROGRESS BAR */}
+                        <div className="w-28 space-y-1">
+                          <div className="h-1.5 w-full bg-[#050816] rounded-full overflow-hidden">
+                            <div 
+                              className={`h-full rounded-full transition-all duration-300 ${
+                                isOver ? 'bg-rose-500' : 'bg-emerald-400'
+                              }`} 
+                              style={{ width: `${pct}%` }} 
+                            />
+                          </div>
+                          <p className="text-[9px] font-mono font-bold text-slate-400 text-right">{pct.toFixed(0)}% spent</p>
+                        </div>
+
+                        {/* CATEGORY REMAINING AMOUNT */}
+                        <div className="text-right min-w-[110px]">
+                          <span className="text-[9px] font-extrabold uppercase text-slate-400 block">Remaining</span>
+                          <span className={`text-base font-black font-mono ${remaining >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            {remaining >= 0 ? `₹${remaining.toLocaleString('en-IN')}` : `-₹${Math.abs(remaining).toLocaleString('en-IN')}`}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+
+            {/* MODAL FOOTER */}
+            <div className="p-4 border-t border-[#1E2A4A] bg-[#050816] flex justify-between items-center shrink-0">
+              <span className="text-xs text-slate-400 font-semibold">
+                Tip: Remaining budget automatically syncs with your live transaction entries.
+              </span>
+              <Button 
+                onClick={() => setIsRemainingModalOpen(false)} 
+                variant="ghost" 
+                className="px-5 py-2 text-xs font-bold border border-[#1E2A4A] text-white hover:bg-white/10 rounded-xl"
+              >
+                Close
+              </Button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
     </div>
   );
 
@@ -1580,169 +1742,5 @@ export default function Budgets() {
       </div>
     );
   }
-
-  {/* ── CATEGORY REMAINING BUDGET BREAKDOWN MODAL ────────────────────────────── */}
-  {isRemainingModalOpen && (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xl animate-in fade-in duration-200">
-      <div className="bg-[#081226] border border-[#1E2A4A] w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-        
-        {/* MODAL HEADER */}
-        <div className="p-6 border-b border-[#1E2A4A] bg-[#050816] flex justify-between items-center shrink-0">
-          <div>
-            <div className="flex items-center space-x-2">
-              <PieChartIcon className="w-5 h-5 text-emerald-400" />
-              <h3 className="font-extrabold text-base text-white tracking-tight">
-                Remaining Amount to Spend — Category Breakdown
-              </h3>
-            </div>
-            <p className="text-xs text-slate-400 mt-1">
-              {selectedMonthLabel} {selectedYear} • {budgets.length} Budgeted Categories
-            </p>
-          </div>
-
-          <div className="flex items-center space-x-3">
-            <div className="bg-[#0B1228] border border-[#1E2A4A] px-3.5 py-1.5 rounded-xl text-right">
-              <span className="text-[9px] font-bold text-slate-400 uppercase block">Total Remaining</span>
-              <span className={`text-base font-black font-mono ${remainingBudgetValue >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                ₹{remainingBudgetValue.toLocaleString('en-IN')}
-              </span>
-            </div>
-            <button 
-              onClick={() => setIsRemainingModalOpen(false)}
-              className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-
-        {/* MODAL SEARCH & FILTERS BAR */}
-        <div className="p-4 bg-[#0B1228]/90 border-b border-[#1E2A4A] flex flex-wrap items-center justify-between gap-3 shrink-0">
-          <div className="relative flex-1 min-w-[200px]">
-            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
-            <input
-              type="text"
-              placeholder="Filter by category name..."
-              value={remainingSearchQuery}
-              onChange={e => setRemainingSearchQuery(e.target.value)}
-              className="w-full bg-[#050816] border border-[#1E2A4A] text-xs font-bold text-white rounded-xl py-1.5 pl-8 pr-3 focus:outline-none"
-            />
-          </div>
-
-          <select
-            value={remainingFilterGroup}
-            onChange={e => setRemainingFilterGroup(e.target.value)}
-            className="bg-[#050816] border border-[#1E2A4A] text-xs font-bold text-slate-300 rounded-xl px-3 py-1.5 focus:outline-none"
-          >
-            <option value="all">All Category Groups</option>
-            <option value="Expenses">🍽 Expenses</option>
-            <option value="Savings">💰 Savings</option>
-            <option value="Investments">📈 Investments</option>
-            <option value="Debt">💳 Debt</option>
-            <option value="Insurance">🛡 Insurance</option>
-          </select>
-        </div>
-
-        {/* MODAL CATEGORY LIST CONTENT */}
-        <div className="p-6 overflow-y-auto space-y-3 custom-scrollbar flex-1">
-          {(() => {
-            const filteredBudgets = budgets.filter(b => {
-              const matchCat = categories.find(c => c.id === b.category_id);
-              const grp = matchCat ? getCategoryGroup(matchCat) : 'Expenses';
-              const matchesSearch = b.category_name.toLowerCase().includes(remainingSearchQuery.toLowerCase());
-              const matchesGroup = remainingFilterGroup === 'all' || grp === remainingFilterGroup;
-              return matchesSearch && matchesGroup;
-            });
-
-            if (filteredBudgets.length === 0) {
-              return (
-                <div className="text-center py-12 text-slate-400 text-xs font-bold">
-                  No matching category remaining budgets found.
-                </div>
-              );
-            }
-
-            return filteredBudgets.map(b => {
-              const matchCat = categories.find(c => c.id === b.category_id);
-              const grp = matchCat ? getCategoryGroup(matchCat) : 'Expenses';
-              const effLimit = b.effectiveLimit || b.limit_amount;
-              const remaining = effLimit - b.spent;
-              const pct = effLimit > 0 ? Math.min(100, (b.spent / effLimit) * 100) : 0;
-              const isOver = b.spent > effLimit;
-
-              return (
-                <div 
-                  key={b.id} 
-                  className={`p-4 rounded-2xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
-                    isOver 
-                      ? 'bg-rose-500/10 border-rose-500/30' 
-                      : remaining === 0
-                        ? 'bg-[#0B1228] border-[#1E2A4A]' 
-                        : 'bg-[#0D1830] border-emerald-500/30'
-                  }`}
-                >
-                  <div className="flex items-center space-x-3">
-                    <span className="w-3.5 h-3.5 rounded-full shrink-0" style={{ backgroundColor: b.category_color }} />
-                    <div>
-                      <div className="flex items-center space-x-2">
-                        <span className="font-extrabold text-white text-sm">{b.category_name}</span>
-                        <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase bg-white/10 text-slate-300">
-                          {grp}
-                        </span>
-                      </div>
-                      <p className="text-[10px] text-slate-400 font-mono mt-0.5">
-                        Spent ₹{b.spent.toLocaleString('en-IN')} / ₹{effLimit.toLocaleString('en-IN')} planned
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center space-x-6 justify-between sm:justify-end shrink-0">
-                    {/* PROGRESS BAR */}
-                    <div className="w-28 space-y-1">
-                      <div className="h-1.5 w-full bg-[#050816] rounded-full overflow-hidden">
-                        <div 
-                          className={`h-full rounded-full transition-all duration-300 ${
-                            isOver ? 'bg-rose-500' : 'bg-emerald-400'
-                          }`} 
-                          style={{ width: `${pct}%` }} 
-                        />
-                      </div>
-                      <p className="text-[9px] font-mono font-bold text-slate-400 text-right">{pct.toFixed(0)}% spent</p>
-                    </div>
-
-                    {/* CATEGORY REMAINING AMOUNT */}
-                    <div className="text-right min-w-[110px]">
-                      <span className="text-[9px] font-extrabold uppercase text-slate-400 block">Remaining</span>
-                      <span className={`text-base font-black font-mono ${remaining >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                        {remaining >= 0 ? `₹${remaining.toLocaleString('en-IN')}` : `-₹${Math.abs(remaining).toLocaleString('en-IN')}`}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              );
-            });
-          })()}
-        </div>
-
-        {/* MODAL FOOTER */}
-        <div className="p-4 border-t border-[#1E2A4A] bg-[#050816] flex justify-between items-center shrink-0">
-          <span className="text-xs text-slate-400 font-semibold">
-            Tip: Remaining budget automatically syncs with your live transaction entries.
-          </span>
-          <Button 
-            onClick={() => setIsRemainingModalOpen(false)} 
-            variant="ghost" 
-            className="px-5 py-2 text-xs font-bold border border-[#1E2A4A] text-white hover:bg-white/10 rounded-xl"
-          >
-            Close
-          </Button>
-        </div>
-
-      </div>
-    </div>
-  )}
-
-</div>
-);
 }
 
