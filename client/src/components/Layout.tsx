@@ -15,7 +15,7 @@ const NavTab = memo(({
   const [isPressed, setIsPressed] = useState(false);
   const [ripple, setRipple] = useState(false);
 
-  const handleClick = (e: React.MouseEvent) => {
+  const handleClick = () => {
     setRipple(true);
     setTimeout(() => setRipple(false), 450);
     onClick?.();
