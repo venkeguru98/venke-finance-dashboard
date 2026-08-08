@@ -85,6 +85,10 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
     return localStorage.getItem('dock_pinned') === 'true';
   });
 
+  // Scroll-Aware Visibility States
+  const [isHeaderVisible, setIsHeaderVisible] = useState(true);
+  const [isAtTop, setIsAtTop] = useState(true);
+
   const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false);
   const [isCmdKOpen, setIsCmdKOpen] = useState(false);
   const [cmdQuery, setCmdQuery] = useState('');
@@ -105,6 +109,42 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
     { to: '/import', icon: <Upload size={18} />, label: 'Import', badge: null },
     { to: '/settings', icon: <Settings size={18} />, label: 'Settings', badge: null },
   ];
+
+  // Scroll Direction & Visibility Hysteresis Engine
+  useEffect(() => {
+    let lastY = window.scrollY;
+    let ticking = false;
+
+    const handleScroll = () => {
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          const currentY = window.scrollY;
+          const diff = currentY - lastY;
+
+          if (currentY <= 24) {
+            setIsAtTop(true);
+            setIsHeaderVisible(true);
+          } else {
+            setIsAtTop(false);
+            if (diff > 48) {
+              // Scroll Down > 48px: Hide smoothly
+              setIsHeaderVisible(false);
+            } else if (diff < -16) {
+              // Scroll Up > 16px: Reveal immediately
+              setIsHeaderVisible(true);
+            }
+          }
+
+          lastY = currentY;
+          ticking = false;
+        });
+        ticking = true;
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   // Mouse Enter Dock: Expand immediately & clear auto-hide timer
   const handleDockMouseEnter = () => {
@@ -183,25 +223,35 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
         }
       `}</style>
 
-      {/* ── 1. THREE-ZONE HEADER WITH FLOATING ADAPTIVE DOCK ───────────────── */}
-      <header className="fixed top-0 left-0 right-0 h-[72px] flex items-center justify-between px-4 sm:px-8 z-[1000] border-b border-slate-200/80 dark:border-slate-800/80 bg-white/80 dark:bg-[#050814]/85 backdrop-blur-xl w-full">
+      {/* ── 1. SCROLL-AWARE FLOATING HEADER WITH ADAPTIVE COMMAND DOCK ───────── */}
+      <header
+        className={`fixed top-0 left-0 right-0 flex items-center justify-between px-4 sm:px-8 z-[1000] border-b border-slate-200/80 dark:border-slate-800/80 bg-white/80 dark:bg-[#050814]/85 backdrop-blur-xl w-full transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+          isAtTop ? 'h-[72px]' : 'h-[58px] shadow-2xl'
+        } ${
+          isHeaderVisible ? 'translate-y-0 opacity-100 pointer-events-auto' : '-translate-y-full opacity-0 pointer-events-none'
+        }`}
+      >
         
-        {/* ── LEFT ZONE (Width 240px: Logo Capsule, Guaranteed Space) ────────── */}
+        {/* ── LEFT ZONE (Width 240px: Logo Capsule) ───────────────────────── */}
         <div className="w-56 sm:w-60 shrink-0 flex items-center space-x-3">
           <div 
             onClick={() => navigate('/')} 
             className="flex items-center space-x-3 cursor-pointer group"
           >
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#6C63FF] via-[#8B5CF6] to-[#A855F7] flex items-center justify-center text-white animate-logo-glow group-hover:scale-105 transition-transform duration-200 shrink-0">
-              <Wallet className="w-5 h-5 text-white" />
+            <div className={`rounded-xl bg-gradient-to-br from-[#6C63FF] via-[#8B5CF6] to-[#A855F7] flex items-center justify-center text-white animate-logo-glow group-hover:scale-105 transition-all duration-200 shrink-0 ${
+              isAtTop ? 'w-10 h-10' : 'w-8 h-8'
+            }`}>
+              <Wallet className={isAtTop ? "w-5 h-5" : "w-4 h-4"} />
             </div>
             <div className="flex flex-col">
               <span className="font-extrabold text-xs tracking-tight text-slate-900 dark:text-white uppercase leading-none font-sans">
                 VENKE FINANCE
               </span>
-              <span className="text-[8px] font-black uppercase tracking-widest text-[#8B5CF6] mt-1">
-                Track • Save • Grow
-              </span>
+              {isAtTop && (
+                <span className="text-[8px] font-black uppercase tracking-widest text-[#8B5CF6] mt-1 animate-in fade-in duration-150">
+                  Track • Save • Grow
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -211,7 +261,9 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
           <nav
             onMouseEnter={handleDockMouseEnter}
             onMouseLeave={handleDockMouseLeave}
-            className={`h-[64px] flex items-center space-x-1.5 px-3 rounded-[24px] backdrop-blur-[18px] bg-[#080c1c]/80 border border-white/10 shadow-[0_16px_50px_rgba(0,0,0,0.45)] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] max-w-full overflow-x-auto no-scrollbar will-change-transform ${
+            className={`flex items-center space-x-1.5 px-3 rounded-[24px] backdrop-blur-[18px] bg-[#080c1c]/80 border border-white/10 shadow-[0_16px_50px_rgba(0,0,0,0.45)] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] max-w-full overflow-x-auto no-scrollbar will-change-transform ${
+              isAtTop ? 'h-[64px]' : 'h-[48px]'
+            } ${
               showLabels ? 'px-4' : 'px-2.5'
             }`}
           >
@@ -280,8 +332,10 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
         </main>
       </div>
 
-      {/* ── 3. FLOATING MOBILE BOTTOM DOCK (Mobile Only) ────────────────────── */}
-      <nav className="fixed bottom-4 left-4 right-4 h-16 backdrop-blur-2xl bg-[#080a12]/90 border border-white/10 rounded-full shadow-2xl z-50 md:hidden flex justify-around items-center px-4">
+      {/* ── 3. SCROLL-AWARE FLOATING MOBILE BOTTOM DOCK (Mobile Only) ────────── */}
+      <nav className={`fixed bottom-4 left-4 right-4 h-16 backdrop-blur-2xl bg-[#080a12]/90 border border-white/10 rounded-full shadow-2xl z-50 md:hidden flex justify-around items-center px-4 transition-all duration-300 ${
+        isHeaderVisible ? 'translate-y-0 opacity-100' : 'translate-y-20 opacity-0 pointer-events-none'
+      }`}>
         {[
           { to: '/', icon: <LayoutDashboard size={20} />, label: 'Home' },
           { to: '/transactions', icon: <ReceiptText size={20} />, label: 'TXs' },
