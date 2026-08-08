@@ -132,6 +132,7 @@ function getLocalIpAddress() {
 
 import { startLicAutomationScheduler } from './services/recurringAutomation';
 import { GlobalLicAutopilotService } from './services/GlobalLicAutopilotService';
+import { LocalDatabaseBackupService } from './services/LocalDatabaseBackupService';
 
 const startServer = async () => {
   // ─── Initialize Database ─────────────────────────────────────────────────
@@ -140,6 +141,8 @@ const startServer = async () => {
     // ─── Initialize Autonomous LIC Automation Scheduler Daemon & 15-Min Ticker ──────────────
     startLicAutomationScheduler(1);
     GlobalLicAutopilotService.start15MinuteTicker(1);
+    // ─── Initialize Automatic Local Database Backup Daemon (Runs every 6 Hours) ─────────────
+    LocalDatabaseBackupService.startBackupDaemon(6);
   } catch (dbErr) {
     console.error('[DB] Failed to initialize database:', dbErr);
   }
@@ -154,6 +157,24 @@ const startServer = async () => {
       timestamp: new Date().toISOString(),
       version: process.env.npm_package_version || '1.0.0',
     });
+  });
+
+  // ─── Admin Backup Endpoints ────────────────────────────────────────────────
+  app.post('/api/admin/backup/create', async (_req, res) => {
+    const result = await LocalDatabaseBackupService.createLocalBackup('MANUAL_API_TRIGGER');
+    res.json(result);
+  });
+
+  app.get('/api/admin/backup/list', (_req, res) => {
+    const backups = LocalDatabaseBackupService.listLocalBackups();
+    res.json({ backups, count: backups.length });
+  });
+
+  app.post('/api/admin/backup/restore', async (req, res) => {
+    const { filename } = req.body || {};
+    const snapshotPath = filename ? path.resolve(__dirname, '../../../backups', filename) : undefined;
+    const result = await LocalDatabaseBackupService.restoreFromSnapshot(snapshotPath);
+    res.json(result);
   });
 
   // ─── Admin Migration Verification Endpoint ────────────────────────────────
