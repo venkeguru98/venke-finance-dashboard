@@ -191,18 +191,18 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
 
       {/* Main Content Area */}
       <main className={`flex-1 flex flex-col overflow-hidden relative ${
-        isPersonal ? 'bg-white rounded-3xl border border-slate-200/80 shadow-lg' : ''
+        isPersonal ? 'bg-[#050816] text-white border-none shadow-none' : ''
       }`}>
         {/* Top Navbar */}
-        <header className={`h-16 flex items-center justify-between px-4 md:px-6 z-10 flex-shrink-0 ${
+        <header className={`h-14 flex items-center justify-between px-4 md:px-6 z-10 flex-shrink-0 ${
           isPersonal 
-            ? 'bg-white border-b border-slate-150 text-slate-800' 
+            ? 'bg-[#0B1228]/80 border-b border-[#1E2A4A] text-slate-100 backdrop-blur-md' 
             : 'border-b border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-slate-950/50 backdrop-blur-sm'
         }`}>
           <div className="flex items-center space-x-3">
             <button onClick={toggleDrawer} className={`p-2 rounded-xl md:hidden border transition ${
               isPersonal 
-                ? 'border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200' 
+                ? 'border-[#1E2A4A] bg-[#101935] text-slate-300 hover:bg-[#1E2A4A]' 
                 : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-600 dark:text-slate-400'
             }`}>
               <Menu size={20} />
@@ -210,42 +210,42 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
             
             <div className={`flex items-center rounded-full px-3.5 py-1.5 w-44 sm:w-64 md:w-80 text-xs border ${
               isPersonal
-                ? 'bg-slate-100/80 border-slate-200/80 text-slate-800'
+                ? 'bg-[#101935] border-[#1E2A4A] text-white'
                 : 'bg-slate-100 dark:bg-slate-800 border-transparent text-slate-900 dark:text-white'
             }`}>
               <Search className="w-3.5 h-3.5 text-slate-400 mr-2 flex-shrink-0" />
               <input 
                 type="text" 
-                placeholder={isPersonal ? "Search a task..." : "Search transactions..."} 
+                placeholder={isPersonal ? "Search Personal OS (Cmd + K)..." : "Search transactions..."} 
                 className="bg-transparent border-none outline-none w-full placeholder:text-slate-400 text-slate-900 dark:text-white font-medium"
               />
-              {isPersonal && <span className="text-[10px] font-mono text-slate-400 ml-1 font-bold">⌘S</span>}
+              {isPersonal && <span className="text-[10px] font-mono text-[#7C5CFF] ml-1 font-bold">⌘K</span>}
             </div>
           </div>
 
           <div className="flex items-center space-x-3">
             <button className={`p-2 rounded-full relative transition ${
-              isPersonal ? 'hover:bg-slate-100 text-slate-600' : 'hover:bg-slate-100 dark:hover:bg-slate-800'
+              isPersonal ? 'hover:bg-[#101935] text-slate-300' : 'hover:bg-slate-100 dark:hover:bg-slate-800'
             }`}>
               <Bell className="w-4.5 h-4.5" />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-teal-500 rounded-full"></span>
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#7C5CFF] rounded-full animate-pulse"></span>
             </button>
             <div 
               onClick={() => { if(window.confirm('Are you sure you want to sign out?')) onLogout?.(); }}
               className={`flex items-center space-x-2 cursor-pointer p-1 pr-2.5 rounded-full transition ${
-                isPersonal ? 'hover:bg-slate-100 bg-slate-50 border border-slate-200/80' : 'hover:bg-slate-100 dark:hover:bg-slate-800'
+                isPersonal ? 'hover:bg-[#101935] bg-[#101935]/80 border border-[#1E2A4A]' : 'hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
               title="Click to logout"
             >
-              <UserCircle className={`w-7 h-7 ${isPersonal ? 'text-teal-700' : 'text-slate-400'}`} />
-              <span className="text-xs font-bold hidden sm:block">John Doe</span>
+              <UserCircle className={`w-7 h-7 ${isPersonal ? 'text-[#7C5CFF]' : 'text-slate-400'}`} />
+              <span className="text-xs font-bold hidden sm:block">Venke</span>
             </div>
           </div>
         </header>
         
         {/* Page Content Container */}
-        <div className={`flex-1 overflow-auto ${isPersonal ? 'p-4 md:p-5' : 'p-4 md:p-6 pb-20 md:pb-6'}`}>
-          <div className="max-w-7xl mx-auto h-full">
+        <div className={`flex-1 overflow-auto ${isPersonal ? 'p-0 bg-[#050816]' : 'p-4 md:p-6 pb-20 md:pb-6'}`}>
+          <div className={isPersonal ? "w-full h-full" : "max-w-7xl mx-auto h-full"}>
             {children}
           </div>
         </div>
