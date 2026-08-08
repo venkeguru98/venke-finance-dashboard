@@ -50,6 +50,11 @@ if (isPg) {
     connectionString = connectionString.replace(/@(dpg-[a-z0-9]+)(\/|\?|$)/i, '@$1.singapore-postgres.render.com$2');
   }
 
+  // Handle SSL connection string parameter to prevent node-pg libpq warning
+  if (connectionString.includes('sslmode=require') && !connectionString.includes('uselibpqcompat')) {
+    connectionString = connectionString.replace('sslmode=require', 'sslmode=require&uselibpqcompat=true');
+  }
+
   console.log('Connecting to Cloud PostgreSQL Database...');
   pgPool = new Pool({
     connectionString,
@@ -217,9 +222,10 @@ export const initializeDatabase = async () => {
         try {
           await pgPool.query(stmt);
         } catch (err: any) {
-          // Ignore "already exists" and duplicate key errors (idempotent schema init)
-          if (!err.message.includes('already exists') && !err.message.includes('duplicate key')) {
-            console.warn('[PG Schema]', err.message.slice(0, 120));
+          // Ignore "already exists", "duplicate key", and "cannot drop table" warnings (idempotent schema init)
+          const msg = err.message || '';
+          if (!msg.includes('already exists') && !msg.includes('duplicate key') && !msg.includes('cannot drop table') && !msg.includes('depend on it')) {
+            console.warn('[PG Schema]', msg.slice(0, 120));
           }
         }
       }
