@@ -15,19 +15,6 @@ import FinancialRecords from './pages/FinancialRecords';
 import Login from './pages/Login';
 import Bills from './pages/Bills';
 
-// Personal Assist Module Imports
-import PersonalDashboard from './pages/personalAssist/PersonalDashboard';
-import MyDay from './pages/personalAssist/MyDay';
-import PersonalCalendar from './pages/personalAssist/PersonalCalendar';
-import PersonalTasks from './pages/personalAssist/PersonalTasks';
-import HabitTracker from './pages/personalAssist/HabitTracker';
-import PersonalGoals from './pages/personalAssist/PersonalGoals';
-import Wellness from './pages/personalAssist/Wellness';
-import PersonalNotes from './pages/personalAssist/PersonalNotes';
-import PersonalReminders from './pages/personalAssist/PersonalReminders';
-import PersonalAnalytics from './pages/personalAssist/PersonalAnalytics';
-import PersonalSettings from './pages/personalAssist/PersonalSettings';
-
 // Configure Axios globally to include JWT Bearer Token on all requests
 axios.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
@@ -120,19 +107,6 @@ function App() {
           <Route path="/calendar" element={<CalendarView />} />
           <Route path="/import" element={<Import />} />
           <Route path="/settings" element={<Settings />} />
-
-          {/* Personal Assist Module Routes */}
-          <Route path="/personal-assist" element={<PersonalDashboard />} />
-          <Route path="/personal-assist/my-day" element={<MyDay />} />
-          <Route path="/personal-assist/calendar" element={<PersonalCalendar />} />
-          <Route path="/personal-assist/tasks" element={<PersonalTasks />} />
-          <Route path="/personal-assist/habits" element={<HabitTracker />} />
-          <Route path="/personal-assist/goals" element={<PersonalGoals />} />
-          <Route path="/personal-assist/wellness" element={<Wellness />} />
-          <Route path="/personal-assist/notes" element={<PersonalNotes />} />
-          <Route path="/personal-assist/reminders" element={<PersonalReminders />} />
-          <Route path="/personal-assist/analytics" element={<PersonalAnalytics />} />
-          <Route path="/personal-assist/settings" element={<PersonalSettings />} />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
