@@ -110,7 +110,7 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
     { to: '/settings', icon: <Settings size={18} />, label: 'Settings', badge: null },
   ];
 
-  // Scroll Direction & Visibility Hysteresis Engine
+  // Immediate Scroll-Intent Detection Logic (Instant response, no threshold delay)
   useEffect(() => {
     let lastY = window.scrollY;
     let ticking = false;
@@ -121,17 +121,21 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
           const currentY = window.scrollY;
           const diff = currentY - lastY;
 
-          if (currentY <= 24) {
-            setIsAtTop(true);
-            setIsHeaderVisible(true);
-          } else {
-            setIsAtTop(false);
-            if (diff > 48) {
-              // Scroll Down > 48px: Hide smoothly
-              setIsHeaderVisible(false);
-            } else if (diff < -16) {
-              // Scroll Up > 16px: Reveal immediately
+          // Filter out micro subpixel jitter (< 1px)
+          if (Math.abs(diff) >= 1) {
+            if (currentY <= 5) {
+              // Page Top: Expand fully
+              setIsAtTop(true);
               setIsHeaderVisible(true);
+            } else {
+              setIsAtTop(false);
+              if (diff > 0) {
+                // FIRST downward scroll movement -> HIDE IMMEDIATELY!
+                setIsHeaderVisible(false);
+              } else if (diff < 0) {
+                // FIRST upward scroll movement -> SHOW IMMEDIATELY!
+                setIsHeaderVisible(true);
+              }
             }
           }
 
@@ -223,12 +227,14 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
         }
       `}</style>
 
-      {/* ── 1. SCROLL-AWARE FLOATING HEADER WITH ADAPTIVE COMMAND DOCK ───────── */}
+      {/* ── 1. IMMEDIATE SCROLL-INTENT FLOATING HEADER WITH COMMAND DOCK ────── */}
       <header
-        className={`fixed top-0 left-0 right-0 flex items-center justify-between px-4 sm:px-8 z-[1000] border-b border-slate-200/80 dark:border-slate-800/80 bg-white/80 dark:bg-[#050814]/85 backdrop-blur-xl w-full transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+        className={`fixed top-0 left-0 right-0 flex items-center justify-between px-4 sm:px-8 z-[1000] border-b border-slate-200/80 dark:border-slate-800/80 bg-white/80 dark:bg-[#050814]/85 backdrop-blur-xl w-full transition-all duration-220 ease-[cubic-bezier(0.16,1,0.3,1)] ${
           isAtTop ? 'h-[72px]' : 'h-[58px] shadow-2xl'
         } ${
-          isHeaderVisible ? 'translate-y-0 opacity-100 pointer-events-auto' : '-translate-y-full opacity-0 pointer-events-none'
+          isHeaderVisible
+            ? 'translate-y-0 opacity-100 scale-100 blur-0 pointer-events-auto'
+            : '-translate-y-[110%] opacity-0 scale-[0.985] blur-sm pointer-events-none'
         }`}
       >
         
@@ -332,9 +338,9 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
         </main>
       </div>
 
-      {/* ── 3. SCROLL-AWARE FLOATING MOBILE BOTTOM DOCK (Mobile Only) ────────── */}
-      <nav className={`fixed bottom-4 left-4 right-4 h-16 backdrop-blur-2xl bg-[#080a12]/90 border border-white/10 rounded-full shadow-2xl z-50 md:hidden flex justify-around items-center px-4 transition-all duration-300 ${
-        isHeaderVisible ? 'translate-y-0 opacity-100' : 'translate-y-20 opacity-0 pointer-events-none'
+      {/* ── 3. IMMEDIATE SCROLL-INTENT MOBILE BOTTOM DOCK (Mobile Only) ──────── */}
+      <nav className={`fixed bottom-4 left-4 right-4 h-16 backdrop-blur-2xl bg-[#080a12]/90 border border-white/10 rounded-full shadow-2xl z-50 md:hidden flex justify-around items-center px-4 transition-all duration-220 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+        isHeaderVisible ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-20 opacity-0 scale-95 pointer-events-none'
       }`}>
         {[
           { to: '/', icon: <LayoutDashboard size={20} />, label: 'Home' },
