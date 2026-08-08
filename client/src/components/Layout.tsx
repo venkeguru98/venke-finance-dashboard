@@ -12,7 +12,7 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
   const [isCmdKOpen, setIsCmdKOpen] = useState(false);
   const [cmdQuery, setCmdQuery] = useState('');
   
-  // Dock Cursor Lighting & Magnetic Proximity State
+  // Dock Cursor Lighting & Mouse State
   const [cursorPos, setCursorPos] = useState({ x: 0, y: 0, opacity: 0 });
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [pressedIndex, setPressedIndex] = useState<number | null>(null);
@@ -83,9 +83,9 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
   }, [cmdQuery]);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-[#050814] text-slate-900 dark:text-slate-100 font-sans relative overflow-x-hidden">
+    <div className="w-screen min-h-screen flex bg-slate-50 dark:bg-[#050814] text-slate-900 dark:text-slate-100 font-sans relative overflow-x-hidden">
       
-      {/* CSS Keyframes for Breathing Animation and Spring Fluidity */}
+      {/* Dynamic Keyframes for Breathing Animation and Spring Physics */}
       <style>{`
         @keyframes dockBreathing {
           0%, 100% { transform: scale(1.000); }
@@ -110,17 +110,17 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
         }
       `}</style>
 
-      {/* ── 1. MOTION SYSTEM OVERHAUL: FLOATING DOCK (Desktop) ───────────────── */}
+      {/* ── 1. FLOATING OVERLAY NAVIGATION DOCK (z-100, Fixed Position) ────── */}
       <aside
         ref={dockRef}
         onMouseMove={handleDockMouseMove}
         onMouseEnter={() => setIsExpanded(true)}
         onMouseLeave={handleDockMouseLeave}
-        className={`fixed left-5 top-5 bottom-5 z-50 hidden md:flex flex-col justify-between backdrop-blur-2xl bg-[#080a12]/85 dark:bg-[#080a12]/90 border border-white/10 rounded-[28px] shadow-[0_20px_60px_rgba(0,0,0,0.5)] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] animate-dock-breath relative overflow-hidden will-change-transform ${
+        className={`fixed left-5 top-5 bottom-5 z-[100] hidden md:flex flex-col justify-between backdrop-blur-2xl bg-[#080a12]/85 dark:bg-[#080a12]/90 border border-white/10 rounded-[28px] shadow-[0_20px_60px_rgba(0,0,0,0.5)] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] animate-dock-breath relative overflow-hidden will-change-transform ${
           isExpanded ? 'w-64 p-4' : 'w-[72px] p-3'
         }`}
       >
-        {/* Dynamic Cursor Proximity Radial Light Source */}
+        {/* Dynamic Cursor Proximity Radial Light Overlay */}
         <div
           className="pointer-events-none absolute inset-0 transition-opacity duration-300"
           style={{
@@ -149,7 +149,7 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
           )}
         </div>
 
-        {/* Navigation Items List with Scroll Masking */}
+        {/* Navigation Items List */}
         <nav className="flex-1 my-4 space-y-1.5 overflow-y-auto no-scrollbar relative z-10 [mask-image:linear-gradient(to_bottom,transparent,black_12px,black_calc(100%-12px),transparent)]">
           {financeNavItems.map((item, index) => {
             const isActive = location.pathname === item.to || (item.to !== '/' && location.pathname.startsWith(item.to));
@@ -184,14 +184,14 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
                   {item.icon}
                 </span>
 
-                {/* Label (Staggered Entrance Animation) */}
+                {/* Label */}
                 {isExpanded && (
-                  <span className="truncate flex-1 text-xs font-bold transition-all duration-200 translate-x-0 opacity-100">
+                  <span className="truncate flex-1 text-xs font-bold transition-all duration-200">
                     {item.label}
                   </span>
                 )}
 
-                {/* Animated Badge */}
+                {/* Badge */}
                 {item.badge && (
                   <span className={`text-[9px] font-black rounded-full px-1.5 py-0.5 shrink-0 transition-transform ${
                     isActive ? 'bg-white/20 text-white' : 'bg-[#7C5CFF]/20 text-[#7C5CFF]'
@@ -213,7 +213,6 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
 
         {/* Dock Footer (Settings & Controls) */}
         <div className="pt-3 border-t border-white/10 space-y-2 relative z-10">
-          {/* Cmd + K Trigger */}
           <button
             onClick={() => setIsCmdKOpen(true)}
             className={`w-full flex items-center rounded-2xl bg-white/5 border border-white/10 hover:border-[#7C5CFF] text-slate-400 hover:text-white transition-all duration-200 ${
@@ -226,7 +225,6 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
             {isExpanded && <span className="text-[9px] font-mono text-slate-500 border border-white/10 px-1.5 py-0.5 rounded">⌘K</span>}
           </button>
 
-          {/* Settings Nav */}
           <NavLink
             to="/settings"
             className={`group relative flex items-center rounded-2xl transition-all duration-200 font-bold text-xs ${
@@ -248,26 +246,28 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
         </div>
       </aside>
 
-      {/* ── 2. DYNAMIC WORKSPACE CONTENT WRAPPER ───────────────────────────── */}
-      <div className={`transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] flex flex-col min-h-screen ${
-        isExpanded ? 'md:pl-[280px]' : 'md:pl-28'
-      }`}>
+      {/* ── 2. FLUID FULL-VIEWPORT DEDICATED CONTENT WRAPPER ────────────────── */}
+      <div 
+        className="w-full min-w-0 min-h-screen flex flex-col transition-[padding-left] duration-280 ease-[cubic-bezier(0.22,1,0.36,1)]"
+        style={{
+          paddingLeft: window.innerWidth >= 768 ? (isExpanded ? '284px' : '116px') : '0px'
+        }}
+      >
         
-        {/* Top Navbar */}
-        <header className="h-16 flex items-center justify-between px-4 md:px-8 z-30 flex-shrink-0 border-b border-slate-200/80 dark:border-slate-800/80 bg-white/70 dark:bg-[#050814]/70 backdrop-blur-md sticky top-0">
-          <div className="flex items-center space-x-3">
-            {/* Cmd + K Search Trigger */}
+        {/* Full-Width Top Navbar */}
+        <header className="h-16 flex items-center justify-between px-4 sm:px-8 z-30 flex-shrink-0 border-b border-slate-200/80 dark:border-slate-800/80 bg-white/70 dark:bg-[#050814]/70 backdrop-blur-md sticky top-0 w-full">
+          <div className="flex items-center space-x-3 flex-1 max-w-xl">
             <div 
               onClick={() => setIsCmdKOpen(true)}
-              className="flex items-center rounded-full px-4 py-2 w-48 sm:w-72 md:w-96 text-xs border border-slate-200 dark:border-slate-800 bg-slate-100/80 dark:bg-[#0b1228]/80 text-slate-400 hover:border-[#7C5CFF] cursor-pointer transition shadow-sm"
+              className="flex items-center rounded-full px-4 py-2 w-full text-xs border border-slate-200 dark:border-slate-800 bg-slate-100/80 dark:bg-[#0b1228]/80 text-slate-400 hover:border-[#7C5CFF] cursor-pointer transition shadow-sm"
             >
               <Search className="w-3.5 h-3.5 text-slate-400 mr-2 flex-shrink-0" />
-              <span className="flex-1 font-medium truncate">Search transactions, records...</span>
-              <span className="text-[10px] font-mono text-[#7C5CFF] border border-[#7C5CFF]/30 px-1.5 py-0.5 rounded font-bold">⌘K</span>
+              <span className="flex-1 font-medium truncate">Search transactions, records, budgets...</span>
+              <span className="text-[10px] font-mono text-[#7C5CFF] border border-[#7C5CFF]/30 px-1.5 py-0.5 rounded font-bold ml-2">⌘K</span>
             </div>
           </div>
 
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-3 ml-4">
             <button className="p-2 rounded-full relative transition hover:bg-slate-100 dark:hover:bg-slate-800">
               <Bell className="w-4.5 h-4.5 text-slate-400" />
               <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#7C5CFF] rounded-full animate-pulse"></span>
@@ -283,9 +283,9 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
           </div>
         </header>
 
-        {/* Page Content Container */}
-        <main className="flex-1 p-4 md:p-8 pb-24 md:pb-8">
-          <div className="max-w-7xl mx-auto h-full">
+        {/* Fluid Edge-to-Edge Main Content Workspace (No max-w-7xl, No mx-auto) */}
+        <main className="flex-1 p-4 sm:p-6 md:p-8 w-full min-w-0 pb-24 md:pb-8">
+          <div className="w-full min-w-0 h-full">
             {children}
           </div>
         </main>
