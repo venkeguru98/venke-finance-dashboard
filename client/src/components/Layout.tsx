@@ -1,4 +1,4 @@
-import { useState, useEffect, type ReactNode, useMemo } from 'react';
+import { useState, useEffect, type ReactNode, useMemo, useRef } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, ReceiptText, Upload, Settings, Bell, Search, UserCircle, 
@@ -12,8 +12,14 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
   const [isCmdKOpen, setIsCmdKOpen] = useState(false);
   const [cmdQuery, setCmdQuery] = useState('');
   
+  // Dock Cursor Lighting & Magnetic Proximity State
+  const [cursorPos, setCursorPos] = useState({ x: 0, y: 0, opacity: 0 });
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const [pressedIndex, setPressedIndex] = useState<number | null>(null);
+
   const location = useLocation();
   const navigate = useNavigate();
+  const dockRef = useRef<HTMLDivElement>(null);
 
   const financeNavItems = [
     { to: '/', icon: <LayoutDashboard size={20} />, label: 'Dashboard', badge: null },
@@ -26,6 +32,23 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
     { to: '/calendar', icon: <CalendarDays size={20} />, label: 'Calendar', badge: null },
     { to: '/import', icon: <Upload size={20} />, label: 'Import', badge: null },
   ];
+
+  // Mouse move handler for dock lighting
+  const handleDockMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!dockRef.current) return;
+    const rect = dockRef.current.getBoundingClientRect();
+    setCursorPos({
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+      opacity: 0.12
+    });
+  };
+
+  const handleDockMouseLeave = () => {
+    setCursorPos(prev => ({ ...prev, opacity: 0 }));
+    setIsExpanded(false);
+    setHoveredIndex(null);
+  };
 
   // Cmd / Ctrl + K Listener
   useEffect(() => {
@@ -62,25 +85,60 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#050814] text-slate-900 dark:text-slate-100 font-sans relative overflow-x-hidden">
       
-      {/* ── 1. 2026 FLOATING ADAPTIVE VERTICAL NAVIGATION DOCK (Desktop) ────── */}
+      {/* CSS Keyframes for Breathing Animation and Spring Fluidity */}
+      <style>{`
+        @keyframes dockBreathing {
+          0%, 100% { transform: scale(1.000); }
+          50% { transform: scale(1.006); }
+        }
+        @keyframes pulseBorder {
+          0%, 100% { border-color: rgba(124, 92, 255, 0.4); }
+          50% { border-color: rgba(124, 92, 255, 0.8); }
+        }
+        .animate-dock-breath {
+          animation: dockBreathing 4.5s ease-in-out infinite;
+        }
+        .animate-pulse-border {
+          animation: pulseBorder 8s ease-in-out infinite;
+        }
+        .no-scrollbar::-webkit-scrollbar {
+          display: none;
+        }
+        .no-scrollbar {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+      `}</style>
+
+      {/* ── 1. MOTION SYSTEM OVERHAUL: FLOATING DOCK (Desktop) ───────────────── */}
       <aside
+        ref={dockRef}
+        onMouseMove={handleDockMouseMove}
         onMouseEnter={() => setIsExpanded(true)}
-        onMouseLeave={() => setIsExpanded(false)}
-        className={`fixed left-5 top-5 bottom-5 z-50 hidden md:flex flex-col justify-between backdrop-blur-2xl bg-[#080a12]/85 dark:bg-[#080a12]/90 border border-white/10 rounded-[28px] shadow-[0_20px_60px_rgba(0,0,0,0.45)] transition-all duration-300 ease-out ${
+        onMouseLeave={handleDockMouseLeave}
+        className={`fixed left-5 top-5 bottom-5 z-50 hidden md:flex flex-col justify-between backdrop-blur-2xl bg-[#080a12]/85 dark:bg-[#080a12]/90 border border-white/10 rounded-[28px] shadow-[0_20px_60px_rgba(0,0,0,0.5)] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] animate-dock-breath relative overflow-hidden will-change-transform ${
           isExpanded ? 'w-64 p-4' : 'w-[72px] p-3'
         }`}
       >
+        {/* Dynamic Cursor Proximity Radial Light Source */}
+        <div
+          className="pointer-events-none absolute inset-0 transition-opacity duration-300"
+          style={{
+            background: `radial-gradient(180px circle at ${cursorPos.x}px ${cursorPos.y}px, rgba(124, 92, 255, ${cursorPos.opacity}), transparent 80%)`
+          }}
+        />
+
         {/* Dock Header (Brand Capsule) */}
-        <div className="flex items-center space-x-3 overflow-hidden pb-4 border-b border-white/10">
+        <div className="flex items-center space-x-3 overflow-hidden pb-4 border-b border-white/10 relative z-10">
           <div 
             onClick={() => navigate('/')}
-            className="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#7C5CFF] to-blue-600 flex items-center justify-center text-white shadow-lg shadow-[#7C5CFF]/30 shrink-0 cursor-pointer hover:scale-105 transition-transform"
+            className="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#7C5CFF] via-purple-600 to-blue-600 flex items-center justify-center text-white shadow-lg shadow-[#7C5CFF]/40 shrink-0 cursor-pointer hover:scale-105 active:scale-95 transition-all duration-200"
           >
             <Wallet className="w-5 h-5 text-white" />
           </div>
 
           {isExpanded && (
-            <div className="flex flex-col overflow-hidden animate-in fade-in slide-in-from-left duration-200">
+            <div className="flex flex-col overflow-hidden transition-all duration-220 ease-out">
               <span className="font-extrabold text-xs tracking-tight text-white uppercase leading-none font-sans">
                 VENKE FINANCE
               </span>
@@ -91,42 +149,51 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
           )}
         </div>
 
-        {/* Navigation Items list */}
-        <nav className="flex-1 my-4 space-y-1.5 overflow-y-auto no-scrollbar">
-          {financeNavItems.map((item) => {
+        {/* Navigation Items List with Scroll Masking */}
+        <nav className="flex-1 my-4 space-y-1.5 overflow-y-auto no-scrollbar relative z-10 [mask-image:linear-gradient(to_bottom,transparent,black_12px,black_calc(100%-12px),transparent)]">
+          {financeNavItems.map((item, index) => {
             const isActive = location.pathname === item.to || (item.to !== '/' && location.pathname.startsWith(item.to));
+            const isHovered = hoveredIndex === index;
+            const isPressed = pressedIndex === index;
+
             return (
               <NavLink
                 key={item.to}
                 to={item.to}
+                onMouseEnter={() => setHoveredIndex(index)}
+                onMouseLeave={() => setHoveredIndex(null)}
+                onMouseDown={() => setPressedIndex(index)}
+                onMouseUp={() => setPressedIndex(null)}
                 className={`group relative flex items-center rounded-2xl transition-all duration-200 font-bold text-xs ${
                   isExpanded ? 'px-3.5 py-2.5 space-x-3' : 'w-11 h-11 justify-center mx-auto'
                 } ${
+                  isPressed ? 'scale-95' : isHovered ? 'scale-[1.04]' : 'scale-100'
+                } ${
                   isActive
-                    ? 'bg-gradient-to-r from-[#7C5CFF] to-blue-600 text-white shadow-lg shadow-[#7C5CFF]/30'
+                    ? 'bg-gradient-to-r from-[#7C5CFF] to-blue-600 text-white shadow-lg shadow-[#7C5CFF]/35 animate-pulse-border'
                     : 'text-slate-400 hover:text-white hover:bg-white/5'
                 }`}
               >
-                {/* Active Indicator bar */}
+                {/* Active Indicator Bar */}
                 {isActive && (
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-white rounded-r-full shadow-sm" />
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-white rounded-r-full shadow-md" />
                 )}
 
-                {/* Icon */}
-                <span className="transition-transform duration-200 group-hover:scale-110 shrink-0">
+                {/* Magnetic Hover Icon */}
+                <span className={`transition-transform duration-200 shrink-0 ${isHovered ? 'scale-110 -translate-y-0.5' : ''}`}>
                   {item.icon}
                 </span>
 
-                {/* Label (Expanded state) */}
+                {/* Label (Staggered Entrance Animation) */}
                 {isExpanded && (
-                  <span className="truncate flex-1 animate-in fade-in duration-150">
+                  <span className="truncate flex-1 text-xs font-bold transition-all duration-200 translate-x-0 opacity-100">
                     {item.label}
                   </span>
                 )}
 
-                {/* Badge */}
+                {/* Animated Badge */}
                 {item.badge && (
-                  <span className={`text-[9px] font-black rounded-full px-1.5 py-0.5 shrink-0 ${
+                  <span className={`text-[9px] font-black rounded-full px-1.5 py-0.5 shrink-0 transition-transform ${
                     isActive ? 'bg-white/20 text-white' : 'bg-[#7C5CFF]/20 text-[#7C5CFF]'
                   }`}>
                     {item.badge}
@@ -135,7 +202,7 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
 
                 {/* Floating Glass Tooltip (Collapsed state) */}
                 {!isExpanded && (
-                  <div className="absolute left-16 px-3 py-1.5 rounded-xl bg-[#0b1228] border border-white/10 text-white text-xs font-bold shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+                  <div className="absolute left-16 px-3 py-1.5 rounded-xl bg-[#0b1228] border border-white/10 text-white text-xs font-bold shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-200 pointer-events-none whitespace-nowrap z-50 translate-x-1 group-hover:translate-x-0">
                     {item.label}
                   </div>
                 )}
@@ -145,11 +212,11 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
         </nav>
 
         {/* Dock Footer (Settings & Controls) */}
-        <div className="pt-3 border-t border-white/10 space-y-2">
+        <div className="pt-3 border-t border-white/10 space-y-2 relative z-10">
           {/* Cmd + K Trigger */}
           <button
             onClick={() => setIsCmdKOpen(true)}
-            className={`w-full flex items-center rounded-2xl bg-white/5 border border-white/10 hover:border-[#7C5CFF] text-slate-400 hover:text-white transition ${
+            className={`w-full flex items-center rounded-2xl bg-white/5 border border-white/10 hover:border-[#7C5CFF] text-slate-400 hover:text-white transition-all duration-200 ${
               isExpanded ? 'px-3 py-2 space-x-2' : 'w-11 h-11 justify-center mx-auto'
             }`}
             title="Command Palette (Cmd + K)"
@@ -166,14 +233,14 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
               isExpanded ? 'px-3.5 py-2.5 space-x-3' : 'w-11 h-11 justify-center mx-auto'
             } ${
               location.pathname === '/settings'
-                ? 'bg-gradient-to-r from-[#7C5CFF] to-blue-600 text-white shadow-lg shadow-[#7C5CFF]/30'
+                ? 'bg-gradient-to-r from-[#7C5CFF] to-blue-600 text-white shadow-lg shadow-[#7C5CFF]/35'
                 : 'text-slate-400 hover:text-white hover:bg-white/5'
             }`}
           >
             <Settings className="w-5 h-5 shrink-0" />
             {isExpanded && <span className="truncate">Settings</span>}
             {!isExpanded && (
-              <div className="absolute left-16 px-3 py-1.5 rounded-xl bg-[#0b1228] border border-white/10 text-white text-xs font-bold shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+              <div className="absolute left-16 px-3 py-1.5 rounded-xl bg-[#0b1228] border border-white/10 text-white text-xs font-bold shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-200 pointer-events-none whitespace-nowrap z-50">
                 Settings
               </div>
             )}
@@ -181,8 +248,8 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
         </div>
       </aside>
 
-      {/* ── 2. DYNAMIC WORKSPACE CONTENT WRAPPER (Shifted for Dock) ────────── */}
-      <div className={`transition-all duration-300 ease-out flex flex-col min-h-screen ${
+      {/* ── 2. DYNAMIC WORKSPACE CONTENT WRAPPER ───────────────────────────── */}
+      <div className={`transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] flex flex-col min-h-screen ${
         isExpanded ? 'md:pl-[280px]' : 'md:pl-28'
       }`}>
         
