@@ -242,6 +242,46 @@ export const initializeDatabase = async () => {
         }
       }
 
+      // Ensure auxiliary tables (wellness_logs, notes, debts) exist on PostgreSQL
+      try {
+        await pgPool.query(`
+          CREATE TABLE IF NOT EXISTS wellness_logs (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL DEFAULT 1,
+            date DATE NOT NULL,
+            score INTEGER NOT NULL,
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+        await pgPool.query(`
+          CREATE TABLE IF NOT EXISTS notes (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL DEFAULT 1,
+            title VARCHAR(255),
+            content TEXT NOT NULL,
+            is_pinned INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+        await pgPool.query(`
+          CREATE TABLE IF NOT EXISTS debts (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL DEFAULT 1,
+            person_name VARCHAR(255) NOT NULL,
+            amount NUMERIC NOT NULL,
+            type VARCHAR(20) NOT NULL,
+            date DATE NOT NULL,
+            due_date DATE,
+            status VARCHAR(20) DEFAULT 'pending',
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+      } catch (auxErr: any) {
+        console.warn('[Aux Schema Error]', auxErr.message);
+      }
+
       console.log('PostgreSQL database schema initialized.');
     } else if (sqliteDb) {
       return new Promise<void>((resolve, reject) => {

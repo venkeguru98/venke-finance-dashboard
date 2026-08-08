@@ -68,6 +68,19 @@ CREATE TABLE IF NOT EXISTS savings_investments (
     FOREIGN KEY(transaction_id) REFERENCES transactions(id) ON DELETE CASCADE
 );
 
+-- Savings Goals Table
+CREATE TABLE IF NOT EXISTS goals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    target_amount REAL NOT NULL,
+    current_saved REAL DEFAULT 0,
+    deadline DATE NOT NULL,
+    status TEXT CHECK(status IN ('active', 'completed')) DEFAULT 'active',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 -- Budgets Table
 CREATE TABLE IF NOT EXISTS budgets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -85,19 +98,6 @@ CREATE TABLE IF NOT EXISTS budgets (
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY(category_id) REFERENCES categories(id) ON DELETE CASCADE,
     FOREIGN KEY(linked_goal_id) REFERENCES goals(id) ON DELETE SET NULL
-);
-
--- Savings Goals Table
-CREATE TABLE IF NOT EXISTS goals (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    name TEXT NOT NULL,
-    target_amount REAL NOT NULL,
-    current_saved REAL DEFAULT 0,
-    deadline DATE NOT NULL,
-    status TEXT CHECK(status IN ('active', 'completed')) DEFAULT 'active',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- Notifications Table
