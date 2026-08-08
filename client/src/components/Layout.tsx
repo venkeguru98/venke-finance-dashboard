@@ -3,7 +3,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, ReceiptText, Upload, Settings, Bell, Search, UserCircle, 
   Wallet, Target, LineChart, CalendarDays, PieChart, X, CalendarRange,
-  Sliders, Pin, PinOff
+  Sliders, Pin, PinOff, Moon, Sun
 } from 'lucide-react';
 
 // Memoized Adaptive Nav Tab Component
@@ -84,6 +84,17 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
   const [isPinned, setIsPinned] = useState<boolean>(() => {
     return localStorage.getItem('dock_pinned') === 'true';
   });
+
+  // Focus Mode State
+  const [isFocusMode, setIsFocusMode] = useState<boolean>(() => {
+    return localStorage.getItem('focus_mode') === 'true';
+  });
+
+  const toggleFocusMode = () => {
+    const next = !isFocusMode;
+    setIsFocusMode(next);
+    localStorage.setItem('focus_mode', String(next));
+  };
 
   // Scroll-Aware Visibility States
   const [isHeaderVisible, setIsHeaderVisible] = useState(true);
@@ -199,15 +210,24 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
   const showLabels = isPinned || isHovered;
 
   return (
-    <div className="w-full min-h-screen bg-[#040816] text-slate-100 font-sans relative overflow-x-hidden">
+    <div className={`w-full min-h-screen font-sans relative overflow-x-hidden transition-colors duration-500 ${
+      isFocusMode ? 'bg-[#02040a] text-slate-200' : 'bg-[#040816] text-slate-100'
+    }`}>
       
       {/* ── AMBIENT BACKGROUND LIGHTING LAYER ─────────────────────────────────── */}
       <div className="fixed inset-0 pointer-events-none z-[-1] overflow-hidden">
-        {/* Slow 25s Animated Ambient Light Bloom */}
-        <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[900px] h-[500px] bg-radial from-[#8B5CF6]/15 via-[#4F7CFF]/10 to-transparent blur-[140px] animate-pulse" style={{ animationDuration: '25s' }} />
-        <div className="absolute top-1/3 right-0 w-[500px] h-[500px] bg-radial from-[#A855F7]/10 to-transparent blur-[160px]" />
+        {/* Slow 35s Animated Ambient Light Bloom & Floating Gradient Orbs */}
+        <div className={`absolute -top-40 left-1/2 -translate-x-1/2 w-[900px] h-[500px] bg-radial from-[#8B5CF6]/15 via-[#4F7CFF]/10 to-transparent blur-[140px] transition-opacity duration-700 ${
+          isFocusMode ? 'opacity-20' : 'opacity-100 animate-pulse'
+        }`} style={{ animationDuration: '35s' }} />
+        
+        {/* Floating Ambient Orbs */}
+        <div className="absolute top-1/4 left-10 w-72 h-72 rounded-full bg-[#8B5CF6]/10 blur-3xl animate-bounce" style={{ animationDuration: '28s' }} />
+        <div className="absolute top-2/3 right-12 w-80 h-80 rounded-full bg-[#4F7CFF]/10 blur-3xl animate-pulse" style={{ animationDuration: '32s' }} />
+        <div className="absolute bottom-10 left-1/3 w-64 h-64 rounded-full bg-[#A855F7]/10 blur-3xl" />
+
         {/* Subtle Vignette Overlay */}
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(4,8,22,0.6)_100%)] pointer-events-none" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(2,4,10,0.85)_100%)] pointer-events-none" />
       </div>
 
       {/* Dynamic Keyframes for Breathing Glow & Scrollbar Masking */}
@@ -307,6 +327,19 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
           <button className="p-2 rounded-full relative transition-transform hover:rotate-6 hover:bg-[#0D1830]">
             <Bell className="w-4.5 h-4.5 text-slate-400" />
             <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#8B5CF6] rounded-full animate-pulse" />
+          </button>
+
+          {/* Focus Mode Toggle */}
+          <button 
+            onClick={toggleFocusMode}
+            className={`p-2 rounded-full hidden sm:flex transition-all ${
+              isFocusMode 
+                ? 'bg-[#8B5CF6]/30 text-[#8B5CF6] border border-[#8B5CF6]/50 shadow-[0_0_15px_rgba(139,92,246,0.4)]' 
+                : 'text-slate-400 hover:bg-[#0D1830]'
+            }`}
+            title={isFocusMode ? 'Exit Focus Mode' : 'Enter Focus Mode (Dim Distractions)'}
+          >
+            {isFocusMode ? <Sun className="w-4 h-4 text-amber-400 animate-spin-once" /> : <Moon className="w-4 h-4 text-[#8B5CF6]" />}
           </button>
 
           {/* Dock Pin Toggle */}
