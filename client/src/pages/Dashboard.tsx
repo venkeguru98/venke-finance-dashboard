@@ -495,7 +495,7 @@ export default function Dashboard() {
     const calcPctChange = (curr: number, prev: number, hasPrev: boolean) => {
       if (!hasPrev) return 0;
       if (prev === 0) return curr > 0 ? 100 : 0;
-      return ((curr - prev) / prev) * 100;
+      return Number((((curr - prev) / prev) * 100).toFixed(1));
     };
 
     const prevIncome = getNearestPrevMonthForMetric('income');
@@ -718,7 +718,7 @@ export default function Dashboard() {
       let pctChange = 0;
       if (prevMonthPrefix) {
         if (prevMonthTotal > 0) {
-          pctChange = ((currMonthTotal - prevMonthTotal) / prevMonthTotal) * 100;
+          pctChange = Number((((currMonthTotal - prevMonthTotal) / prevMonthTotal) * 100).toFixed(1));
         } else if (currMonthTotal > 0) {
           pctChange = 100;
         }
@@ -999,6 +999,167 @@ export default function Dashboard() {
   const hasData = transactions.length > 0;
   const activeGoals = goals.filter(g => g.status !== 'completed').slice(0, 3);
 
+  // ─── Rotating AI Financial Insights Ticker Engine ────────────────────────
+  const aiInsightsList = useMemo(() => {
+    const list: { id: string; text: React.ReactNode }[] = [];
+    const fmtPct = (num: number) => Math.abs(num).toFixed(1) + '%';
+
+    const expMetrics = totalsData.metrics.expenses;
+    const incMetrics = totalsData.metrics.income;
+    const savMetrics = totalsData.metrics.savings;
+    const prevLabel = totalsData.prevMonthLabel || 'last month';
+
+    // Income Change Insight
+    if (incMetrics.pctChange !== 0) {
+      const isHigher = incMetrics.pctChange > 0;
+      list.push({
+        id: 'income-change',
+        text: (
+          <span>
+            Income received is <strong className={isHigher ? 'text-emerald-600 dark:text-emerald-400 font-extrabold' : 'text-amber-600 dark:text-amber-400 font-extrabold'}>{fmtPct(incMetrics.pctChange)} {isHigher ? 'higher' : 'lower'}</strong> than {incMetrics.prevMonthLabel || prevLabel}
+          </span>
+        )
+      });
+    }
+
+    // 1. Largest Expense Decrease (Category insight)
+    const categoryDecreases = [...categoryData]
+      .filter(c => c.pctChange < 0 && c.currMonthTotal > 0)
+      .sort((a, b) => a.pctChange - b.pctChange);
+
+    if (categoryDecreases.length > 0) {
+      const topDec = categoryDecreases[0];
+      list.push({
+        id: `cat-dec-${topDec.id}`,
+        text: (
+          <span>
+            <strong className="text-emerald-600 dark:text-emerald-400 font-extrabold">{topDec.name}</strong> expenses decreased <strong className="font-extrabold">{fmtPct(topDec.pctChange)}</strong> vs {topDec.prevMonthLabel || prevLabel}
+          </span>
+        )
+      });
+    }
+
+    // 2. Largest Expense Increase (Category insight)
+    const categoryIncreases = [...categoryData]
+      .filter(c => c.pctChange > 0 && c.currMonthTotal > 0)
+      .sort((a, b) => b.pctChange - a.pctChange);
+
+    if (categoryIncreases.length > 0) {
+      const topInc = categoryIncreases[0];
+      list.push({
+        id: `cat-inc-${topInc.id}`,
+        text: (
+          <span>
+            <strong className="text-amber-600 dark:text-amber-400 font-extrabold">{topInc.name}</strong> expenses increased <strong className="font-extrabold">{fmtPct(topInc.pctChange)}</strong>
+          </span>
+        )
+      });
+    }
+
+    // 3. Overall Spending Trend
+    if (expMetrics.pctChange !== 0) {
+      const isDecreased = expMetrics.pctChange < 0;
+      list.push({
+        id: 'overall-spending',
+        text: (
+          <span>
+            Living expenses <strong className={isDecreased ? 'text-emerald-600 dark:text-emerald-400 font-extrabold' : 'text-rose-600 dark:text-rose-400 font-extrabold'}>{isDecreased ? 'decreased' : 'increased'} {fmtPct(expMetrics.pctChange)}</strong> vs {expMetrics.prevMonthLabel || prevLabel}
+          </span>
+        )
+      });
+    }
+
+    // 4. Net Monthly Savings Improvement
+    if (savMetrics.pctChange !== 0) {
+      const isImproved = savMetrics.pctChange > 0;
+      list.push({
+        id: 'savings-improvement',
+        text: (
+          <span>
+            Net monthly savings <strong className="text-indigo-600 dark:text-indigo-400 font-extrabold">{isImproved ? 'improved' : 'adjusted'} {fmtPct(savMetrics.pctChange)}</strong> vs last month
+          </span>
+        )
+      });
+    }
+
+    // 5. Available Balance / Cash Flow Projection
+    if (totalsData.current.balance !== undefined) {
+      const bal = totalsData.current.balance;
+      list.push({
+        id: 'avail-balance',
+        text: (
+          <span>
+            You have <strong className={bal >= 0 ? 'text-emerald-600 dark:text-emerald-400 font-extrabold' : 'text-rose-600 dark:text-rose-400 font-extrabold'}>₹{bal.toLocaleString('en-IN')}</strong> available after all commitments
+          </span>
+        )
+      });
+    }
+
+    // 6. Savings Rate
+    if (totalsData.current.income > 0) {
+      const rate = ((totalsData.current.balance / totalsData.current.income) * 100).toFixed(1);
+      list.push({
+        id: 'savings-rate',
+        text: (
+          <span>
+            Current net savings rate is <strong className="text-primary font-extrabold">{rate}%</strong>
+          </span>
+        )
+      });
+    }
+
+    // 7. Income Ratio / Cash Flow Consumption
+    if (totalsData.current.income > 0) {
+      const expRatio = ((totalsData.current.expenses / totalsData.current.income) * 100).toFixed(1);
+      list.push({
+        id: 'cashflow-consumption',
+        text: (
+          <span>
+            Living expenses consumed <strong className="font-extrabold">{expRatio}%</strong> of income
+          </span>
+        )
+      });
+    }
+
+    // 8. 2nd Category Decrease (if available)
+    if (categoryDecreases.length > 1) {
+      const secondDec = categoryDecreases[1];
+      list.push({
+        id: `cat-dec-2-${secondDec.id}`,
+        text: (
+          <span>
+            <strong className="text-emerald-600 dark:text-emerald-400 font-extrabold">{secondDec.name}</strong> decreased <strong className="font-extrabold">{fmtPct(secondDec.pctChange)}</strong>
+          </span>
+        )
+      });
+    }
+
+    if (list.length === 0) {
+      list.push({
+        id: 'default-trend',
+        text: <span>Month-end cash flow is projected to stay positive 🚀</span>
+      });
+    }
+
+    return list;
+  }, [totalsData, categoryData]);
+
+  const [tickerIndex, setTickerIndex] = useState(0);
+  const [tickerFade, setTickerFade] = useState(false);
+
+  useEffect(() => {
+    if (aiInsightsList.length <= 1) return;
+    const interval = setInterval(() => {
+      setTickerFade(true);
+      setTimeout(() => {
+        setTickerIndex((prev) => (prev + 1) % aiInsightsList.length);
+        setTickerFade(false);
+      }, 350);
+    }, 4500);
+
+    return () => clearInterval(interval);
+  }, [aiInsightsList.length]);
+
   if (loading) return (
     <div className="flex flex-col items-center justify-center h-full min-h-[400px] space-y-4 text-slate-500">
       <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
@@ -1039,26 +1200,23 @@ export default function Dashboard() {
         </div>
 
         <div className="flex items-center space-x-2 self-center flex-wrap gap-y-2">
-          {/* AI Monthly Spending Insights Banner (Top-Right) */}
-          {(() => {
-            if (categoryData.length === 0) return null;
-            const decInsight = categoryData.find(c => c.pctChange < 0 && c.currMonthTotal > 0);
-            let insightText = '';
-            if (decInsight) {
-              insightText = `Your ${decInsight.name} expenses decreased by ${Math.abs(decInsight.pctChange)}% compared to ${decInsight.prevMonthLabel || 'last month'}! ✨`;
-            } else if (totalsData.metrics.expenses.pctChange < 0) {
-              insightText = `Overall spending decreased by ${Math.abs(totalsData.metrics.expenses.pctChange)}% vs ${totalsData.metrics.expenses.prevMonthLabel || 'last month'}! 🎉`;
-            } else if (categoryData[0]) {
-              insightText = `Top expense: ${categoryData[0].name} (₹${categoryData[0].currMonthTotal.toLocaleString('en-IN')}) 💡`;
-            }
-            if (!insightText) return null;
-            return (
-              <div className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-700 dark:text-indigo-300 text-xs font-bold shadow-sm animate-pulse">
-                <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
-                <span>{insightText}</span>
+          {/* Rotating AI Projections Ticker Capsule */}
+          {aiInsightsList.length > 0 && (
+            <div className="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-indigo-500/10 dark:bg-indigo-500/15 border border-indigo-500/20 text-indigo-800 dark:text-indigo-200 text-xs font-bold shadow-sm backdrop-blur-md min-h-[34px] max-w-full sm:max-w-md overflow-hidden">
+              <Sparkles className="w-3.5 h-3.5 text-indigo-500 shrink-0 animate-pulse" />
+              <div className="overflow-hidden relative w-full">
+                <div
+                  className={`transition-all duration-300 transform ${
+                    tickerFade
+                      ? 'opacity-0 -translate-y-1 scale-95'
+                      : 'opacity-100 translate-y-0 scale-100'
+                  } truncate`}
+                >
+                  {aiInsightsList[tickerIndex]?.text || aiInsightsList[0]?.text}
+                </div>
               </div>
-            );
-          })()}
+            </div>
+          )}
 
           {/* Enhancement 1: Transaction Activity Badge */}
           <button
