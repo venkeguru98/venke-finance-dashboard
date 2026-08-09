@@ -283,6 +283,151 @@ router.get('/dashboard', async (req: Request, res: Response) => {
   }
 });
 
+// ==========================================
+// 1.5 NEXT MONTH COMMITMENT PLANNER ROUTE
+// ==========================================
+router.get('/next-month-commitments', async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const today = new Date();
+  
+  // Calculate next month
+  const nextMonthDate = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+  const nextMonthNum = nextMonthDate.getMonth() + 1;
+  const nextYearNum = nextMonthDate.getFullYear();
+  const nextMonthName = nextMonthDate.toLocaleString('default', { month: 'long' });
+  const nextMonthShort = nextMonthDate.toLocaleString('default', { month: 'short' });
+  
+  // Days remaining in current month
+  const daysInCurrentMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+  const daysRemainingInCurrentMonth = Math.max(1, daysInCurrentMonth - today.getDate());
+
+  try {
+    const commitments: Array<{
+      id: string;
+      category: string;
+      name: string;
+      amount: number;
+      dueDay: number;
+      dueDateStr: string;
+      dueDateFull: string;
+      recordType: string;
+      modulePath: string;
+      details?: string;
+    }> = [];
+
+    // 1. LIC Policies
+    const licPolicies = await query(
+      `SELECT id, policy_name, monthly_premium, premium_due_day, status FROM lic_policies WHERE user_id = ? AND (status = 'Running' OR status = 'Active' OR status IS NULL)`,
+      [userId]
+    );
+    for (const p of licPolicies) {
+      const amt = Number(p.monthly_premium) || 0;
+      if (amt > 0) {
+        const dueDay = p.premium_due_day || 10;
+        commitments.push({
+          id: `lic-${p.id}`,
+          category: 'LIC',
+          name: p.policy_name || 'LIC Policy Premium',
+          amount: amt,
+          dueDay,
+          dueDateStr: `${dueDay} ${nextMonthShort}`,
+          dueDateFull: `${nextYearNum}-${String(nextMonthNum).padStart(2, '0')}-${String(dueDay).padStart(2, '0')}`,
+          recordType: 'lic',
+          modulePath: '/records',
+          details: 'LIC Premium Commitment'
+        });
+      }
+    }
+
+    // 2. Chit Funds
+    const chitFunds = await query(
+      `SELECT id, chit_name, monthly_installment, status FROM chit_funds WHERE user_id = ? AND status = 'Running'`,
+      [userId]
+    );
+    for (const c of chitFunds) {
+      const amt = Number(c.monthly_installment) || 0;
+      if (amt > 0) {
+        const dueDay = c.id % 2 === 0 ? 18 : 5;
+        commitments.push({
+          id: `chit-${c.id}`,
+          category: 'Cheetu Savings',
+          name: c.chit_name || 'Chit Fund Installment',
+          amount: amt,
+          dueDay,
+          dueDateStr: `${dueDay} ${nextMonthShort}`,
+          dueDateFull: `${nextYearNum}-${String(nextMonthNum).padStart(2, '0')}-${String(dueDay).padStart(2, '0')}`,
+          recordType: 'chit',
+          modulePath: '/records',
+          details: 'Chit Fund Installment'
+        });
+      }
+    }
+
+    // 3. Digital & Physical Gold
+    const goldItems = await query(
+      `SELECT id, investment_name, amount, type FROM digital_gold WHERE user_id = ?`,
+      [userId]
+    );
+    for (const g of goldItems) {
+      const amt = Number(g.amount) || 0;
+      if (amt > 0) {
+        const cat = (g.type || '').toLowerCase().includes('physical') ? 'Physical Gold' : 'Digital Gold';
+        const dueDay = 15;
+        commitments.push({
+          id: `gold-${g.id}`,
+          category: cat,
+          name: g.investment_name || 'Monthly Gold Allocation',
+          amount: amt,
+          dueDay,
+          dueDateStr: `${dueDay} ${nextMonthShort}`,
+          dueDateFull: `${nextYearNum}-${String(nextMonthNum).padStart(2, '0')}-${String(dueDay).padStart(2, '0')}`,
+          recordType: 'gold',
+          modulePath: '/records',
+          details: `${cat} Allocation`
+        });
+      }
+    }
+
+    // 4. Debt & EMI Commitments
+    const debtTx = await query(
+      `SELECT id, person_name, amount, type, status FROM debt_transactions WHERE user_id = ? AND status != 'Settled' AND type = 'Borrowed'`,
+      [userId]
+    );
+    for (const d of debtTx) {
+      const amt = Number(d.amount) || 0;
+      if (amt > 0) {
+        const dueDay = 10;
+        commitments.push({
+          id: `debt-${d.id}`,
+          category: 'EMIs & Loans',
+          name: `Loan Repayment (${d.person_name})`,
+          amount: amt,
+          dueDay,
+          dueDateStr: `${dueDay} ${nextMonthShort}`,
+          dueDateFull: `${nextYearNum}-${String(nextMonthNum).padStart(2, '0')}-${String(dueDay).padStart(2, '0')}`,
+          recordType: 'debt',
+          modulePath: '/records',
+          details: 'Loan Repayment Commitment'
+        });
+      }
+    }
+
+    // Sort commitments chronologically by due day
+    commitments.sort((a, b) => a.dueDay - b.dueDay);
+
+    res.json({
+      currentMonthLabel: today.toLocaleString('default', { month: 'long', year: 'numeric' }),
+      nextMonthLabel: `${nextMonthName} ${nextYearNum}`,
+      nextMonthName,
+      nextYearNum,
+      daysRemainingInCurrentMonth,
+      commitments
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 // ==========================================
 // 2. LIC POLICIES MODULE

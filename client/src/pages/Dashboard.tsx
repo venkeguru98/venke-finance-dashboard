@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
-import { Plus, Search, RefreshCw, Flame, LayoutGrid, CheckCircle2, Target, TrendingUp, Info, X, ChevronLeft, ChevronRight, ArrowRightLeft, Sparkles, Wallet } from 'lucide-react';
+import { Plus, Search, RefreshCw, Flame, LayoutGrid, CheckCircle2, Target, TrendingUp, Info, X, ChevronLeft, ChevronRight, ArrowRightLeft, Sparkles, Wallet, Calendar, ShieldCheck } from 'lucide-react';
 import axios from 'axios';
 import Button from '../components/ui/Button';
 
@@ -102,6 +102,7 @@ export const getSingleSourceMonthlySummary = (monthPrefix: string, transactions:
 const DEFAULT_WIDGETS = {
   summaryCards: true,
   financialInsights: true,
+  nextMonthPlanner: true,
   quickActions: true,
   healthScore: true,
   cashFlow: true,
@@ -135,6 +136,14 @@ export default function Dashboard() {
   const [categories, setCategories] = useState<any[]>([]);
   const [categoryData, setCategoryData] = useState<any[]>([]);
   const [rules, setRules] = useState<any[]>([]);
+  const [nextMonthCommitmentsData, setNextMonthCommitmentsData] = useState<any>({
+    currentMonthLabel: 'August 2026',
+    nextMonthLabel: 'September 2026',
+    nextMonthName: 'September',
+    nextYearNum: 2026,
+    daysRemainingInCurrentMonth: 22,
+    commitments: []
+  });
 
   // UI States
   const [loading, setLoading] = useState(true);
@@ -371,13 +380,14 @@ export default function Dashboard() {
     setLoading(true);
     setError('');
     try {
-      const [chartsRes, txRes, budgetsRes, goalsRes, categoriesRes, rulesRes] = await Promise.all([
+      const [chartsRes, txRes, budgetsRes, goalsRes, categoriesRes, rulesRes, commitmentsRes] = await Promise.all([
         axios.get(`${API}/analytics/charts`),
         axios.get(`${API}/transactions`),
         axios.get(`${API}/budgets`),
         axios.get(`${API}/goals`),
         axios.get(`${API}/categories`),
-        axios.get(`${API}/recurring-rules`)
+        axios.get(`${API}/recurring-rules`),
+        axios.get(`${API}/records/next-month-commitments`).catch(() => ({ data: null }))
       ]);
       setCategoryData(chartsRes.data.categories || []);
       setTransactions(txRes.data || []);
@@ -385,6 +395,9 @@ export default function Dashboard() {
       setGoals(goalsRes.data || []);
       setCategories(categoriesRes.data || []);
       setRules(rulesRes.data || []);
+      if (commitmentsRes && commitmentsRes.data) {
+        setNextMonthCommitmentsData(commitmentsRes.data);
+      }
       setLastUpdated(new Date().toLocaleTimeString());
 
       // Auto-set selected month to latest month with transactions if current month has no transactions
@@ -1381,6 +1394,16 @@ export default function Dashboard() {
           onClose={() => setKpiDrawer(null)}
           onPrev={kpiPrev}
           onNext={kpiNext}
+        />
+      )}
+
+      {/* NEXT MONTH COMMITMENT PLANNER WIDGET */}
+      {widgets.nextMonthPlanner && (
+        <NextMonthCommitmentPlannerWidget
+          data={nextMonthCommitmentsData}
+          availableBalance={availableBalance}
+          navigate={navigate}
+          getCategoryIcon={getCategoryIcon}
         />
       )}
 
@@ -3851,6 +3874,410 @@ function InsightCard({ item, index, getCategoryIcon }: InsightCardProps) {
             <Tooltip content={<InsightSparklineTooltip />} allowEscapeViewBox={{ x: true, y: true }} />
           </AreaChart>
         </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
+// ── NEXT MONTH COMMITMENT PLANNER WIDGET COMPONENT ─────────────────────────────
+function NextMonthCommitmentPlannerWidget({
+  data,
+  availableBalance,
+  navigate,
+  getCategoryIcon
+}: {
+  data: any;
+  availableBalance: number;
+  navigate: (path: string, state?: any) => void;
+  getCategoryIcon: (name: string) => string;
+}) {
+  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
+  const [insightIndex, setInsightIndex] = useState(0);
+
+  const commitments: any[] = data?.commitments || [];
+  const nextMonthLabel = data?.nextMonthLabel || 'September 2026';
+  const nextMonthName = data?.nextMonthName || 'September';
+  const daysRemaining = data?.daysRemainingInCurrentMonth || 22;
+
+  // Group commitments by category
+  const groupedCategories = useMemo(() => {
+    const map: Record<string, any[]> = {};
+    commitments.forEach(c => {
+      const cat = c.category || 'Other Obligations';
+      if (!map[cat]) map[cat] = [];
+      map[cat].push(c);
+    });
+    return map;
+  }, [commitments]);
+
+  const uniqueCategoryNames = Object.keys(groupedCategories);
+
+  // Total required
+  const totalRequired = useMemo(() => {
+    return commitments.reduce((sum, c) => sum + (Number(c.amount) || 0), 0);
+  }, [commitments]);
+
+  // Daily & Weekly targets
+  const dailyTarget = Math.round(totalRequired / Math.max(1, daysRemaining));
+  const weeklyTarget = Math.round(totalRequired / Math.max(1, daysRemaining / 7));
+
+  // Commitment Readiness Score
+  const readinessScore = totalRequired > 0 
+    ? Math.min(100, Math.max(0, Math.round((availableBalance / totalRequired) * 100))) 
+    : 100;
+
+  // Funding Gap
+  const fundingGap = Math.max(0, totalRequired - availableBalance);
+  const postPaymentBalance = availableBalance - totalRequired;
+
+  // Readiness color
+  let readinessBadge = 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
+  let readinessStatusText = 'Fully Funded 🟢';
+  if (fundingGap > 0 && availableBalance > 0) {
+    readinessBadge = 'bg-amber-500/15 text-amber-400 border-amber-500/30';
+    readinessStatusText = 'Partially Funded ⚡';
+  } else if (fundingGap > 0 && availableBalance <= 0) {
+    readinessBadge = 'bg-rose-500/15 text-rose-400 border-rose-500/30';
+    readinessStatusText = 'Funding Gap 🚨';
+  }
+
+  // Toggle category collapse
+  const toggleCategory = (catName: string) => {
+    setExpandedCategories(prev => ({
+      ...prev,
+      [catName]: prev[catName] === undefined ? false : !prev[catName]
+    }));
+  };
+
+  // Generate rotating insights list
+  const aiInsights = useMemo(() => {
+    const list: string[] = [];
+    if (commitments.length === 0) {
+      list.push(`You have no recorded financial obligations for ${nextMonthName}.`);
+      return list;
+    }
+
+    if (uniqueCategoryNames.length > 0) {
+      let maxCat = uniqueCategoryNames[0];
+      let maxTotal = 0;
+      uniqueCategoryNames.forEach(cat => {
+        const catSum = groupedCategories[cat].reduce((s, c) => s + c.amount, 0);
+        if (catSum > maxTotal) {
+          maxTotal = catSum;
+          maxCat = cat;
+        }
+      });
+      const pct = totalRequired > 0 ? Math.round((maxTotal / totalRequired) * 100) : 0;
+      list.push(`${maxCat} represents ${pct}% of next month commitments.`);
+    }
+
+    if (fundingGap > 0) {
+      list.push(`You need to reserve an additional ${formatIndianRupee(fundingGap)} before ${nextMonthName} begins.`);
+    } else {
+      list.push(`Great news! Your current available balance fully covers all ${nextMonthName} commitments.`);
+    }
+
+    list.push(`Saving ${formatIndianRupee(dailyTarget)}/day for the remaining ${daysRemaining} days ensures 100% readiness.`);
+
+    if (postPaymentBalance < 0) {
+      list.push(`Expected post-payment balance is -${formatIndianRupee(Math.abs(postPaymentBalance))}. Consider pacing non-essential spends.`);
+    }
+
+    return list;
+  }, [commitments, uniqueCategoryNames, groupedCategories, totalRequired, fundingGap, nextMonthName, dailyTarget, daysRemaining, postPaymentBalance]);
+
+  // Rotate insights every 8 seconds
+  useEffect(() => {
+    if (aiInsights.length <= 1) return;
+    const interval = setInterval(() => {
+      setInsightIndex(prev => (prev + 1) % aiInsights.length);
+    }, 8000);
+    return () => clearInterval(interval);
+  }, [aiInsights]);
+
+  if (commitments.length === 0) {
+    return (
+      <div className="p-6 rounded-3xl bg-[#081226]/90 backdrop-blur-xl border border-[#1E2A4A] shadow-2xl space-y-4">
+        <div className="flex justify-between items-center">
+          <div>
+            <h3 className="text-base font-extrabold text-white flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-purple-400" /> Next Month Commitment Planner
+            </h3>
+            <p className="text-xs text-slate-400 mt-0.5">
+              {nextMonthLabel} • money to keep ready before the month begins
+            </p>
+          </div>
+          <button
+            onClick={() => navigate('/records')}
+            className="text-xs font-black text-purple-400 hover:text-purple-300 hover:underline flex items-center gap-1"
+          >
+            Open Financial Records Hub →
+          </button>
+        </div>
+
+        <div className="py-10 px-6 text-center text-slate-400 text-sm flex flex-col items-center justify-center space-y-3 bg-[#050B18]/60 rounded-2xl border border-dashed border-slate-800">
+          <div className="p-3 rounded-2xl bg-purple-500/10 text-purple-400 border border-purple-500/20">
+            <CheckCircle2 className="w-8 h-8" />
+          </div>
+          <div>
+            <p className="font-extrabold text-white text-base">No commitments scheduled for {nextMonthLabel}</p>
+            <p className="text-xs text-slate-400 mt-1 max-w-sm">You have no recorded financial obligations for next month.</p>
+          </div>
+          <button
+            onClick={() => navigate('/records')}
+            className="mt-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white font-black text-xs rounded-xl shadow-lg shadow-purple-500/20 transition active:scale-95 cursor-pointer"
+          >
+            Open Financial Records Hub
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-6 rounded-3xl bg-[#081226]/90 backdrop-blur-xl border border-[#1E2A4A] shadow-2xl space-y-6">
+      {/* HEADER */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+        <div>
+          <h3 className="text-base font-extrabold text-white flex items-center gap-2">
+            <Calendar className="w-5 h-5 text-purple-400" /> Next Month Commitment Planner
+          </h3>
+          <p className="text-xs text-slate-400 mt-0.5 font-medium">
+            {nextMonthLabel} • money to keep ready before the month begins
+          </p>
+        </div>
+
+        <div className="flex items-center space-x-2">
+          {/* Commitment Readiness Score Badge */}
+          <div className={`px-3 py-1.5 rounded-2xl border flex items-center gap-1.5 text-xs font-black ${readinessBadge}`}>
+            <ShieldCheck className="w-4 h-4" />
+            <span>{readinessScore}% Ready ({readinessStatusText})</span>
+          </div>
+
+          <button
+            onClick={() => navigate('/records')}
+            className="text-xs font-black text-purple-400 hover:text-purple-300 hover:underline shrink-0"
+          >
+            Open Hub →
+          </button>
+        </div>
+      </div>
+
+      {/* HERO SECTION (PRIMARY FOCUS) */}
+      <div className="p-5 rounded-2xl bg-gradient-to-br from-[#120B2E]/90 via-[#0B1530]/90 to-[#081226]/90 border border-purple-500/30 shadow-xl space-y-4 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-36 h-36 bg-purple-500/10 rounded-full blur-2xl pointer-events-none" />
+
+        <div className="flex justify-between items-start flex-wrap gap-2">
+          <div>
+            <span className="text-[10px] font-black uppercase tracking-wider text-purple-400 block">
+              Total required for {nextMonthName}
+            </span>
+            <div className="text-3xl font-black text-white mt-1 tracking-tight">
+              {formatIndianRupee(totalRequired)}
+            </div>
+          </div>
+
+          <div className="text-right">
+            <span className="text-[10px] font-bold text-slate-400 uppercase block">Daily Preparation</span>
+            <span className="text-lg font-black text-emerald-400 font-mono block">
+              {formatIndianRupee(dailyTarget)}<span className="text-xs font-normal text-slate-400">/day</span>
+            </span>
+          </div>
+        </div>
+
+        {/* 4-Stat Sub-Bar */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-2 border-t border-purple-500/20 text-xs font-semibold">
+          <div className="p-2.5 rounded-xl bg-slate-900/60 border border-slate-800">
+            <span className="text-[9px] text-slate-400 uppercase font-bold block">Commitments</span>
+            <span className="text-xs font-extrabold text-white mt-0.5 block">{commitments.length} Due</span>
+          </div>
+
+          <div className="p-2.5 rounded-xl bg-slate-900/60 border border-slate-800">
+            <span className="text-[9px] text-slate-400 uppercase font-bold block">Categories</span>
+            <span className="text-xs font-extrabold text-purple-300 mt-0.5 block">{uniqueCategoryNames.length} Active</span>
+          </div>
+
+          <div className="p-2.5 rounded-xl bg-slate-900/60 border border-slate-800">
+            <span className="text-[9px] text-slate-400 uppercase font-bold block">Days Remaining</span>
+            <span className="text-xs font-extrabold text-amber-400 mt-0.5 block">{daysRemaining} Days</span>
+          </div>
+
+          <div className="p-2.5 rounded-xl bg-slate-900/60 border border-emerald-500/20">
+            <span className="text-[9px] text-slate-400 uppercase font-bold block">Weekly Target</span>
+            <span className="text-xs font-extrabold text-emerald-400 mt-0.5 block">{formatIndianRupee(weeklyTarget)}/wk</span>
+          </div>
+        </div>
+
+        {/* Preparation Planner Advice */}
+        <div className="p-3 bg-purple-500/10 border border-purple-500/20 rounded-xl text-xs text-purple-300 font-semibold flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-purple-400 shrink-0" />
+          <span>
+            If you save <strong>{formatIndianRupee(dailyTarget)}</strong> per day for the remaining <strong>{daysRemaining} days</strong>, you will be 100% prepared for {nextMonthName}.
+          </span>
+        </div>
+      </div>
+
+      {/* ROTATING SMART AI INSIGHTS TICKER */}
+      <div className="flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-[#0B1733]/90 border border-slate-800 text-slate-200 text-xs font-bold shadow-md">
+        <Sparkles className="w-4 h-4 text-emerald-400 shrink-0 animate-pulse" />
+        <span className="truncate">{aiInsights[insightIndex] || aiInsights[0]}</span>
+      </div>
+
+      {/* MAIN 2-COLUMN SPLIT: CATEGORY ACCORDIONS & DUE-DATE TIMELINE */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* LEFT COLUMN: CATEGORY-WISE ACCORDION BREAKDOWN */}
+        <div className="space-y-3">
+          <div className="flex justify-between items-center">
+            <h4 className="text-xs font-black uppercase tracking-wider text-slate-400 block">
+              Category-Wise Breakdown
+            </h4>
+            <span className="text-[10px] text-slate-500 font-bold">{uniqueCategoryNames.length} Categories</span>
+          </div>
+
+          <div className="space-y-2.5 max-h-[380px] overflow-y-auto pr-1 custom-scrollbar">
+            {uniqueCategoryNames.map(catName => {
+              const items = groupedCategories[catName] || [];
+              const catTotal = items.reduce((s, i) => s + i.amount, 0);
+              const isCollapsed = expandedCategories[catName] === false;
+
+              return (
+                <div
+                  key={catName}
+                  className="p-3.5 bg-[#060D1E]/80 border border-slate-800 rounded-2xl space-y-2.5 transition-all"
+                >
+                  {/* Category Header */}
+                  <div
+                    onClick={() => toggleCategory(catName)}
+                    className="flex items-center justify-between cursor-pointer select-none"
+                  >
+                    <div className="flex items-center space-x-2.5">
+                      <span className="text-base p-1.5 bg-[#081226] rounded-xl border border-slate-800">
+                        {getCategoryIcon(catName)}
+                      </span>
+                      <div>
+                        <span className="text-xs font-extrabold text-white block">{catName}</span>
+                        <span className="text-[9px] text-slate-400 font-semibold block">{items.length} Record{items.length > 1 ? 's' : ''}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center space-x-3">
+                      <span className="text-xs font-black font-mono text-emerald-400">
+                        {formatIndianRupee(catTotal)}
+                      </span>
+                      <span className="text-slate-400 text-xs font-bold">
+                        {isCollapsed ? '▼' : '▲'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Accordion Record Items */}
+                  {!isCollapsed && (
+                    <div className="pt-2 border-t border-slate-800/80 space-y-1.5">
+                      {items.map(item => (
+                        <div
+                          key={item.id}
+                          onClick={() => navigate(item.modulePath || '/records')}
+                          className="p-2.5 rounded-xl bg-slate-900/50 hover:bg-slate-800/60 border border-slate-800/60 flex items-center justify-between text-xs transition cursor-pointer group"
+                        >
+                          <div className="leading-tight">
+                            <span className="font-extrabold text-slate-200 group-hover:text-purple-300 transition block">
+                              • {item.name}
+                            </span>
+                            <span className="text-[9px] text-amber-400 font-semibold block mt-0.5">
+                              Due: {item.dueDateStr}
+                            </span>
+                          </div>
+
+                          <span className="font-black text-white font-mono shrink-0">
+                            {formatIndianRupee(item.amount)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* RIGHT COLUMN: DUE-DATE TIMELINE & CASH READINESS */}
+        <div className="space-y-4">
+          {/* Timeline */}
+          <div className="space-y-3">
+            <div className="flex justify-between items-center">
+              <h4 className="text-xs font-black uppercase tracking-wider text-slate-400 block">
+                {nextMonthName} Payment Timeline
+              </h4>
+              <span className="text-[10px] font-bold text-slate-500">Chronological</span>
+            </div>
+
+            <div className="p-3.5 bg-[#060D1E]/80 border border-slate-800 rounded-2xl space-y-2 max-h-[220px] overflow-y-auto custom-scrollbar">
+              {commitments.map(item => (
+                <div
+                  key={`time-${item.id}`}
+                  onClick={() => navigate('/calendar')}
+                  className="p-2 rounded-xl bg-slate-900/40 hover:bg-slate-800/50 border border-slate-800/60 flex items-center justify-between text-xs cursor-pointer transition"
+                >
+                  <div className="flex items-center space-x-3">
+                    <span className="px-2 py-1 bg-amber-500/10 border border-amber-500/20 text-amber-400 font-black text-[10px] rounded-lg shrink-0">
+                      {item.dueDateStr}
+                    </span>
+                    <span className="font-extrabold text-slate-200 truncate max-w-[130px]">
+                      {item.name}
+                    </span>
+                  </div>
+
+                  <span className="font-black text-emerald-400 font-mono shrink-0">
+                    {formatIndianRupee(item.amount)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* CASH READINESS & FORECAST CARD */}
+          <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-3 text-xs">
+            <div className="flex justify-between items-center">
+              <span className="font-extrabold text-white flex items-center gap-1.5">
+                <Wallet className="w-4 h-4 text-emerald-400" /> Cash Readiness & Forecast
+              </span>
+              <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${readinessBadge}`}>
+                {readinessStatusText}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="p-2 rounded-xl bg-slate-950 border border-slate-800">
+                <span className="text-[8px] text-slate-400 uppercase font-bold block">Current Balance</span>
+                <span className="text-xs font-black text-white mt-0.5 block truncate">
+                  {formatIndianRupee(availableBalance)}
+                </span>
+              </div>
+
+              <div className="p-2 rounded-xl bg-slate-950 border border-slate-800">
+                <span className="text-[8px] text-slate-400 uppercase font-bold block">Required Next Month</span>
+                <span className="text-xs font-black text-purple-400 mt-0.5 block truncate">
+                  {formatIndianRupee(totalRequired)}
+                </span>
+              </div>
+
+              <div className="p-2 rounded-xl bg-slate-950 border border-slate-800">
+                <span className="text-[8px] text-slate-400 uppercase font-bold block">Additional Reserve</span>
+                <span className="text-xs font-black text-amber-400 mt-0.5 block truncate">
+                  {formatIndianRupee(fundingGap)}
+                </span>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-slate-800 flex justify-between items-center text-[11px] font-bold">
+              <span className="text-slate-400">Forecast Post-Payment Balance:</span>
+              <span className={`font-mono ${postPaymentBalance >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                {postPaymentBalance >= 0 ? formatIndianRupee(postPaymentBalance) : `-₹${Math.abs(postPaymentBalance).toLocaleString('en-IN')}`}
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
