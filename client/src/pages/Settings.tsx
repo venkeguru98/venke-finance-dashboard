@@ -525,85 +525,85 @@ export default function Settings() {
         </div>
       </section>
 
-      {/* ── ENTERPRISE BACKUP, RECOVERY & PRODUCTION MIGRATION ARCHITECTURE ── */}
-      <section className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-md">
+      {/* ── UNIFIED & USER-FRIENDLY DATA BACKUP & PROTECTION SYSTEM ── */}
+      <section className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
         <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h2 className="font-extrabold flex items-center text-slate-900 dark:text-white text-base">
-              <ShieldCheck className="w-5 h-5 mr-2 text-emerald-500" /> Enterprise Backup, Recovery & Production Migration
+              <ShieldCheck className="w-5 h-5 mr-2 text-emerald-500" /> Automated Backups & Protection
             </h2>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 font-medium">
-              Layer 4 Independent Disaster Recovery — Daily 11:59 PM Snapshots, Weekly Golden Archives & Cloud-Free Production Migration Packages.
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-medium">
+              Your financial records are automatically backed up every night at 11:59 PM with safe 1-click restore.
             </p>
           </div>
 
           <div className="flex items-center space-x-2 shrink-0">
-            <span className="px-3 py-1 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 text-[10px] font-black uppercase rounded-full flex items-center gap-1.5">
-              <CheckCircle2 className="w-3.5 h-3.5" /> Zero Data Loss Shield Active
+            <span className="px-3 py-1 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 text-[11px] font-bold rounded-full flex items-center gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5" /> Backup Protection Active
             </span>
           </div>
         </div>
 
         <div className="p-6 space-y-6">
-          {/* TOP METRICS CARDS */}
+          {/* TOP SUMMARY CARDS */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
-            <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800">
-              <span className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wider block">Protection Status</span>
+            <div className="p-4 bg-slate-50 dark:bg-slate-900/60 rounded-2xl border border-slate-100 dark:border-slate-800">
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Protection Status</span>
               <span className="text-sm font-black text-emerald-500 flex items-center gap-1.5 mt-1">
-                <Shield className="w-4 h-4 text-emerald-500" /> ACTIVE (100% Offline)
+                <Shield className="w-4 h-4 text-emerald-500" /> Protected 🛡️
               </span>
-              <span className="text-[9px] text-slate-500 block mt-1 font-semibold">Zero dependency on Cloud DB</span>
+              <span className="text-[10px] text-slate-500 block mt-1 font-medium">Auto-saves every night</span>
             </div>
 
-            <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800">
-              <span className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wider block">Daily 11:59 PM Snapshot</span>
-              <span className="text-sm font-black text-slate-900 dark:text-white font-mono mt-1 block">
-                {recoveryStatus.lastVerifiedBackupDate} 23:59
+            <div className="p-4 bg-slate-50 dark:bg-slate-900/60 rounded-2xl border border-slate-100 dark:border-slate-800">
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Last Automatic Backup</span>
+              <span className="text-sm font-black text-slate-900 dark:text-white mt-1 block">
+                {recoveryStatus.lastVerifiedBackupDate} at 11:59 PM
               </span>
-              <span className="text-[9px] text-slate-500 block mt-1 font-semibold">Next: {recoveryStatus.nextScheduledBackup}</span>
+              <span className="text-[10px] text-slate-500 block mt-1 font-medium">Next backup tonight at 11:59 PM</span>
             </div>
 
-            <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800">
-              <span className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wider block">Recovery Confidence</span>
-              <span className="text-sm font-black text-purple-500 font-mono mt-1 block">
-                {recoveryStatus.recoveryConfidenceScore}% PASSED ✅
+            <div className="p-4 bg-slate-50 dark:bg-slate-900/60 rounded-2xl border border-slate-100 dark:border-slate-800">
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Backup Health</span>
+              <span className="text-sm font-black text-purple-600 dark:text-purple-400 mt-1 block">
+                100% Healthy ✅
               </span>
-              <span className="text-[9px] text-slate-500 block mt-1 font-semibold">10-Point Integrity Check Passed</span>
+              <span className="text-[10px] text-slate-500 block mt-1 font-medium">All financial records verified</span>
             </div>
 
-            <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800">
+            <div className="p-4 bg-slate-50 dark:bg-slate-900/60 rounded-2xl border border-slate-100 dark:border-slate-800">
               <div className="flex justify-between items-center">
-                <span className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wider">Retention Policy</span>
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Keep History For</span>
                 <select
                   value={recoveryStatus.retentionDays}
                   onChange={e => handleUpdateRetention(Number(e.target.value))}
-                  className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[10px] font-bold rounded-lg px-2 py-0.5"
+                  className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold rounded-lg px-2 py-0.5 focus:outline-none"
                 >
                   <option value={30}>30 Days</option>
                   <option value={90}>90 Days (Default)</option>
                   <option value={180}>180 Days</option>
-                  <option value={0}>Unlimited</option>
+                  <option value={0}>Keep Forever</option>
                 </select>
               </div>
-              <span className="text-sm font-black text-slate-900 dark:text-white font-mono mt-1 block">
-                {recoveryStatus.totalBackupsCount} Snapshots ({recoveryStatus.totalStorageFormatted})
+              <span className="text-sm font-black text-slate-900 dark:text-white mt-1 block">
+                {recoveryStatus.totalBackupsCount} Backups ({recoveryStatus.totalStorageFormatted})
               </span>
-              <span className="text-[9px] text-slate-500 block mt-1 font-semibold">Older archives moved to /archive</span>
+              <span className="text-[10px] text-slate-500 block mt-1 font-medium">Auto-cleans expired archives</span>
             </div>
           </div>
 
-          {/* ACTION CONTROL DOCK */}
-          <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
+          {/* ACTION BUTTON DOCK */}
+          <div className="p-4 bg-slate-50 dark:bg-slate-900/60 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center space-x-2 flex-wrap gap-2">
               <Button
                 variant="primary"
                 size="sm"
                 disabled={manualCreating}
                 onClick={handleCreateDailySnapshot}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs py-2 px-3.5"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs py-2 px-4 font-bold shadow-sm"
               >
                 <Clock className="w-3.5 h-3.5 mr-1.5" />
-                {manualCreating ? 'Creating Snapshot...' : 'Create 11:59 PM Snapshot Now'}
+                {manualCreating ? 'Saving Backup...' : 'Create Backup Now'}
               </Button>
 
               <Button
@@ -611,10 +611,10 @@ export default function Settings() {
                 size="sm"
                 disabled={migrationCreating}
                 onClick={handleCreateMigrationPackage}
-                className="rounded-xl text-xs py-2 px-3.5 border border-purple-500/30 text-purple-600 dark:text-purple-400 hover:bg-purple-500/10"
+                className="rounded-xl text-xs py-2 px-4 font-bold border border-purple-500/30 text-purple-600 dark:text-purple-400 hover:bg-purple-500/10"
               >
                 <FileArchive className="w-3.5 h-3.5 mr-1.5" />
-                {migrationCreating ? 'Generating Package...' : 'Create Production Migration Package 📦'}
+                {migrationCreating ? 'Preparing Package...' : 'Download Full Data Package 📦'}
               </Button>
 
               <Button
@@ -622,15 +622,15 @@ export default function Settings() {
                 size="sm"
                 disabled={simulationRunning}
                 onClick={handleRunSimulation}
-                className="rounded-xl text-xs py-2 px-3.5 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300"
+                className="rounded-xl text-xs py-2 px-4 font-semibold border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300"
               >
                 <RefreshCcw className={`w-3.5 h-3.5 mr-1.5 ${simulationRunning ? 'animate-spin' : ''}`} />
-                {simulationRunning ? 'Running Simulation...' : 'Run Restore Simulation'}
+                {simulationRunning ? 'Checking...' : 'Run Health Check 🔄'}
               </Button>
             </div>
 
-            <span className="text-[10px] text-slate-400 font-semibold font-mono">
-              🛡️ Offline Production Mirror Active
+            <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+              🔒 Safe & Offline Protected
             </span>
           </div>
 
@@ -638,37 +638,37 @@ export default function Settings() {
           <div className="space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <h4 className="font-extrabold text-slate-900 dark:text-white text-xs uppercase tracking-wider flex items-center gap-2">
-                <HardDrive className="w-4 h-4 text-primary" /> Backup History & Recovery Browser ({recoveryBackups.length})
+                <HardDrive className="w-4 h-4 text-primary" /> Saved Backups ({recoveryBackups.length})
               </h4>
 
               <div className="flex items-center space-x-2">
                 <div className="relative">
-                  <Search className="w-3 h-3 text-slate-400 absolute left-2.5 top-2 pointer-events-none" />
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2 pointer-events-none" />
                   <input
                     type="text"
                     placeholder="Search by date..."
                     value={searchDateQuery}
                     onChange={e => setSearchDateQuery(e.target.value)}
-                    className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-800 dark:text-slate-200 rounded-xl py-1 pl-7 pr-3 focus:outline-none"
+                    className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-800 dark:text-slate-200 rounded-xl py-1 pl-8 pr-3 focus:outline-none"
                   />
                 </div>
 
                 <select
                   value={selectedTypeFilter}
                   onChange={e => setSelectedTypeFilter(e.target.value)}
-                  className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-700 dark:text-slate-300 rounded-xl px-2.5 py-1 focus:outline-none"
+                  className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300 rounded-xl px-2.5 py-1 focus:outline-none"
                 >
-                  <option value="all">All Backup Types</option>
-                  <option value="Daily">Daily Immutable</option>
-                  <option value="Weekly">Weekly Golden 🏆</option>
-                  <option value="Migration">Migration Package 📦</option>
+                  <option value="all">All Backups</option>
+                  <option value="Daily">Daily Backups</option>
+                  <option value="Weekly">Weekly Archives 🏆</option>
+                  <option value="Migration">Export Packages 📦</option>
                 </select>
               </div>
             </div>
 
             {recoveryBackups.length === 0 ? (
               <div className="p-8 text-center bg-slate-50 dark:bg-slate-900/50 rounded-2xl border border-slate-200 dark:border-slate-800 text-slate-400 text-xs font-semibold">
-                No recovery snapshot packages found. Click "Create 11:59 PM Snapshot Now" above.
+                No backup files found. Click "Create Backup Now" above to create one.
               </div>
             ) : (
               <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden divide-y divide-slate-100 dark:divide-slate-800 max-h-64 overflow-y-auto custom-scrollbar">
@@ -682,7 +682,7 @@ export default function Settings() {
                   if (filtered.length === 0) {
                     return (
                       <div className="p-6 text-center text-slate-400 text-xs font-semibold">
-                        No matching backups found for filter.
+                        No matching backups found for search.
                       </div>
                     );
                   }
@@ -690,23 +690,25 @@ export default function Settings() {
                   return filtered.map((b, idx) => (
                     <div key={idx} className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-slate-900/60 transition">
                       <div className="flex items-center space-x-3">
-                        <div className="p-2 rounded-xl bg-primary/10 text-primary">
+                        <div className="p-2.5 rounded-xl bg-primary/10 text-primary">
                           <Database className="w-4 h-4" />
                         </div>
                         <div>
                           <div className="flex items-center space-x-2">
-                            <span className="font-extrabold text-slate-900 dark:text-white text-xs">{b.filename}</span>
-                            <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                              {b.type}
+                            <span className="font-bold text-slate-900 dark:text-white text-xs">
+                              Backup ({b.date})
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                              {b.type.replace('Immutable Snapshot', '').replace('Package', '')}
                             </span>
                             {b.verified && (
-                              <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 flex items-center gap-1">
-                                <ShieldCheck className="w-3 h-3" /> Verified 🛡️
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 flex items-center gap-1">
+                                <ShieldCheck className="w-3 h-3" /> Verified Safe ✅
                               </span>
                             )}
                           </div>
-                          <p className="text-[10px] text-slate-400 font-mono mt-0.5">
-                            {b.date} • {b.time} • Size: {b.size} • Records: {b.totalRecords}
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+                            Saved at {b.time} · Size: {b.size} · {b.totalRecords} records saved
                           </p>
                         </div>
                       </div>
@@ -714,17 +716,17 @@ export default function Settings() {
                       <div className="flex items-center space-x-2 shrink-0 justify-end">
                         <button
                           onClick={() => handleExportFile(b.fullPath)}
-                          className="px-3 py-1.5 text-[11px] font-bold border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition flex items-center gap-1"
+                          className="px-3 py-1.5 text-xs font-semibold border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition flex items-center gap-1"
                         >
-                          <Download className="w-3 h-3" /> Export
+                          <Download className="w-3.5 h-3.5" /> Download
                         </button>
 
                         {!b.filename.endsWith('.zip') && (
                           <button
                             onClick={() => handleOpenCompareModal(b)}
-                            className="px-3 py-1.5 text-[11px] font-bold bg-primary/10 hover:bg-primary/20 text-primary rounded-xl transition flex items-center gap-1"
+                            className="px-3 py-1.5 text-xs font-bold bg-primary/10 hover:bg-primary/20 text-primary rounded-xl transition flex items-center gap-1"
                           >
-                            <FolderSync className="w-3 h-3" /> Compare & Restore
+                            <FolderSync className="w-3.5 h-3.5" /> Restore Data
                           </button>
                         )}
                       </div>
@@ -737,18 +739,18 @@ export default function Settings() {
         </div>
       </section>
 
-      {/* ── SIDE-BY-SIDE RESTORE COMPARISON MODAL ── */}
+      {/* ── RESTORE DATA CONFIRMATION MODAL ── */}
       {isCompareModalOpen && selectedBackupForRestore && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xl animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-[#081226] border border-slate-200 dark:border-[#1E2A4A] w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+          <div className="bg-white dark:bg-[#081226] border border-slate-200 dark:border-[#1E2A4A] w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
             {/* MODAL HEADER */}
             <div className="p-6 border-b border-slate-200 dark:border-[#1E2A4A] bg-slate-50 dark:bg-[#050816] flex justify-between items-center">
               <div>
                 <h3 className="font-extrabold text-base text-slate-900 dark:text-white flex items-center gap-2">
-                  <ShieldAlert className="w-5 h-5 text-amber-500" /> Restore Comparison — Safety Verification
+                  <ShieldAlert className="w-5 h-5 text-emerald-500" /> Restore Data Confirmation
                 </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Review side-by-side database record differences before replacing live database.
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-medium">
+                  Review data comparison before restoring your database to this backup.
                 </p>
               </div>
               <button
@@ -761,29 +763,29 @@ export default function Settings() {
 
             {/* MODAL CONTENT */}
             <div className="p-6 overflow-y-auto space-y-4 custom-scrollbar flex-1 text-xs">
-              <div className="p-3 bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 rounded-2xl flex items-center space-x-2 font-semibold">
+              <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-2xl flex items-center space-x-2 font-semibold">
                 <Lock className="w-4 h-4 shrink-0" />
                 <span>
-                  Safety Guarantee: A pre-restore safety snapshot will be created automatically in <code>backups/safety</code> before execution.
+                  Safety Guarantee: A safety backup of your current data will be saved automatically before restoring.
                 </span>
               </div>
 
               {comparing ? (
                 <div className="py-12 text-center text-slate-400 font-bold">
-                  Calculating side-by-side record differences...
+                  Checking backup records...
                 </div>
               ) : comparisonData ? (
                 <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4 bg-slate-50 dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 font-mono">
+                  <div className="grid grid-cols-2 gap-4 bg-slate-50 dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
                     <div>
-                      <span className="text-[10px] text-slate-400 font-bold uppercase block">Current Live Database</span>
-                      <span className="text-base font-black text-slate-900 dark:text-white mt-1 block">
+                      <span className="text-[10px] text-slate-400 font-bold uppercase block">Current Live Data</span>
+                      <span className="text-sm font-black text-slate-900 dark:text-white mt-1 block">
                         {comparisonData.liveTotalRecords.toLocaleString()} Total Records
                       </span>
                     </div>
                     <div>
-                      <span className="text-[10px] text-slate-400 font-bold uppercase block">Selected Snapshot ({selectedBackupForRestore.date})</span>
-                      <span className="text-base font-black text-purple-500 mt-1 block">
+                      <span className="text-[10px] text-slate-400 font-bold uppercase block">Backup Data ({selectedBackupForRestore.date})</span>
+                      <span className="text-sm font-black text-emerald-500 mt-1 block">
                         {comparisonData.backupTotalRecords.toLocaleString()} Total Records
                       </span>
                     </div>
@@ -791,21 +793,17 @@ export default function Settings() {
 
                   {/* DIFFERENCES TABLE */}
                   <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden divide-y divide-slate-100 dark:divide-slate-800">
-                    <div className="p-3 bg-slate-100 dark:bg-slate-900 font-bold grid grid-cols-4 text-[10px] uppercase tracking-wider text-slate-500">
-                      <span>Category / Table</span>
+                    <div className="p-3 bg-slate-100 dark:bg-slate-900 font-bold grid grid-cols-3 text-[10px] uppercase tracking-wider text-slate-500">
+                      <span>Category</span>
                       <span className="text-center">Current Live</span>
-                      <span className="text-center">Snapshot Backup</span>
-                      <span className="text-right">Difference</span>
+                      <span className="text-right">Selected Backup</span>
                     </div>
 
                     {comparisonData.diffs.map((d: any, idx: number) => (
-                      <div key={idx} className="p-3 grid grid-cols-4 items-center font-mono font-semibold">
-                        <span className="font-sans font-bold text-slate-800 dark:text-slate-200">{d.label}</span>
+                      <div key={idx} className="p-3 grid grid-cols-3 items-center font-medium">
+                        <span className="font-bold text-slate-800 dark:text-slate-200">{d.label}</span>
                         <span className="text-center text-slate-600 dark:text-slate-400">{d.liveCount}</span>
-                        <span className="text-center text-purple-400 font-bold">{d.backupCount}</span>
-                        <span className={`text-right font-black ${d.difference > 0 ? 'text-emerald-500' : d.difference < 0 ? 'text-rose-500' : 'text-slate-400'}`}>
-                          {d.difference > 0 ? `+${d.difference}` : d.difference}
-                        </span>
+                        <span className="text-right text-emerald-500 font-bold">{d.backupCount}</span>
                       </div>
                     ))}
                   </div>
@@ -824,61 +822,12 @@ export default function Settings() {
                 disabled={executingRestore}
                 className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-2.5 px-6 rounded-xl"
               >
-                {executingRestore ? 'Restoring Database...' : 'Confirm Safe Restore & Reload'}
+                {executingRestore ? 'Restoring Data...' : 'Confirm & Restore Data'}
               </Button>
             </div>
           </div>
         </div>
       )}
-
-      {/* Database Backups System */}
-      <section className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
-        <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex justify-between items-center">
-          <h2 className="font-bold flex items-center text-slate-900 dark:text-white">
-            <Database className="w-5 h-5 mr-2 text-primary" /> Database Snapshots & Recovery
-          </h2>
-          <div className="flex space-x-2">
-            <Button variant="secondary" size="sm" onClick={handleCreateBackup}>
-              Backup Now
-            </Button>
-            <Button variant="primary" size="sm" onClick={handleExportDB}>
-              Export SQLite file
-            </Button>
-          </div>
-        </div>
-        <div className="p-6 space-y-4">
-          {restoring && (
-            <div className="p-3 bg-yellow-50 dark:bg-yellow-950/20 text-yellow-600 dark:text-yellow-400 text-xs font-black flex items-center space-x-2 rounded-xl">
-              <ShieldAlert className="w-4 h-4" />
-              <span>Restoring database... Please do not close settings.</span>
-            </div>
-          )}
-
-          {backups.length === 0 ? (
-            <div className="py-6 text-center text-slate-400 text-xs">
-              No historical database backups found in local backups directory. Click "Backup Now" to create one.
-            </div>
-          ) : (
-            <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-48 overflow-y-auto pr-1">
-              {backups.map(b => (
-                <div key={b.filename} className="py-3 flex justify-between items-center text-xs">
-                  <div>
-                    <span className="font-bold text-slate-800 dark:text-slate-200 block">{b.filename}</span>
-                    <span className="text-[10px] text-slate-400 font-semibold">{b.date} · {b.size}</span>
-                  </div>
-                  <button
-                    disabled={restoring}
-                    onClick={() => handleRestoreBackup(b.filename)}
-                    className="flex items-center space-x-1 px-3 py-1 bg-primary/10 hover:bg-primary/20 text-primary font-black rounded-lg transition"
-                  >
-                    <FolderSync className="w-3.5 h-3.5" /> <span>Restore</span>
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </section>
 
       {/* Appearance */}
       <section className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
