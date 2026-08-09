@@ -1309,12 +1309,40 @@ router.get('/system/backups', async (_req, res) => {
 });
 
 router.get('/system/backups/download/:filename', (req, res) => {
-  const safeFilename = path.basename(req.params.filename);
-  const filePath = path.join(backupsDir, safeFilename);
-  if (!fs.existsSync(filePath)) {
-    return res.status(404).json({ error: 'Backup file not found.' });
+  try {
+    const rawParam = req.params.filename || '';
+    const backupRoot = path.resolve(__dirname, '../../../backups');
+    let filePath = path.join(backupRoot, rawParam);
+
+    if (!fs.existsSync(filePath)) {
+      filePath = path.join(backupsDir, rawParam);
+    }
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'Backup file not found.' });
+    }
+
+    if (fs.statSync(filePath).isDirectory()) {
+      const files = fs.readdirSync(filePath);
+      const zipFile = files.find(f => f.endsWith('.zip'));
+      const sqliteFile = files.find(f => f.endsWith('.sqlite'));
+      const jsonFile = files.find(f => f.endsWith('.json'));
+
+      if (zipFile) {
+        filePath = path.join(filePath, zipFile);
+      } else if (sqliteFile) {
+        filePath = path.join(filePath, sqliteFile);
+      } else if (jsonFile) {
+        filePath = path.join(filePath, jsonFile);
+      } else {
+        return res.status(404).json({ error: 'No downloadable file found in backup folder.' });
+      }
+    }
+
+    res.download(filePath, path.basename(filePath));
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Error downloading backup' });
   }
-  res.download(filePath, safeFilename);
 });
 
 router.post('/system/restore', async (req, res) => {

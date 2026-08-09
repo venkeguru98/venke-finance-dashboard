@@ -101,16 +101,37 @@ router.put('/retention', (req, res) => {
 // GET /api/enterprise-recovery/export
 router.get('/export', (req, res) => {
   try {
-    const { filePath } = req.query || {};
-    if (!filePath || typeof filePath !== 'string') {
-      return res.status(400).json({ error: 'filePath parameter required' });
+    const { filePath, folder } = req.query || {};
+    const targetPath = (filePath || folder || '') as string;
+
+    if (!targetPath) {
+      return res.status(400).json({ error: 'filePath or folder parameter required' });
     }
 
-    const resolvedPath = path.resolve(filePath);
     const backupRoot = path.resolve(__dirname, '../../../backups');
+    let resolvedPath = path.resolve(targetPath);
 
-    if (!resolvedPath.startsWith(backupRoot) || !fs.existsSync(resolvedPath)) {
-      return res.status(404).json({ error: 'Requested backup package file not found' });
+    if (!resolvedPath.startsWith(backupRoot)) {
+      resolvedPath = path.join(backupRoot, targetPath);
+    }
+
+    if (!fs.existsSync(resolvedPath)) {
+      return res.status(404).json({ error: 'Requested backup file or folder not found' });
+    }
+
+    // If target is a directory, locate .zip or .sqlite file inside
+    if (fs.statSync(resolvedPath).isDirectory()) {
+      const files = fs.readdirSync(resolvedPath);
+      const zipFile = files.find(f => f.endsWith('.zip'));
+      const sqliteFile = files.find(f => f.endsWith('.sqlite'));
+
+      if (zipFile) {
+        resolvedPath = path.join(resolvedPath, zipFile);
+      } else if (sqliteFile) {
+        resolvedPath = path.join(resolvedPath, sqliteFile);
+      } else {
+        return res.status(404).json({ error: 'No downloadable snapshot file found in directory' });
+      }
     }
 
     res.download(resolvedPath, path.basename(resolvedPath));

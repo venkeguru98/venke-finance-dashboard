@@ -313,8 +313,9 @@ export default function Settings() {
     }
   };
 
-  const handleExportFile = (fullPath: string) => {
-    window.open(`${API}/enterprise-recovery/export?filePath=${encodeURIComponent(fullPath)}`, '_blank');
+  const handleExportFile = (item: any) => {
+    const target = typeof item === 'string' ? item : (item?.fullPath || item?.folder || item?.filename || '');
+    window.open(`${API}/enterprise-recovery/export?filePath=${encodeURIComponent(target)}`, '_blank');
   };
 
   const userCategories = categories.filter(c => c.user_id !== null);
