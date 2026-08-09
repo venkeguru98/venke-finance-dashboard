@@ -133,6 +133,8 @@ function getLocalIpAddress() {
 import { startLicAutomationScheduler } from './services/recurringAutomation';
 import { GlobalLicAutopilotService } from './services/GlobalLicAutopilotService';
 import { LocalDatabaseBackupService } from './services/LocalDatabaseBackupService';
+import { EnterpriseRecoveryService } from './services/EnterpriseRecoveryService';
+import enterpriseRecoveryRoutes from './routes/enterpriseRecoveryRoutes';
 
 const startServer = async () => {
   // ─── Initialize Database ─────────────────────────────────────────────────
@@ -143,6 +145,8 @@ const startServer = async () => {
     GlobalLicAutopilotService.start15MinuteTicker(1);
     // ─── Initialize Automatic Local Database Backup Daemon (Runs every 6 Hours) ─────────────
     LocalDatabaseBackupService.startBackupDaemon(6);
+    // ─── Initialize Enterprise Disaster Recovery Daemon (11:59 PM Daily Snapshot) ───────────
+    EnterpriseRecoveryService.startScheduler();
   } catch (dbErr) {
     console.error('[DB] Failed to initialize database:', dbErr);
   }
@@ -272,6 +276,7 @@ const startServer = async () => {
   app.use('/api/auth', authLimiter, authRoutes);
 
   // ─── API Routes (protected by auth middleware inside router) ──────────────
+  app.use('/api/enterprise-recovery', enterpriseRecoveryRoutes);
   app.use('/api/telegram', telegramRoutes);
   app.use('/api/ai', aiRoutes);
   app.use('/api/recurring-rules', recurringRoutes);
