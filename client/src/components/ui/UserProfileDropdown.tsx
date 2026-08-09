@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ChevronRight, ShieldCheck, 
-  Sparkles, PlusCircle, FileSpreadsheet, RefreshCcw, 
-  Download, Settings, Key, Lock, Palette, LogOut, CheckCircle2,
-  Sparkle
+  PlusCircle, FileSpreadsheet, RefreshCcw, 
+  Download, Settings, Key, Palette, LogOut, CheckCircle2,
+  Building2, Clock, Check
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -16,7 +16,51 @@ interface UserProfileDropdownProps {
   onOpenCmdK?: () => void;
 }
 
-export const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({ onLogout, onOpenCmdK }) => {
+// ── LOCAL & RELATIVE TIME FORMATTING UTILITIES ─────────────────────────────────
+function formatLocalTime(dateInput?: string | Date | number): string {
+  if (!dateInput) {
+    const now = new Date();
+    return `Today • ${now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}`;
+  }
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return 'Today • 11:59 PM';
+
+  const now = new Date();
+  const isToday = d.toDateString() === now.toDateString();
+
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const isYesterday = d.toDateString() === yesterday.toDateString();
+
+  const timeStr = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
+
+  if (isToday) {
+    return `Today • ${timeStr}`;
+  } else if (isYesterday) {
+    return `Yesterday • ${timeStr}`;
+  } else {
+    const dateStr = d.toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
+    return `${dateStr} • ${timeStr}`;
+  }
+}
+
+function formatRelativeTime(dateInput?: string | Date | number): string {
+  if (!dateInput) return 'Just now';
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return 'Just now';
+
+  const diffSec = Math.floor((Date.now() - d.getTime()) / 1000);
+  if (diffSec < 30) return 'Just now';
+  if (diffSec < 60) return `${diffSec}s ago`;
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDays = Math.floor(diffHr / 24);
+  return `${diffDays}d ago`;
+}
+
+export const UserProfileDropdown: React.FC<UserProfileDropdownProps> = memo(({ onLogout, onOpenCmdK }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [isBackingUp, setIsBackingUp] = useState(false);
@@ -26,11 +70,12 @@ export const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({ onLogo
   const dropdownRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
-  // Dynamic Snapshot Data
+  // Dynamic Snapshot & Time Data
   const [snapshotData, setSnapshotData] = useState({
     balance: '₹13,057',
     savingsRate: '17.4%',
-    lastBackup: 'Today • 11:59 PM',
+    lastBackupTimestamp: new Date().toISOString(),
+    nextSnapshot: '11:59 PM',
     appVersion: 'v3.0.0',
     dbStatus: 'Connected (PostgreSQL / SQLite)',
     cloudSync: 'Connected',
@@ -39,7 +84,7 @@ export const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({ onLogo
     scheduler: 'Healthy'
   });
 
-  // Fetch dynamic stats when opening
+  // Fetch dynamic stats when dropdown opens
   useEffect(() => {
     if (isOpen) {
       // 1. Fetch system status
@@ -49,8 +94,7 @@ export const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({ onLogo
             setSnapshotData(prev => ({
               ...prev,
               appVersion: `v${res.data.appVersion || '3.0.0'}`,
-              dbStatus: res.data.databaseEngine ? `Connected (${res.data.databaseEngine.includes('PostgreSQL') ? 'Neon PG' : 'Local SQLite'})` : prev.dbStatus,
-              lastBackup: res.data.lastBackupDate || prev.lastBackup
+              dbStatus: res.data.databaseEngine ? `Connected (${res.data.databaseEngine.includes('PostgreSQL') ? 'Neon PG' : 'SQLite'})` : prev.dbStatus
             }));
           }
         })
@@ -62,7 +106,8 @@ export const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({ onLogo
           if (res.data) {
             setSnapshotData(prev => ({
               ...prev,
-              lastBackup: `${res.data.lastVerifiedBackupDate || 'Today'} • ${res.data.lastVerifiedBackupTime || '11:59 PM'}`
+              lastBackupTimestamp: res.data.lastVerifiedBackupDate ? `${res.data.lastVerifiedBackupDate} ${res.data.lastVerifiedBackupTime || '23:59:00'}` : new Date().toISOString(),
+              nextSnapshot: res.data.nextScheduledBackup ? res.data.nextScheduledBackup.split(',')[1] || '11:59 PM' : '11:59 PM'
             }));
           }
         })
@@ -134,7 +179,11 @@ export const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({ onLogo
       const res = await axios.post(`${API}/enterprise-recovery/create-daily`);
       if (res.data.success) {
         setBackupMsg('Verified ✅');
-        setTimeout(() => setBackupMsg(null), 3000);
+        setSnapshotData(prev => ({ ...prev, lastBackupTimestamp: new Date().toISOString() }));
+        setTimeout(() => {
+          setBackupMsg(null);
+          setIsOpen(false);
+        }, 1200);
       } else {
         setBackupMsg('Failed');
       }
@@ -147,16 +196,22 @@ export const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({ onLogo
 
   const handleExportData = () => {
     window.open(`${API}/system/db-export`, '_blank');
+    setIsOpen(false);
+  };
+
+  const handleNavigate = (path: string) => {
+    setIsOpen(false);
+    navigate(path);
   };
 
   return (
-    <div ref={containerRef} className="relative inline-block text-left z-50">
+    <div ref={containerRef} className="relative inline-block text-left z-[1100]">
       {/* ── USER BADGE TRIGGER BUTTON ─────────────────────────────────────── */}
       <button
         onClick={() => setIsOpen(prev => !prev)}
         aria-expanded={isOpen}
         aria-haspopup="true"
-        className={`flex items-center space-x-2.5 cursor-pointer p-1 pr-3 rounded-full transition-all duration-200 border outline-none group ${
+        className={`flex items-center space-x-2.5 cursor-pointer p-1 pr-3 rounded-full transition-all duration-180 border outline-none group ${
           isOpen
             ? 'bg-[#0D1830] border-[#8B5CF6] shadow-[0_0_20px_rgba(139,92,246,0.4)] scale-[0.98]'
             : 'bg-[#081226]/80 border-[#1E2A44] hover:border-[#8B5CF6]/50 hover:bg-[#0D1830] hover:scale-[1.02]'
@@ -177,43 +232,51 @@ export const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({ onLogo
             Venke
           </span>
           <span className="text-[9px] font-bold text-slate-400 leading-tight mt-0.5 flex items-center gap-1">
-            Premium <Sparkle className="w-2.5 h-2.5 text-amber-400 fill-amber-400" />
+            Workspace
           </span>
         </div>
       </button>
 
-      {/* ── FLOATING PROFILE DROPDOWN PANEL ──────────────────────────────── */}
+      {/* ── FLOATING PROFILE DROPDOWN PANEL (FULL INTERNAL SCROLL CONTAINER) ── */}
       <AnimatePresence>
         {isOpen && (
           <motion.div
             ref={dropdownRef}
             onMouseMove={handleMouseMove}
-            initial={{ opacity: 0, y: -12, scale: 0.94 }}
+            initial={{ opacity: 0, y: 8, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -10, scale: 0.95 }}
-            transition={{ type: 'spring', stiffness: 380, damping: 26, duration: 0.2 }}
-            className="fixed sm:absolute right-4 sm:right-0 top-18 sm:top-full mt-2 w-[calc(100vw-32px)] sm:w-[350px] rounded-[24px] bg-[#081226]/95 backdrop-blur-2xl border border-[#1E2A44] shadow-[0_25px_60px_-15px_rgba(0,0,0,0.85),0_0_35px_rgba(139,92,246,0.18)] overflow-hidden z-50 text-slate-100 divide-y divide-[#1E2A44]/60 font-sans"
+            exit={{ opacity: 0, y: 6, scale: 0.98 }}
+            transition={{ type: 'spring', stiffness: 380, damping: 28, duration: 0.2 }}
+            role="menu"
+            aria-label="User Account Center"
+            className="fixed sm:absolute right-4 sm:right-0 top-18 sm:top-full mt-2 w-[calc(100vw-32px)] sm:w-[355px] max-h-[min(80vh,720px)] overflow-y-auto overscroll-contain no-scrollbar rounded-[24px] bg-[#081226]/95 backdrop-blur-2xl border border-[#1E2A44] shadow-[0_25px_65px_-15px_rgba(0,0,0,0.9),0_0_35px_rgba(139,92,246,0.18)] z-[1100] text-slate-100 divide-y divide-[#1E2A44]/60 font-sans"
             style={{
               backgroundImage: `radial-gradient(400px circle at ${mousePos.x}px ${mousePos.y}px, rgba(139,92,246,0.12), transparent 80%)`
             }}
           >
-            {/* 1. HEADER SECTION */}
-            <div className="p-4 bg-gradient-to-b from-[#0F1C3A]/60 to-transparent flex items-center justify-between">
+            {/* CSS FOR VISUALLY HIDDEN SCROLLBAR */}
+            <style>{`
+              .no-scrollbar::-webkit-scrollbar { display: none; }
+              .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+            `}</style>
+
+            {/* 1. HEADER SECTION (24px padding & spacing) */}
+            <div className="p-4 bg-gradient-to-b from-[#0F1C3A]/70 to-transparent flex items-center justify-between">
               <div className="flex items-center space-x-3">
                 <div className="relative">
-                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#8B5CF6] via-[#4F7CFF] to-[#A855F7] p-0.5 shadow-lg shadow-[#8B5CF6]/20">
-                    <div className="w-full h-full rounded-[14px] bg-[#081226] flex items-center justify-center text-lg font-black text-white">
+                  <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#8B5CF6] via-[#4F7CFF] to-[#A855F7] p-0.5 shadow-lg shadow-[#8B5CF6]/20">
+                    <div className="w-full h-full rounded-[14px] bg-[#081226] flex items-center justify-center text-base font-black text-white">
                       V
                     </div>
                   </div>
-                  <span className="absolute -bottom-1 -right-1 p-1 bg-emerald-500 text-white rounded-full shadow">
+                  <span className="absolute -bottom-1 -right-1 p-0.5 bg-emerald-500 text-white rounded-full shadow">
                     <CheckCircle2 className="w-3 h-3" />
                   </span>
                 </div>
 
                 <div>
                   <h4 className="font-extrabold text-sm text-white tracking-tight flex items-center gap-1.5">
-                    Venke <Sparkles className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+                    Venke
                   </h4>
                   <p className="text-[11px] font-semibold text-slate-400 mt-0.5">
                     Venke Finance Workspace
@@ -221,180 +284,183 @@ export const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({ onLogo
                 </div>
               </div>
 
-              <span className="px-2.5 py-1 bg-[#8B5CF6]/15 border border-[#8B5CF6]/30 text-[#8B5CF6] text-[10px] font-black uppercase rounded-full tracking-wider shrink-0">
-                Premium
+              <span className="px-2.5 py-1 bg-slate-800/80 border border-slate-700/60 text-slate-300 text-[10px] font-bold rounded-full tracking-wide shrink-0 flex items-center gap-1">
+                <Building2 className="w-3 h-3 text-[#8B5CF6]" /> Workspace
               </span>
             </div>
 
-            {/* 2. ACCOUNT SNAPSHOT (DYNAMIC) */}
-            <div className="p-4 bg-[#050B18]/40 space-y-2">
+            {/* 2. ACCOUNT SNAPSHOT (DYNAMIC WITH LOCAL & RELATIVE TIME) */}
+            <div className="p-4 bg-[#050B18]/50 space-y-3">
               <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
                 Account Snapshot
               </span>
               <div className="grid grid-cols-3 gap-2">
-                <div className="p-2.5 rounded-2xl bg-[#0F1C3A]/50 border border-[#1E2A44] text-left">
+                <div className="p-2.5 rounded-2xl bg-[#0F1C3A]/60 border border-[#1E2A44] text-left">
                   <span className="text-[9px] font-bold text-slate-400 uppercase block">Balance</span>
                   <span className="text-xs font-black text-white mt-0.5 block truncate">
                     {snapshotData.balance}
                   </span>
                 </div>
 
-                <div className="p-2.5 rounded-2xl bg-[#0F1C3A]/50 border border-[#1E2A44] text-left">
+                <div className="p-2.5 rounded-2xl bg-[#0F1C3A]/60 border border-[#1E2A44] text-left">
                   <span className="text-[9px] font-bold text-slate-400 uppercase block">Savings Rate</span>
                   <span className="text-xs font-black text-emerald-400 mt-0.5 block">
                     {snapshotData.savingsRate}
                   </span>
                 </div>
 
-                <div className="p-2.5 rounded-2xl bg-[#0F1C3A]/50 border border-[#1E2A44] text-left">
+                <div className="p-2.5 rounded-2xl bg-[#0F1C3A]/60 border border-[#1E2A44] text-left">
                   <span className="text-[9px] font-bold text-slate-400 uppercase block">Last Backup</span>
-                  <span className="text-[10px] font-bold text-purple-400 mt-0.5 block truncate">
-                    {snapshotData.lastBackup}
+                  <span className="text-[10px] font-bold text-purple-400 mt-0.5 block truncate" title={formatLocalTime(snapshotData.lastBackupTimestamp)}>
+                    {formatLocalTime(snapshotData.lastBackupTimestamp)}
+                  </span>
+                  <span className="text-[8px] font-semibold text-slate-400 block mt-0.5">
+                    ({formatRelativeTime(snapshotData.lastBackupTimestamp)})
                   </span>
                 </div>
               </div>
             </div>
 
-            {/* 3. AUTOMATION STATUS CARD (READ-ONLY) */}
-            <div className="p-4 space-y-2">
+            {/* 3. AUTOMATION & BACKUP STATUS CARDS (STRUCTURED VISIBILITY) */}
+            <div className="p-4 space-y-3">
               <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
-                Automation Health Status
+                Backup & Automation Status
               </span>
+
               <div className="grid grid-cols-2 gap-2 text-xs font-semibold">
-                <div className="flex items-center justify-between p-2 rounded-xl bg-[#0F1C3A]/30 border border-[#1E2A44]/60">
-                  <span className="text-slate-300 text-[11px]">Cloud Sync</span>
-                  <span className="flex items-center text-[10px] font-bold text-emerald-400 gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" /> Connected
+                <div className="p-2.5 rounded-2xl bg-[#0F1C3A]/40 border border-[#1E2A44] flex flex-col justify-between">
+                  <span className="text-[10px] text-slate-400 font-bold uppercase">Cloud Sync</span>
+                  <span className="text-xs font-extrabold text-emerald-400 mt-1 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> Connected
                   </span>
                 </div>
 
-                <div className="flex items-center justify-between p-2 rounded-xl bg-[#0F1C3A]/30 border border-[#1E2A44]/60">
-                  <span className="text-slate-300 text-[11px]">Local Snapshot</span>
-                  <span className="flex items-center text-[10px] font-bold text-emerald-400 gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Verified
+                <div className="p-2.5 rounded-2xl bg-[#0F1C3A]/40 border border-[#1E2A44] flex flex-col justify-between">
+                  <span className="text-[10px] text-slate-400 font-bold uppercase">Local Snapshot</span>
+                  <span className="text-xs font-extrabold text-emerald-400 mt-1 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400" /> Verified
                   </span>
                 </div>
 
-                <div className="flex items-center justify-between p-2 rounded-xl bg-[#0F1C3A]/30 border border-[#1E2A44]/60">
-                  <span className="text-slate-300 text-[11px]">LIC Autopilot</span>
-                  <span className="flex items-center text-[10px] font-bold text-emerald-400 gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Active
+                <div className="p-2.5 rounded-2xl bg-[#0F1C3A]/40 border border-[#1E2A44] flex flex-col justify-between col-span-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] text-slate-400 font-bold uppercase">Last Backup</span>
+                    <span className="text-[9px] font-bold text-purple-400">
+                      {formatRelativeTime(snapshotData.lastBackupTimestamp)}
+                    </span>
+                  </div>
+                  <span className="text-xs font-extrabold text-slate-100 mt-1 flex items-center gap-1 font-mono">
+                    <Clock className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                    {formatLocalTime(snapshotData.lastBackupTimestamp)}
                   </span>
                 </div>
 
-                <div className="flex items-center justify-between p-2 rounded-xl bg-[#0F1C3A]/30 border border-[#1E2A44]/60">
-                  <span className="text-slate-300 text-[11px]">Scheduler</span>
-                  <span className="flex items-center text-[10px] font-bold text-emerald-400 gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Healthy
+                <div className="p-2.5 rounded-2xl bg-[#0F1C3A]/40 border border-[#1E2A44] flex flex-col justify-between col-span-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] text-slate-400 font-bold uppercase">Next Snapshot</span>
+                    <span className="text-[9px] font-bold text-emerald-400">Scheduled</span>
+                  </div>
+                  <span className="text-xs font-extrabold text-emerald-400 mt-1 flex items-center gap-1">
+                    <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    Tonight at 11:59 PM
                   </span>
                 </div>
               </div>
             </div>
 
-            {/* 4. QUICK ACTIONS */}
-            <div className="p-3 space-y-1">
+            {/* 4. QUICK ACTIONS (FULLY FUNCTIONAL NAV & ACTIONS) */}
+            <div className="p-3 space-y-1.5">
               <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 px-2 block mb-1">
                 Quick Actions
               </span>
 
               <button
-                onClick={() => { setIsOpen(false); navigate('/transactions'); }}
-                className="w-full flex items-center justify-between p-2 rounded-xl hover:bg-[#8B5CF6]/15 hover:text-white text-slate-300 transition-all duration-150 group text-xs font-bold"
+                onClick={() => handleNavigate('/transactions')}
+                className="w-full flex items-center justify-between p-2.5 rounded-xl hover:bg-[#8B5CF6]/20 hover:text-white text-slate-200 transition-all duration-150 group text-xs font-bold active:scale-[0.98]"
               >
-                <div className="flex items-center space-x-2.5">
+                <div className="flex items-center space-x-3">
                   <div className="p-1.5 rounded-lg bg-[#8B5CF6]/20 text-[#8B5CF6] group-hover:scale-110 transition-transform">
                     <PlusCircle className="w-4 h-4" />
                   </div>
                   <span>Add Transaction</span>
                 </div>
-                <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:translate-x-0.5 transition-transform" />
+                <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:translate-x-1 transition-transform" />
               </button>
 
               <button
-                onClick={() => { setIsOpen(false); navigate('/bills'); }}
-                className="w-full flex items-center justify-between p-2 rounded-xl hover:bg-[#8B5CF6]/15 hover:text-white text-slate-300 transition-all duration-150 group text-xs font-bold"
+                onClick={() => handleNavigate('/bills')}
+                className="w-full flex items-center justify-between p-2.5 rounded-xl hover:bg-[#8B5CF6]/20 hover:text-white text-slate-200 transition-all duration-150 group text-xs font-bold active:scale-[0.98]"
               >
-                <div className="flex items-center space-x-2.5">
+                <div className="flex items-center space-x-3">
                   <div className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 group-hover:scale-110 transition-transform">
                     <FileSpreadsheet className="w-4 h-4" />
                   </div>
                   <span>Log LIC Payment</span>
                 </div>
-                <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:translate-x-0.5 transition-transform" />
+                <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:translate-x-1 transition-transform" />
               </button>
 
               <button
                 onClick={handleTriggerBackup}
                 disabled={isBackingUp}
-                className="w-full flex items-center justify-between p-2 rounded-xl hover:bg-[#8B5CF6]/15 hover:text-white text-slate-300 transition-all duration-150 group text-xs font-bold"
+                className="w-full flex items-center justify-between p-2.5 rounded-xl hover:bg-[#8B5CF6]/20 hover:text-white text-slate-200 transition-all duration-150 group text-xs font-bold active:scale-[0.98]"
               >
-                <div className="flex items-center space-x-2.5">
+                <div className="flex items-center space-x-3">
                   <div className="p-1.5 rounded-lg bg-purple-500/20 text-purple-400 group-hover:scale-110 transition-transform">
                     <RefreshCcw className={`w-4 h-4 ${isBackingUp ? 'animate-spin' : ''}`} />
                   </div>
                   <span>{backupMsg || 'Create Backup Now'}</span>
                 </div>
-                <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:translate-x-0.5 transition-transform" />
+                <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:translate-x-1 transition-transform" />
               </button>
 
               <button
                 onClick={handleExportData}
-                className="w-full flex items-center justify-between p-2 rounded-xl hover:bg-[#8B5CF6]/15 hover:text-white text-slate-300 transition-all duration-150 group text-xs font-bold"
+                className="w-full flex items-center justify-between p-2.5 rounded-xl hover:bg-[#8B5CF6]/20 hover:text-white text-slate-200 transition-all duration-150 group text-xs font-bold active:scale-[0.98]"
               >
-                <div className="flex items-center space-x-2.5">
+                <div className="flex items-center space-x-3">
                   <div className="p-1.5 rounded-lg bg-blue-500/20 text-blue-400 group-hover:scale-110 transition-transform">
                     <Download className="w-4 h-4" />
                   </div>
                   <span>Export Data</span>
                 </div>
-                <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:translate-x-0.5 transition-transform" />
+                <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:translate-x-1 transition-transform" />
               </button>
             </div>
 
-            {/* 5. WORKSPACE / QUICK LINKS */}
-            <div className="p-3 space-y-1">
+            {/* 5. WORKSPACE PREFERENCES */}
+            <div className="p-3 space-y-1.5">
               <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 px-2 block mb-1">
                 Workspace Preferences
               </span>
 
               <button
-                onClick={() => { setIsOpen(false); navigate('/settings'); }}
-                className="w-full flex items-center justify-between p-2 rounded-xl hover:bg-[#8B5CF6]/15 hover:text-white text-slate-300 transition-all duration-150 group text-xs font-semibold"
+                onClick={() => handleNavigate('/settings')}
+                className="w-full flex items-center justify-between p-2.5 rounded-xl hover:bg-[#8B5CF6]/20 hover:text-white text-slate-200 transition-all duration-150 group text-xs font-semibold active:scale-[0.98]"
               >
-                <div className="flex items-center space-x-2.5">
+                <div className="flex items-center space-x-3">
                   <Palette className="w-4 h-4 text-slate-400 group-hover:text-[#8B5CF6]" />
                   <span>Appearance</span>
                 </div>
-                <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+                <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:translate-x-1 transition-transform" />
               </button>
 
               <button
-                onClick={() => { setIsOpen(false); navigate('/settings'); }}
-                className="w-full flex items-center justify-between p-2 rounded-xl hover:bg-[#8B5CF6]/15 hover:text-white text-slate-300 transition-all duration-150 group text-xs font-semibold"
+                onClick={() => handleNavigate('/settings')}
+                className="w-full flex items-center justify-between p-2.5 rounded-xl hover:bg-[#8B5CF6]/20 hover:text-white text-slate-200 transition-all duration-150 group text-xs font-semibold active:scale-[0.98]"
               >
-                <div className="flex items-center space-x-2.5">
-                  <Lock className="w-4 h-4 text-slate-400 group-hover:text-[#8B5CF6]" />
-                  <span>Security & Protection</span>
-                </div>
-                <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
-              </button>
-
-              <button
-                onClick={() => { setIsOpen(false); navigate('/settings'); }}
-                className="w-full flex items-center justify-between p-2 rounded-xl hover:bg-[#8B5CF6]/15 hover:text-white text-slate-300 transition-all duration-150 group text-xs font-semibold"
-              >
-                <div className="flex items-center space-x-2.5">
+                <div className="flex items-center space-x-3">
                   <ShieldCheck className="w-4 h-4 text-slate-400 group-hover:text-[#8B5CF6]" />
                   <span>Backup & Restore</span>
                 </div>
-                <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+                <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:translate-x-1 transition-transform" />
               </button>
 
               <button
                 onClick={() => { setIsOpen(false); onOpenCmdK?.(); }}
-                className="w-full flex items-center justify-between p-2 rounded-xl hover:bg-[#8B5CF6]/15 hover:text-white text-slate-300 transition-all duration-150 group text-xs font-semibold"
+                className="w-full flex items-center justify-between p-2.5 rounded-xl hover:bg-[#8B5CF6]/20 hover:text-white text-slate-200 transition-all duration-150 group text-xs font-semibold active:scale-[0.98]"
               >
-                <div className="flex items-center space-x-2.5">
+                <div className="flex items-center space-x-3">
                   <Key className="w-4 h-4 text-slate-400 group-hover:text-[#8B5CF6]" />
                   <span>Keyboard Shortcuts</span>
                 </div>
@@ -402,19 +468,19 @@ export const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({ onLogo
               </button>
 
               <button
-                onClick={() => { setIsOpen(false); navigate('/settings'); }}
-                className="w-full flex items-center justify-between p-2 rounded-xl hover:bg-[#8B5CF6]/15 hover:text-white text-slate-300 transition-all duration-150 group text-xs font-semibold"
+                onClick={() => handleNavigate('/settings')}
+                className="w-full flex items-center justify-between p-2.5 rounded-xl hover:bg-[#8B5CF6]/20 hover:text-white text-slate-200 transition-all duration-150 group text-xs font-semibold active:scale-[0.98]"
               >
-                <div className="flex items-center space-x-2.5">
+                <div className="flex items-center space-x-3">
                   <Settings className="w-4 h-4 text-slate-400 group-hover:text-[#8B5CF6]" />
-                  <span>Full Settings</span>
+                  <span>Settings</span>
                 </div>
-                <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+                <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:translate-x-1 transition-transform" />
               </button>
             </div>
 
             {/* 6. FOOTER SECTION */}
-            <div className="p-4 bg-[#030712]/70 flex items-center justify-between">
+            <div className="p-4 bg-[#030712]/80 flex items-center justify-between">
               <div>
                 <span className="text-[10px] font-bold text-slate-400 block font-mono">
                   {snapshotData.appVersion}
@@ -431,7 +497,7 @@ export const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({ onLogo
                     onLogout?.();
                   }
                 }}
-                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white font-bold text-xs border border-rose-500/20 transition-all duration-150 shadow-sm"
+                className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white font-bold text-xs border border-rose-500/20 transition-all duration-150 shadow-sm active:scale-[0.96]"
               >
                 <LogOut className="w-3.5 h-3.5" />
                 <span>Sign Out</span>
@@ -442,4 +508,4 @@ export const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({ onLogo
       </AnimatePresence>
     </div>
   );
-};
+});
