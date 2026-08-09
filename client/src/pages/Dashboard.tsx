@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
-import { Plus, Search, RefreshCw, Flame, LayoutGrid, CheckCircle2, Target, AlertTriangle, TrendingUp, Info, X, ChevronLeft, ChevronRight, ArrowRightLeft, Sparkles } from 'lucide-react';
+import { Plus, Search, RefreshCw, Flame, LayoutGrid, CheckCircle2, Target, TrendingUp, Info, X, ChevronLeft, ChevronRight, ArrowRightLeft, Sparkles, Wallet } from 'lucide-react';
 import axios from 'axios';
 import Button from '../components/ui/Button';
 
@@ -36,7 +36,7 @@ const getCategoryGroup = (cat: any): string => {
   return 'Expenses';
 };
 
-const isFixedCommitment = (catName: string, grp: string): boolean => {
+export const isFixedCommitment = (catName: string, grp: string): boolean => {
   const name = catName.toLowerCase();
   if (grp === 'Debt' || grp === 'Insurance') return true;
   if (name.includes('rent') || name.includes('lic') || name.includes('sip') || name.includes('chit') || name.includes('emi') || name.includes('loan') || name.includes('debt')) return true;
@@ -1811,27 +1811,28 @@ export default function Dashboard() {
 
       {/* DYNAMIC BUDGETS & SAVINGS SPLIT */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Budget watch */}
+        {/* Remaining Budget Tracker Widget */}
         {widgets.budgetWatch && (
-          <div className="bg-white dark:bg-slate-950 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
-            <div className="flex justify-between items-center mb-2">
+          <div className="bg-[#081226]/90 backdrop-blur-xl p-6 rounded-3xl border border-[#1E2A4A] shadow-2xl flex flex-col justify-between space-y-5">
+            {/* 1. Header */}
+            <div className="flex justify-between items-center">
               <div>
-                <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center">
-                  <AlertTriangle className="w-5 h-5 text-warning mr-2" /> Budget Watchlist
+                <h3 className="text-base font-extrabold text-white flex items-center gap-2">
+                  <Wallet className="w-5 h-5 text-emerald-400" /> Remaining Budget
                 </h3>
-                <p className="text-xs text-slate-500 mt-0.5 font-medium">
-                  {now.toLocaleString('default', { month: 'long', year: 'numeric' })} budget priorities sorted by urgency
+                <p className="text-xs text-slate-400 mt-0.5 font-medium">
+                  {now.toLocaleString('default', { month: 'long', year: 'numeric' })} • available to spend this month
                 </p>
               </div>
 
               <button
                 onClick={() => navigate('/budgets', { state: { month: now.getMonth() + 1, year: now.getFullYear() } })}
-                className="text-xs font-extrabold text-primary hover:underline"
+                className="text-xs font-black text-emerald-400 hover:text-emerald-300 hover:underline flex items-center gap-1 transition"
               >
                 View Planner →
               </button>
             </div>
-            
+
             {(() => {
               const selectedMonthNum = now.getMonth() + 1;
               const selectedYearNum = now.getFullYear();
@@ -1841,142 +1842,243 @@ export default function Dashboard() {
 
               if (monthBudgets.length === 0) {
                 return (
-                  <div className="py-8 text-center text-slate-400 text-sm flex flex-col items-center justify-center space-y-2">
-                    <CheckCircle2 className="w-8 h-8 text-emerald-500 mb-1" />
-                    <p className="font-semibold text-slate-700 dark:text-slate-300">No budget limits configured</p>
-                    <p className="text-xs text-slate-500">Go to Monthly Financial Plan to generate category budgets for {now.toLocaleString('default', { month: 'long' })}.</p>
+                  <div className="py-10 px-6 text-center text-slate-400 text-sm flex flex-col items-center justify-center space-y-3 bg-[#050B18]/60 rounded-2xl border border-dashed border-slate-800">
+                    <div className="p-3 rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      <Wallet className="w-8 h-8" />
+                    </div>
+                    <div>
+                      <p className="font-extrabold text-white text-base">Create your first monthly budget</p>
+                      <p className="text-xs text-slate-400 mt-1 max-w-sm">Set spending limits and track remaining money automatically.</p>
+                    </div>
+                    <button
+                      onClick={() => navigate('/budgets', { state: { month: selectedMonthNum, year: selectedYearNum } })}
+                      className="mt-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs rounded-xl shadow-lg shadow-emerald-500/20 transition active:scale-95 cursor-pointer"
+                    >
+                      Open Budget Planner
+                    </button>
                   </div>
                 );
               }
 
-              // Summary Strip metrics
-              const nearLimitCount = monthBudgets.filter(b => {
-                const eff = b.effectiveLimit || b.limit_amount;
-                const pct = eff > 0 ? (b.spent / eff) * 100 : 0;
-                return pct >= 80;
+              // Overall calculations
+              const totalBudget = monthBudgets.reduce((sum, b) => sum + (b.effectiveLimit || b.limit_amount || 0), 0);
+              const totalSpent = monthBudgets.reduce((sum, b) => sum + (b.spent || 0), 0);
+              const totalRemaining = Math.max(0, totalBudget - totalSpent);
+              const overallRemainingPct = totalBudget > 0 ? Math.max(0, Math.min(100, (totalRemaining / totalBudget) * 100)) : 0;
+
+              // Quick summary strip counters
+              const criticalCount = monthBudgets.filter(b => {
+                const limit = b.effectiveLimit || b.limit_amount || 0;
+                if (limit <= 0) return true;
+                const rem = limit - b.spent;
+                const pct = (rem / limit) * 100;
+                return pct < 10;
               }).length;
-              const onTrackCount = monthBudgets.length - nearLimitCount;
 
-              // Urgency Sorting Order
-              const sortedWatchlist = [...monthBudgets].sort((a, b) => {
-                const effA = a.effectiveLimit || a.limit_amount;
-                const effB = b.effectiveLimit || b.limit_amount;
-                const pctA = effA > 0 ? (a.spent / effA) * 100 : 0;
-                const pctB = effB > 0 ? (b.spent / effB) * 100 : 0;
+              const healthyCount = monthBudgets.filter(b => {
+                const limit = b.effectiveLimit || b.limit_amount || 0;
+                if (limit <= 0) return false;
+                const rem = limit - b.spent;
+                const pct = (rem / limit) * 100;
+                return pct >= 50;
+              }).length;
 
-                const getUrgencyScore = (budget: any, pct: number, eff: number) => {
-                  if (pct >= 100) return 1; // Overspent
-                  if (pct >= 95) return 2;  // Near Limit (95-99%)
-                  if (pct >= 80) return 3;  // Near Limit (80-94%)
-                  const matchCat = categories.find(c => c.id === budget.category_id);
-                  const grp = matchCat ? getCategoryGroup(matchCat) : 'Expenses';
-                  if (isFixedCommitment(budget.category_name, grp) && budget.spent < eff) return 4;
-                  if (budget.spent > 0 && budget.spent < eff) return 5;
-                  return 6;
-                };
+              // Sort categories by lowest remaining percentage / amount first
+              const sortedCategoryBudgets = [...monthBudgets].sort((a, b) => {
+                const limitA = a.effectiveLimit || a.limit_amount || 0;
+                const limitB = b.effectiveLimit || b.limit_amount || 0;
 
-                return getUrgencyScore(a, pctA, effA) - getUrgencyScore(b, pctB, effB);
-              }).slice(0, 5);
+                const remA = limitA - a.spent;
+                const remB = limitB - b.spent;
+
+                const pctA = limitA > 0 ? (remA / limitA) * 100 : -1;
+                const pctB = limitB > 0 ? (remB / limitB) * 100 : -1;
+
+                if (pctA !== pctB) return pctA - pctB;
+                return remA - remB;
+              });
+
+              // Dynamic AI forecast calculation
+              const dayOfMonth = now.getDate();
+              const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+              const dailySpendRate = totalSpent / Math.max(1, dayOfMonth);
+              const projectedMonthEndRemaining = Math.round(totalBudget - (dailySpendRate * daysInMonth));
+
+              let aiForecastMessage = `At your current spending rate, you are likely to have ${formatIndianRupee(Math.max(0, projectedMonthEndRemaining))} remaining at month-end.`;
+              if (dailySpendRate > 0 && totalRemaining > 0) {
+                const daysRemainingBudget = Math.round(totalRemaining / dailySpendRate);
+                aiForecastMessage = `You have enough budget for ${daysRemainingBudget} more days at your current pace.`;
+              }
+              if (criticalCount > 0 && sortedCategoryBudgets.length > 0) {
+                const lowestCat = sortedCategoryBudgets[0];
+                const lowestRem = Math.max(0, (lowestCat.effectiveLimit || lowestCat.limit_amount || 0) - (lowestCat.spent || 0));
+                aiForecastMessage = `${lowestCat.category_name} budget is critical with only ${formatIndianRupee(lowestRem)} remaining.`;
+              }
 
               return (
-                <div className="space-y-3 py-1">
-                  {/* Summary Strip */}
-                  <div className="flex items-center justify-between text-[11px] font-bold px-3.5 py-2 bg-slate-50/90 dark:bg-slate-900/60 rounded-xl border border-slate-200/60 dark:border-slate-800/80">
-                    <span className="text-slate-600 dark:text-slate-400 font-extrabold flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-primary animate-pulse" /> Budget Health
-                    </span>
-                    <div className="flex items-center space-x-3 text-[10px]">
-                      <span className="text-slate-500 font-semibold">{monthBudgets.length} Tracked</span>
-                      <span className="text-amber-500 font-bold">{nearLimitCount} Near Limit / Over</span>
-                      <span className="text-emerald-500 font-bold">{onTrackCount} On Track</span>
+                <div className="space-y-4">
+                  {/* 2. HERO SUMMARY (MOST IMPORTANT FOCUS) */}
+                  <div className="p-5 rounded-2xl bg-gradient-to-br from-[#061D24]/90 via-[#0B2132]/90 to-[#081226]/90 border border-emerald-500/30 shadow-xl space-y-4 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
+
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400 block">
+                          Remaining this month
+                        </span>
+                        <div className="text-3xl font-black text-emerald-400 mt-1 tracking-tight">
+                          {formatIndianRupee(totalRemaining)}
+                        </div>
+                      </div>
+
+                      {/* Circular ring / percentage badge */}
+                      <div className="px-3 py-1.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center gap-1.5 text-xs font-black">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                        <span>{overallRemainingPct.toFixed(0)}% available</span>
+                      </div>
+                    </div>
+
+                    {/* 3-card mini breakdown */}
+                    <div className="grid grid-cols-3 gap-2.5 pt-2 border-t border-emerald-500/20 text-xs font-semibold">
+                      <div className="p-2.5 rounded-xl bg-slate-900/60 border border-slate-800">
+                        <span className="text-[9px] text-slate-400 uppercase font-bold block">Total Budget</span>
+                        <span className="text-xs font-extrabold text-slate-200 mt-0.5 block">
+                          {formatIndianRupee(totalBudget)}
+                        </span>
+                      </div>
+
+                      <div className="p-2.5 rounded-xl bg-slate-900/60 border border-slate-800">
+                        <span className="text-[9px] text-slate-400 uppercase font-bold block">Spent</span>
+                        <span className="text-xs font-extrabold text-rose-400 mt-0.5 block">
+                          {formatIndianRupee(totalSpent)}
+                        </span>
+                      </div>
+
+                      <div className="p-2.5 rounded-xl bg-slate-900/60 border border-emerald-500/20">
+                        <span className="text-[9px] text-slate-400 uppercase font-bold block">Remaining</span>
+                        <span className="text-xs font-extrabold text-emerald-400 mt-0.5 block">
+                          {formatIndianRupee(totalRemaining)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Available Budget Progress Bar */}
+                    <div className="space-y-1 pt-1">
+                      <div className="flex justify-between text-[10px] font-bold text-slate-400">
+                        <span>Monthly budget remaining</span>
+                        <span className="text-emerald-400 font-extrabold">{overallRemainingPct.toFixed(1)}% ({formatIndianRupee(totalRemaining)} left)</span>
+                      </div>
+                      <div className="h-2.5 bg-slate-950/80 rounded-full overflow-hidden border border-slate-800/80 p-0.5">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-400 transition-all duration-700 ease-out shadow-[0_0_12px_rgba(16,185,129,0.5)]"
+                          style={{ width: `${overallRemainingPct}%` }}
+                        />
+                      </div>
                     </div>
                   </div>
 
-                  {/* Horizontal Analytics Rows */}
-                  {sortedWatchlist.map(b => {
-                    const effLimit = b.effectiveLimit || b.limit_amount;
-                    const pct = effLimit > 0 ? (b.spent / effLimit) * 100 : 0;
-                    const remaining = effLimit - b.spent;
+                  {/* 3. AI BUDGET FORECAST TICKER LINE */}
+                  <div className="flex items-center space-x-2 px-3.5 py-2.5 rounded-xl bg-[#09182E]/90 border border-purple-500/30 text-purple-300 text-xs font-bold shadow-md">
+                    <Sparkles className="w-4 h-4 text-purple-400 shrink-0 animate-pulse" />
+                    <span className="truncate">{aiForecastMessage}</span>
+                  </div>
 
-                    let barColor = 'bg-blue-500';
-                    let chipColor = 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20';
-                    let chipText = 'On Track ✓';
+                  {/* 4. QUICK SUMMARY STRIP */}
+                  <div className="grid grid-cols-4 gap-2 text-center text-xs font-extrabold p-2.5 bg-slate-900/60 rounded-xl border border-slate-800 text-slate-300">
+                    <div>
+                      <span className="text-[9px] text-slate-400 uppercase block font-bold">Categories</span>
+                      <span className="text-xs text-white mt-0.5 block">{monthBudgets.length}</span>
+                    </div>
+                    <div>
+                      <span className="text-[9px] text-slate-400 uppercase block font-bold">Remaining</span>
+                      <span className="text-xs text-emerald-400 mt-0.5 block truncate">{formatIndianRupee(totalRemaining)}</span>
+                    </div>
+                    <div>
+                      <span className="text-[9px] text-slate-400 uppercase block font-bold">Critical</span>
+                      <span className="text-xs text-rose-400 mt-0.5 block">{criticalCount}</span>
+                    </div>
+                    <div>
+                      <span className="text-[9px] text-slate-400 uppercase block font-bold">Healthy</span>
+                      <span className="text-xs text-emerald-400 mt-0.5 block">{healthyCount}</span>
+                    </div>
+                  </div>
 
-                    if (b.spent > effLimit) {
-                      barColor = 'bg-rose-600 shadow-[0_0_10px_rgba(225,29,72,0.6)] animate-pulse';
-                      chipColor = 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30';
-                      chipText = 'Over Budget 💥';
-                    } else if (pct >= 95) {
-                      barColor = 'bg-red-500';
-                      chipColor = 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20';
-                      chipText = 'Near Limit 🚨';
-                    } else if (pct >= 80) {
-                      barColor = 'bg-orange-500';
-                      chipColor = 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20';
-                      chipText = 'Near Limit ⚠️';
-                    } else if (pct >= 60) {
-                      barColor = 'bg-amber-500';
-                      chipColor = 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20';
-                      chipText = 'Caution ⚡';
-                    }
+                  {/* 5. CATEGORY LIST (SORTED BY LOWEST REMAINING FIRST) */}
+                  <div className="space-y-2 max-h-[380px] overflow-y-auto pr-1 custom-scrollbar">
+                    {sortedCategoryBudgets.map(b => {
+                      const effLimit = b.effectiveLimit || b.limit_amount || 0;
+                      const spent = b.spent || 0;
+                      const remaining = effLimit - spent;
+                      const remainingPct = effLimit > 0 ? Math.max(0, Math.min(100, (remaining / effLimit) * 100)) : 0;
 
-                    return (
-                      <div
-                        key={b.id}
-                        onClick={() => navigate('/budgets', { state: { month: selectedMonthNum, year: selectedYearNum } })}
-                        className="group relative p-3.5 bg-slate-50/80 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800/80 rounded-[16px] transition-all duration-180 hover:-translate-y-0.5 hover:shadow-md hover:border-primary/40 cursor-pointer space-y-2"
-                        title={`Remaining: ₹${remaining > 0 ? remaining.toLocaleString('en-IN') : 0}`}
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          {/* Left: Category Icon & Name */}
-                          <div className="flex items-center space-x-2.5 min-w-[130px] shrink-0">
-                            <span className="text-lg p-1.5 bg-white dark:bg-slate-950 rounded-xl border border-slate-200/60 dark:border-slate-800/60 shadow-sm shrink-0">
-                              {getCategoryIcon(b.category_name)}
-                            </span>
-                            <span className="text-xs font-black text-slate-900 dark:text-white truncate max-w-[110px]">
-                              {b.category_name}
-                            </span>
+                      // Available budget status classification
+                      let statusText = 'Healthy';
+                      let statusChipClass = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+                      let progressGrad = 'from-emerald-500 to-green-400';
+
+                      if (remaining <= 0) {
+                        statusText = 'No budget left';
+                        statusChipClass = 'bg-rose-500/20 text-rose-400 border-rose-500/40';
+                        progressGrad = 'from-rose-600 to-red-600';
+                      } else if (remainingPct < 10) {
+                        statusText = 'Critical';
+                        statusChipClass = 'bg-red-500/10 text-red-400 border-red-500/30';
+                        progressGrad = 'from-red-500 to-rose-500';
+                      } else if (remainingPct <= 25) {
+                        statusText = 'Low';
+                        statusChipClass = 'bg-amber-500/10 text-amber-400 border-amber-500/30';
+                        progressGrad = 'from-amber-500 to-orange-500';
+                      } else if (remainingPct <= 50) {
+                        statusText = 'Comfortable';
+                        statusChipClass = 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30';
+                        progressGrad = 'from-teal-500 to-cyan-400';
+                      }
+
+                      return (
+                        <div
+                          key={b.id}
+                          onClick={() => navigate('/budgets', { state: { month: selectedMonthNum, year: selectedYearNum } })}
+                          className="group p-3 bg-[#060D1E]/70 hover:bg-[#0B1730] border border-slate-800 hover:border-emerald-500/40 rounded-2xl transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg cursor-pointer space-y-2"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            {/* Category Icon & Name */}
+                            <div className="flex items-center space-x-2.5 min-w-[130px] shrink-0">
+                              <span className="text-base p-1.5 bg-[#081226] rounded-xl border border-slate-800 shrink-0">
+                                {getCategoryIcon(b.category_name)}
+                              </span>
+                              <span className="text-xs font-extrabold text-white truncate max-w-[110px]">
+                                {b.category_name}
+                              </span>
+                            </div>
+
+                            {/* Remaining Amount & Remaining % */}
+                            <div className="flex items-center space-x-3 text-right">
+                              <div>
+                                <span className={`text-xs font-black font-mono block ${remaining <= 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                                  {remaining <= 0 ? '₹0 left' : `${formatIndianRupee(remaining)} left`}
+                                </span>
+                                <span className="text-[9px] text-slate-400 font-semibold block">
+                                  {remainingPct.toFixed(0)}% remaining
+                                </span>
+                              </div>
+
+                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border shrink-0 ${statusChipClass}`}>
+                                {statusText}
+                              </span>
+                            </div>
                           </div>
 
-                          {/* Center: Horizontal Progress Bar & % */}
-                          <div className="flex-1 hidden sm:flex items-center space-x-2.5">
-                            <div className="flex-1 h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
-                              <div
-                                className={`h-full rounded-full transition-all duration-800 ease-out ${barColor}`}
-                                style={{ width: `${Math.min(pct, 100)}%` }}
-                              />
-                            </div>
-                            <span className="text-[10px] font-extrabold text-slate-500 font-mono shrink-0 min-w-[36px] text-right">
-                              {pct.toFixed(1)}%
-                            </span>
-                          </div>
-
-                          {/* Right: Amounts & Compact Chip Badge */}
-                          <div className="flex items-center space-x-3 shrink-0">
-                            <div className="text-right leading-tight">
-                              <span className="text-xs font-extrabold text-slate-900 dark:text-white font-mono block">
-                                ₹{b.spent.toLocaleString('en-IN')} <span className="text-[10px] text-slate-400 font-semibold">/ ₹{effLimit.toLocaleString('en-IN')}</span>
-                              </span>
-                              <span className="text-[9px] text-slate-400 font-medium sm:hidden block">
-                                {pct.toFixed(1)}% used
-                              </span>
-                            </div>
-                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border shrink-0 ${chipColor}`}>
-                              {chipText}
-                            </span>
+                          {/* Remaining Available Progress Bar */}
+                          <div className="h-2 bg-slate-950 rounded-full overflow-hidden border border-slate-800/60 p-0.5">
+                            <div
+                              className={`h-full rounded-full bg-gradient-to-r ${progressGrad} transition-all duration-700 ease-out`}
+                              style={{ width: `${remaining <= 0 ? 0 : remainingPct}%` }}
+                            />
                           </div>
                         </div>
-
-                        {/* Mobile progress bar view */}
-                        <div className="sm:hidden h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden mt-1">
-                          <div
-                            className={`h-full rounded-full transition-all duration-800 ease-out ${barColor}`}
-                            style={{ width: `${Math.min(pct, 100)}%` }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
               );
             })()}
