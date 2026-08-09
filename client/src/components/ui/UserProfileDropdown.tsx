@@ -4,10 +4,11 @@ import {
   ChevronRight, ShieldCheck, 
   PlusCircle, FileSpreadsheet, RefreshCcw, 
   Download, Settings, Key, Palette, LogOut, CheckCircle2,
-  Building2, Clock, Check
+  Building2, Clock
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { downloadBackupExport } from '../../utils/exportUtils';
 
 const API = window.location.port === '5173' ? 'http://localhost:5000/api' : '/api';
 
@@ -60,11 +61,14 @@ function formatRelativeTime(dateInput?: string | Date | number): string {
   return `${diffDays}d ago`;
 }
 
-export const UserProfileDropdown: React.FC<UserProfileDropdownProps> = memo(({ onLogout, onOpenCmdK }) => {
+export const UserProfileDropdown = memo(({ onLogout, onOpenCmdK }: UserProfileDropdownProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [backupMsg, setBackupMsg] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportMsg, setExportMsg] = useState<string | null>(null);
+  const [lastExportTimestamp, setLastExportTimestamp] = useState<string | null>(() => localStorage.getItem('last_export_timestamp'));
 
   const containerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -194,9 +198,30 @@ export const UserProfileDropdown: React.FC<UserProfileDropdownProps> = memo(({ o
     }
   };
 
-  const handleExportData = () => {
-    window.open(`${API}/system/db-export`, '_blank');
-    setIsOpen(false);
+  const handleExportData = async () => {
+    setIsExporting(true);
+    setExportMsg('Exporting...');
+    try {
+      const res = await downloadBackupExport();
+      if (res.success) {
+        const nowIso = new Date().toISOString();
+        setLastExportTimestamp(nowIso);
+        localStorage.setItem('last_export_timestamp', nowIso);
+        setExportMsg('Export Completed ✅');
+        setTimeout(() => {
+          setExportMsg(null);
+          setIsOpen(false);
+        }, 1500);
+      } else {
+        alert(`Export failed: ${res.error || 'Unable to generate backup export. Please try again.'}`);
+        setExportMsg('Failed');
+      }
+    } catch (err: any) {
+      alert('Export failed: Unable to connect to server.');
+      setExportMsg('Error');
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const handleNavigate = (path: string) => {
@@ -355,16 +380,18 @@ export const UserProfileDropdown: React.FC<UserProfileDropdownProps> = memo(({ o
                   </span>
                 </div>
 
-                <div className="p-2.5 rounded-2xl bg-[#0F1C3A]/40 border border-[#1E2A44] flex flex-col justify-between col-span-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-[10px] text-slate-400 font-bold uppercase">Next Snapshot</span>
-                    <span className="text-[9px] font-bold text-emerald-400">Scheduled</span>
+                {lastExportTimestamp && (
+                  <div className="p-2.5 rounded-2xl bg-[#0F1C3A]/40 border border-[#1E2A44] flex flex-col justify-between col-span-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] text-slate-400 font-bold uppercase">Last Export</span>
+                      <span className="text-[9px] font-bold text-blue-400">{formatRelativeTime(lastExportTimestamp)}</span>
+                    </div>
+                    <span className="text-xs font-extrabold text-slate-100 mt-1 flex items-center gap-1 font-mono">
+                      <Download className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                      {formatLocalTime(lastExportTimestamp)}
+                    </span>
                   </div>
-                  <span className="text-xs font-extrabold text-emerald-400 mt-1 flex items-center gap-1">
-                    <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                    Tonight at 11:59 PM
-                  </span>
-                </div>
+                )}
               </div>
             </div>
 
@@ -416,13 +443,14 @@ export const UserProfileDropdown: React.FC<UserProfileDropdownProps> = memo(({ o
 
               <button
                 onClick={handleExportData}
-                className="w-full flex items-center justify-between p-2.5 rounded-xl hover:bg-[#8B5CF6]/20 hover:text-white text-slate-200 transition-all duration-150 group text-xs font-bold active:scale-[0.98]"
+                disabled={isExporting}
+                className="w-full flex items-center justify-between p-2.5 rounded-xl hover:bg-[#8B5CF6]/20 hover:text-white text-slate-200 transition-all duration-150 group text-xs font-bold active:scale-[0.98] disabled:opacity-60"
               >
                 <div className="flex items-center space-x-3">
                   <div className="p-1.5 rounded-lg bg-blue-500/20 text-blue-400 group-hover:scale-110 transition-transform">
-                    <Download className="w-4 h-4" />
+                    <Download className={`w-4 h-4 ${isExporting ? 'animate-spin' : ''}`} />
                   </div>
-                  <span>Export Data</span>
+                  <span>{exportMsg || 'Export Data'}</span>
                 </div>
                 <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:translate-x-1 transition-transform" />
               </button>
