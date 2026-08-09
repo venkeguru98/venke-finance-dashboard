@@ -61,6 +61,31 @@ function formatRelativeTime(dateInput?: string | Date | number): string {
   return `${diffDays}d ago`;
 }
 
+function formatLocalYYYYMM(date: Date = new Date()): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  return `${y}-${m}`;
+}
+
+const isSavingsCommitment = (t: any, categories: any[]) => {
+  if (t.type === 'savings' || t.type === 'investment') return true;
+  const matchCat = categories.find((c: any) => c.id === t.category_id);
+  if (!matchCat) {
+    const notes = (t.notes || '').toLowerCase();
+    const catName = (t.category_name || '').toLowerCase();
+    if (notes.includes('lic') || notes.includes('sip') || notes.includes('gold') || notes.includes('mutual') || notes.includes('chit') || notes.includes('fund') || notes.includes('reserve') || notes.includes('saving') || notes.includes('invest') || notes.includes('ppf') || notes.includes('nps') || notes.includes('stock')) return true;
+    if (catName.includes('lic') || catName.includes('sip') || catName.includes('gold') || catName.includes('mutual') || catName.includes('chit') || catName.includes('fund') || catName.includes('reserve') || catName.includes('saving') || catName.includes('invest') || catName.includes('ppf') || catName.includes('nps') || catName.includes('stock')) return true;
+    return false;
+  }
+  const type = (matchCat.type || '').toLowerCase();
+  const name = (matchCat.name || '').toLowerCase();
+  if (type === 'debt' || name.includes('loan') || name.includes('debt') || name.includes('credit card')) return false;
+  if (type === 'insurance' || name.includes('lic') || name.includes('insurance')) return true;
+  if (type === 'investment' || name.includes('sip') || name.includes('gold') || name.includes('mutual')) return true;
+  if (type === 'savings' || name.includes('fund') || name.includes('reserve') || name.includes('saving')) return true;
+  return false;
+};
+
 export const UserProfileDropdown = memo(({ onLogout, onOpenCmdK }: UserProfileDropdownProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
@@ -117,27 +142,58 @@ export const UserProfileDropdown = memo(({ onLogout, onOpenCmdK }: UserProfileDr
         })
         .catch(() => {});
 
-      // 3. Compute dynamic financial balance & savings rate
-      axios.get(`${API}/transactions`)
-        .then(res => {
-          const txs: any[] = res.data || [];
-          let income = 0;
-          let expense = 0;
-          txs.forEach(t => {
-            const amt = Number(t.amount) || 0;
-            if (t.type === 'income') income += amt;
-            else if (t.type === 'expense') expense += amt;
-          });
-          const net = income - expense;
-          const rate = income > 0 ? ((income - expense) / income * 100).toFixed(1) : '17.4';
+      // 3. Compute dynamic financial balance & savings rate strictly for CURRENT MONTH
+      const currentMonthPrefix = formatLocalYYYYMM(new Date());
 
-          setSnapshotData(prev => ({
-            ...prev,
-            balance: `₹${net.toLocaleString('en-IN')}`,
-            savingsRate: `${rate}%`
-          }));
-        })
-        .catch(() => {});
+      Promise.all([
+        axios.get(`${API}/transactions`),
+        axios.get(`${API}/categories`)
+      ]).then(([txRes, catRes]) => {
+        const allTxs: any[] = txRes.data || [];
+        const categories: any[] = catRes.data || [];
+
+        // Filter transactions strictly for the current month
+        const currentMonthTx = allTxs.filter((t: any) => t.date && t.date.startsWith(currentMonthPrefix));
+
+        const incomeReceived = currentMonthTx
+          .filter((t: any) => t.type === 'income')
+          .reduce((s: number, t: any) => s + (Number(t.amount) || 0), 0);
+
+        let savingsCommitments = 0;
+        let livingExpenses = 0;
+
+        currentMonthTx
+          .filter((t: any) => t.type !== 'income')
+          .forEach((t: any) => {
+            const amt = Number(t.amount) || 0;
+            if (isSavingsCommitment(t, categories)) {
+              savingsCommitments += amt;
+            } else {
+              livingExpenses += amt;
+            }
+          });
+
+        const netMonthlySavings = incomeReceived - livingExpenses - savingsCommitments;
+        const rate = incomeReceived > 0 
+          ? Math.max(0, parseFloat(((netMonthlySavings / incomeReceived) * 100).toFixed(1)))
+          : 0;
+
+        const isNegative = netMonthlySavings < 0;
+        const absVal = Math.abs(netMonthlySavings);
+        const hasDecimal = absVal % 1 !== 0;
+        const formattedBalance = (isNegative ? '-₹' : '₹') + absVal.toLocaleString('en-IN', {
+          minimumFractionDigits: hasDecimal ? 2 : 0,
+          maximumFractionDigits: 2
+        });
+
+        setSnapshotData(prev => ({
+          ...prev,
+          balance: formattedBalance,
+          savingsRate: `${rate}%`
+        }));
+      }).catch(err => {
+        console.error('[UserProfileDropdown] Failed to calculate current month metrics:', err);
+      });
     }
   }, [isOpen]);
 
