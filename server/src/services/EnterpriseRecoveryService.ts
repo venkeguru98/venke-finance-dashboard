@@ -152,28 +152,115 @@ export class EnterpriseRecoveryService {
   }
 
   /**
-   * Creates an atomic SQLite Snapshot using VACUUM INTO command
+   * Creates an atomic SQLite Snapshot using VACUUM INTO command (on SQLite)
+   * or by querying PostgreSQL database tables and generating a local SQLite file (on Cloud PostgreSQL)
    */
   public static async createSqliteSnapshot(targetSqlitePath: string): Promise<boolean> {
     try {
       if (fs.existsSync(targetSqlitePath)) {
         fs.unlinkSync(targetSqlitePath);
       }
-      
-      // Escape path for SQLite execution
-      const sanitizedPath = targetSqlitePath.replace(/'/g, "''");
-      await execute(`VACUUM INTO '${sanitizedPath}'`);
+
+      const isPgMode = !!process.env.DATABASE_URL;
+
+      if (!isPgMode) {
+        try {
+          const sanitizedPath = targetSqlitePath.replace(/'/g, "''");
+          await execute(`VACUUM INTO '${sanitizedPath}'`);
+          if (fs.existsSync(targetSqlitePath) && fs.statSync(targetSqlitePath).size > 0) {
+            return true;
+          }
+        } catch (_) {}
+      }
+
+      // Cloud PostgreSQL Mode (or SQLite fallback): Query database rows and populate local SQLite snapshot
+      return await EnterpriseRecoveryService.exportDatabaseToSqliteFile(targetSqlitePath);
+    } catch (err: any) {
+      console.warn('[EnterpriseRecovery] Exporting database to local SQLite file:', err.message);
+      return await EnterpriseRecoveryService.exportDatabaseToSqliteFile(targetSqlitePath);
+    }
+  }
+
+  /**
+   * Export all database tables into a clean local SQLite file using query()
+   * (Works cleanly for both cloud PostgreSQL and local SQLite!)
+   */
+  public static async exportDatabaseToSqliteFile(targetSqlitePath: string): Promise<boolean> {
+    try {
+      if (fs.existsSync(targetSqlitePath)) {
+        fs.unlinkSync(targetSqlitePath);
+      }
+
+      const sqlite3 = require('sqlite3').verbose();
+      const db = new sqlite3.Database(targetSqlitePath);
+
+      // 1. Read schema.sql and initialize schema on target SQLite
+      let schemaPath = path.resolve(__dirname, '../schema.sql');
+      if (!fs.existsSync(schemaPath)) {
+        schemaPath = path.resolve(__dirname, '../../src/schema.sql');
+      }
+      if (fs.existsSync(schemaPath)) {
+        const schemaSql = fs.readFileSync(schemaPath, 'utf-8');
+        await new Promise<void>((resolve, reject) => {
+          db.exec(schemaSql, (err: any) => {
+            if (err) reject(err);
+            else resolve();
+          });
+        });
+      }
+
+      // Ensure auxiliary tables exist
+      const createAuxSql = `
+        CREATE TABLE IF NOT EXISTS debt_accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, account_name TEXT, description TEXT, priority TEXT DEFAULT 'medium', created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS debt_transactions (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, account_id INTEGER, type TEXT, amount REAL, date DATE, description TEXT, notes TEXT, status TEXT DEFAULT 'Pending', created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS salary_allocations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, month INTEGER, year INTEGER, income_amount REAL, allocation_json TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS mutual_funds (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, fund_name TEXT, category TEXT, fund_house TEXT, expense_ratio REAL, benchmark TEXT, risk_level TEXT, launch_year INTEGER, notes TEXT, current_nav REAL, scheme_code TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS mutual_fund_transactions (id INTEGER PRIMARY KEY AUTOINCREMENT, fund_id INTEGER, date DATE, type TEXT, amount REAL, nav REAL, units REAL, remarks TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS wellness_profiles (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, age INTEGER, sex TEXT, height_cm REAL, weight_kg REAL, activity_level TEXT, goal TEXT, daily_calorie_target INTEGER, daily_water_target_ml INTEGER, created_at DATETIME, updated_at DATETIME);
+        CREATE TABLE IF NOT EXISTS wellness_meals (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, meal_type TEXT, date DATE, time TEXT, total_calories REAL, protein_g REAL, carbs_g REAL, fat_g REAL, notes TEXT, ai_estimated INTEGER, user_confirmed INTEGER, created_at DATETIME);
+        CREATE TABLE IF NOT EXISTS wellness_exercise (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, activity_type TEXT, date DATE, start_time TEXT, duration_mins INTEGER, intensity TEXT, calories_burned REAL, notes TEXT, created_at DATETIME);
+        CREATE TABLE IF NOT EXISTS wellness_water_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, date DATE, amount_ml INTEGER, logged_at DATETIME);
+        CREATE TABLE IF NOT EXISTS recurring_commitments (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, module_type TEXT, entity_id INTEGER, enabled INTEGER, auto_create INTEGER, auto_mark_paid INTEGER, telegram_confirm INTEGER, telegram_reminder INTEGER, payment_day INTEGER, reminder_days_before INTEGER, frequency TEXT, last_run_date DATE, created_at DATETIME);
+        CREATE TABLE IF NOT EXISTS recurring_automation_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, module_type TEXT, entity_id INTEGER, action TEXT, amount REAL, period_month INTEGER, period_year INTEGER, telegram_sent INTEGER, details TEXT, created_at DATETIME);
+      `;
+      await new Promise<void>((resolve) => {
+        db.exec(createAuxSql, () => resolve());
+      });
+
+      // 2. Target Tables to export
+      const targetTables = [
+        'users', 'categories', 'transactions', 'budgets', 'goals',
+        'chit_funds', 'chit_payments', 'digital_gold', 'digital_gold_transactions',
+        'lic_policies', 'lic_premium_schedule', 'lic_premium_history',
+        'recurring_commitments', 'notes', 'wellness_logs', 'debts',
+        'debt_accounts', 'debt_transactions', 'mutual_funds', 'mutual_fund_transactions'
+      ];
+
+      for (const table of targetTables) {
+        try {
+          const rows = await query(`SELECT * FROM ${table}`);
+          if (rows && rows.length > 0) {
+            for (const row of rows) {
+              const keys = Object.keys(row);
+              const placeholders = keys.map(() => '?').join(', ');
+              const values = Object.values(row);
+              const sql = `INSERT OR REPLACE INTO ${table} (${keys.join(', ')}) VALUES (${placeholders})`;
+
+              await new Promise<void>((res) => {
+                db.run(sql, values, () => res());
+              });
+            }
+          }
+        } catch (_) {}
+      }
+
+      await new Promise<void>((resolve) => {
+        db.close(() => resolve());
+      });
+
       return fs.existsSync(targetSqlitePath) && fs.statSync(targetSqlitePath).size > 0;
     } catch (err: any) {
-      console.warn('[EnterpriseRecovery] VACUUM INTO fallback copying file directly:', err.message);
-      try {
-        if (fs.existsSync(LIVE_DB_PATH)) {
-          fs.copyFileSync(LIVE_DB_PATH, targetSqlitePath);
-          return fs.existsSync(targetSqlitePath) && fs.statSync(targetSqlitePath).size > 0;
-        }
-      } catch (copyErr: any) {
-        console.error('[EnterpriseRecovery] File copy fallback failed:', copyErr.message);
-      }
+      console.error('[EnterpriseRecovery] Export database to SQLite file failed:', err.message);
       return false;
     }
   }

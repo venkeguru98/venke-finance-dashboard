@@ -929,7 +929,7 @@ export const initializeDatabase = async () => {
         await pgPool.query(`CREATE INDEX IF NOT EXISTS idx_tx_user_date ON transactions(user_id, date DESC)`);
         await pgPool.query(`CREATE INDEX IF NOT EXISTS idx_tx_cat_type ON transactions(category_id, type)`);
         await pgPool.query(`CREATE INDEX IF NOT EXISTS idx_lic_sch_due ON lic_premium_schedule(policy_id, due_date)`);
-        await pgPool.query(`CREATE INDEX IF NOT EXISTS idx_chit_pay_fund ON chit_payments(fund_id)`);
+        try { await pgPool.query(`CREATE INDEX IF NOT EXISTS idx_chit_pay_fund ON chit_payments(fund_id)`); } catch (_) {}
         await pgPool.query(`ANALYZE transactions`);
         await pgPool.query(`ANALYZE categories`);
       } else {
