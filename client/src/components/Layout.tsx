@@ -1,10 +1,11 @@
 import { useState, useEffect, type ReactNode, useMemo, memo, useRef } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { 
-  LayoutDashboard, ReceiptText, Upload, Settings, Bell, Search, UserCircle, 
+  LayoutDashboard, ReceiptText, Upload, Settings, Bell, Search, 
   Wallet, Target, LineChart, CalendarDays, PieChart, X, CalendarRange,
   Sliders, Pin, PinOff, Moon, Sun
 } from 'lucide-react';
+import { UserProfileDropdown } from './ui/UserProfileDropdown';
 
 // Memoized Adaptive Nav Tab Component
 const NavTab = memo(({ 
@@ -353,15 +354,11 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
             {isPinned ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
           </button>
 
-          {/* User Profile */}
-          <div 
-            onClick={() => { if(window.confirm('Are you sure you want to sign out?')) onLogout?.(); }}
-            className="flex items-center space-x-2 cursor-pointer p-1 pr-3 rounded-full transition-all duration-200 hover:bg-[#0D1830] border border-[#1E2A44] hover:border-[#8B5CF6]/40"
-            title="Click to logout"
-          >
-            <UserCircle className="w-7 h-7 text-[#8B5CF6]" />
-            <span className="text-xs font-bold hidden sm:block text-slate-200">Venke</span>
-          </div>
+          {/* User Profile Dropdown Panel */}
+          <UserProfileDropdown 
+            onLogout={onLogout} 
+            onOpenCmdK={() => setIsCmdKOpen(true)} 
+          />
         </div>
       </header>
 
