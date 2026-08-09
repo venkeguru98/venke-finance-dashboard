@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { 
   Moon, Sun, User, Palette, Database, Trash2, Download, Plus, X, 
   ShieldAlert, Sparkles, FolderSync, Send, ShieldCheck, CheckCircle2, 
