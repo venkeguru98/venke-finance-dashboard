@@ -4,7 +4,15 @@ import crypto from 'crypto';
 import AdmZip from 'adm-zip';
 import { query, get, execute, initializeDatabase } from '../database';
 
-const BACKUP_ROOT = path.resolve(__dirname, '../../../backups');
+export function getBackupRootDir(): string {
+  const cwd = process.cwd();
+  if (cwd.endsWith('server') || cwd.endsWith('server\\') || cwd.endsWith('server/')) {
+    return path.resolve(cwd, '../backups');
+  }
+  return path.resolve(cwd, 'backups');
+}
+
+const BACKUP_ROOT = getBackupRootDir();
 const LIVE_DB_PATH = path.resolve(__dirname, '../../database.sqlite');
 const RETENTION_CONFIG_PATH = path.join(BACKUP_ROOT, 'retention_config.json');
 const SIMULATION_REPORT_PATH = path.join(BACKUP_ROOT, 'last_simulation_report.json');
