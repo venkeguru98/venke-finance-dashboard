@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   Moon, Sun, User, Palette, Database, Trash2, Download, Plus, X, 
-  ShieldAlert, Send, ShieldCheck, CheckCircle2, Clock, Lock
+  ShieldAlert, Send, ShieldCheck, CheckCircle2, Clock, Lock, Sparkles
 } from 'lucide-react';
 import axios from 'axios';
 import Button from '../components/ui/Button';
