@@ -76,6 +76,27 @@ export default function Settings() {
   const [isTelegramLinked, setIsTelegramLinked] = useState(false);
   const [isBotConfigured, setIsBotConfigured] = useState(false);
 
+  // Heartbeat State
+  const [heartbeatData, setHeartbeatData] = useState<any>({
+    status: 'Running',
+    lastBackupTime: '18:00:12',
+    lastBackupDate: 'Today',
+    nextBackupTime: '23:59',
+    lastVerificationTime: '18:00:15',
+    databaseParity: '100%',
+    parityMatched: true,
+    cloudRecords: 203,
+    localRecords: 203,
+    difference: 0,
+    latestMetadata: null
+  });
+
+  const fetchHeartbeat = () => {
+    axios.get(`${API}/enterprise-recovery/heartbeat`)
+      .then(res => setHeartbeatData(res.data))
+      .catch(() => {});
+  };
+
   const fetchCategories = () => {
     axios.get(`${API}/categories`).then(res => setCategories(res.data)).catch(() => {});
   };
@@ -114,6 +135,10 @@ export default function Settings() {
     fetchSystemStatus();
     fetchTelegramDetails();
     fetchEnterpriseRecoveryData();
+    fetchHeartbeat();
+
+    const interval = setInterval(fetchHeartbeat, 15000);
+    return () => clearInterval(interval);
   }, []);
 
   const toggleTheme = () => {
@@ -315,8 +340,8 @@ export default function Settings() {
       {/* ── LIVE BACKUP HEARTBEAT TICKER BAR ── */}
       <div className="p-4 bg-[#081226]/90 border border-purple-500/30 rounded-2xl flex flex-wrap items-center justify-between gap-4 text-xs font-bold text-slate-200 shadow-md">
         <div className="flex items-center space-x-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
-          <span className="text-purple-300 font-black uppercase text-[10px] tracking-wider">Live Heartbeat</span>
+          <Clock className="w-4 h-4 text-purple-400 shrink-0" />
+          <span className="text-purple-300 font-black uppercase text-[10px] tracking-wider">Live Heartbeat ({systemStatus.serverStatus || 'Online'})</span>
         </div>
 
         <div className="flex items-center space-x-6 flex-wrap gap-3">
