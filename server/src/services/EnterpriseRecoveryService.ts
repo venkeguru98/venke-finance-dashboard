@@ -245,12 +245,31 @@ export class EnterpriseRecoveryService {
         try {
           const rows = await query(`SELECT * FROM ${table}`);
           if (rows && rows.length > 0) {
-            // Ensure table exists on SQLite target
             const firstRow = rows[0];
             const keys = Object.keys(firstRow);
-            const createTableCols = keys.map(k => `"${k}" TEXT`).join(', ');
+
+            // Dynamically create or alter SQLite table to ensure all PostgreSQL columns exist
             await new Promise<void>((resSchema) => {
-              db.exec(`CREATE TABLE IF NOT EXISTS "${table}" (${createTableCols});`, () => resSchema());
+              db.all(`PRAGMA table_info("${table}");`, [], (err: any, cols: any[]) => {
+                if (err || !cols || cols.length === 0) {
+                  const createCols = keys.map(k => `"${k}" TEXT`).join(', ');
+                  db.exec(`CREATE TABLE IF NOT EXISTS "${table}" (${createCols});`, () => resSchema());
+                } else {
+                  const existingColNames = new Set(cols.map((c: any) => c.name.toLowerCase()));
+                  const missingKeys = keys.filter(k => !existingColNames.has(k.toLowerCase()));
+                  if (missingKeys.length === 0) {
+                    resSchema();
+                  } else {
+                    let pending = missingKeys.length;
+                    for (const mKey of missingKeys) {
+                      db.exec(`ALTER TABLE "${table}" ADD COLUMN "${mKey}" TEXT;`, () => {
+                        pending--;
+                        if (pending <= 0) resSchema();
+                      });
+                    }
+                  }
+                }
+              });
             });
 
             for (const row of rows) {
