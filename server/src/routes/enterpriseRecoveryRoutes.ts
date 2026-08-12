@@ -15,6 +15,16 @@ router.get('/status', async (_req, res) => {
   }
 });
 
+// GET /api/enterprise-recovery/heartbeat
+router.get('/heartbeat', async (_req, res) => {
+  try {
+    const heartbeat = await EnterpriseRecoveryService.getHeartbeatStatus();
+    res.json(heartbeat);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Error fetching heartbeat status' });
+  }
+});
+
 // GET /api/enterprise-recovery/list
 router.get('/list', (_req, res) => {
   try {
