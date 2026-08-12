@@ -238,24 +238,52 @@ export class EnterpriseRecoveryService {
         db.exec(createAuxSql, () => resolve());
       });
 
-      // 2. Export all tables in master TARGET_TABLES list
+      // 2. Export all tables in master TARGET_TABLES list within a fast atomic transaction
+      await new Promise<void>((resTx) => db.exec('BEGIN TRANSACTION;', () => resTx()));
+
       for (const table of EnterpriseRecoveryService.TARGET_TABLES) {
         try {
           const rows = await query(`SELECT * FROM ${table}`);
           if (rows && rows.length > 0) {
-            for (const row of rows) {
-              const keys = Object.keys(row);
-              const placeholders = keys.map(() => '?').join(', ');
-              const values = Object.values(row);
-              const sql = `INSERT OR REPLACE INTO ${table} (${keys.join(', ')}) VALUES (${placeholders})`;
+            // Ensure table exists on SQLite target
+            const firstRow = rows[0];
+            const keys = Object.keys(firstRow);
+            const createTableCols = keys.map(k => `"${k}" TEXT`).join(', ');
+            await new Promise<void>((resSchema) => {
+              db.exec(`CREATE TABLE IF NOT EXISTS "${table}" (${createTableCols});`, () => resSchema());
+            });
 
-              await new Promise<void>((res) => {
-                db.run(sql, values, () => res());
+            for (const row of rows) {
+              const rowKeys = Object.keys(row);
+              const placeholders = rowKeys.map(() => '?').join(', ');
+              const values = Object.values(row).map(val => {
+                if (val === null || val === undefined) return null;
+                if (typeof val === 'object') {
+                  if (val instanceof Date) return val.toISOString();
+                  return JSON.stringify(val);
+                }
+                if (typeof val === 'boolean') return val ? 1 : 0;
+                return val;
+              });
+
+              const sql = `INSERT OR REPLACE INTO "${table}" (${rowKeys.map(k => `"${k}"`).join(', ')}) VALUES (${placeholders})`;
+
+              await new Promise<void>((resRow) => {
+                db.run(sql, values, (err: any) => {
+                  if (err) {
+                    console.warn(`[EnterpriseRecovery] Row insert warn in table ${table}:`, err.message);
+                  }
+                  resRow();
+                });
               });
             }
           }
-        } catch (_) {}
+        } catch (err: any) {
+          console.warn(`[EnterpriseRecovery] Table ${table} export warning:`, err.message);
+        }
       }
+
+      await new Promise<void>((resCommit) => db.exec('COMMIT;', () => resCommit()));
 
       await new Promise<void>((resolve) => {
         db.close(() => resolve());

@@ -76,6 +76,37 @@ export default function Settings() {
   const [isTelegramLinked, setIsTelegramLinked] = useState(false);
   const [isBotConfigured, setIsBotConfigured] = useState(false);
 
+  // Toast Notification State
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'warning' | 'info' | 'error' } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'warning' | 'info' | 'error' = 'info') => {
+    setToast({ message, type });
+    setTimeout(() => {
+      setToast(null);
+    }, 4500);
+  };
+
+  const formatLocalTime = (dateOrStr?: any) => {
+    if (!dateOrStr) return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const d = new Date(dateOrStr);
+    if (isNaN(d.getTime())) {
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const parsed = new Date(`${todayStr}T${dateOrStr}`);
+      if (!isNaN(parsed.getTime())) {
+        return parsed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      }
+      return dateOrStr;
+    }
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  };
+
+  const formatLocalDate = (dateOrStr?: any) => {
+    if (!dateOrStr) return new Date().toLocaleDateString([], { year: 'numeric', month: 'short', day: '2-digit' });
+    const d = new Date(dateOrStr);
+    if (isNaN(d.getTime())) return dateOrStr;
+    return d.toLocaleDateString([], { year: 'numeric', month: 'short', day: '2-digit' });
+  };
+
   // Heartbeat State
   const [heartbeatData, setHeartbeatData] = useState<any>({
     status: 'Running',
@@ -199,13 +230,14 @@ export default function Settings() {
     try {
       const res = await axios.post(`${API}/enterprise-recovery/create-daily`);
       if (res.data.success) {
-        alert(`✅ Daily 11:59 PM Immutable Snapshot Created & Verified!\nChecksum: ${res.data.metadata?.sha256_checksum?.slice(0, 16)}...`);
+        showToast('✅ Daily Immutable Snapshot Created & Verified!', 'success');
         fetchEnterpriseRecoveryData();
+        fetchHeartbeat();
       } else {
-        alert(`⚠️ Snapshot creation message: ${res.data.message}`);
+        showToast(`⚠️ ${res.data.message}`, 'warning');
       }
     } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to create daily immutable snapshot.');
+      showToast(err.response?.data?.error || 'Failed to create daily immutable snapshot.', 'error');
     } finally {
       setManualCreating(false);
     }
@@ -216,13 +248,14 @@ export default function Settings() {
     try {
       const res = await axios.post(`${API}/enterprise-recovery/create-migration-package`);
       if (res.data.success) {
-        alert(`📦 Monthly Production Migration Package Created!\nFilename: ${res.data.filename}`);
+        showToast(`📦 Production Migration Package Created: ${res.data.filename}`, 'success');
         fetchEnterpriseRecoveryData();
+        fetchHeartbeat();
       } else {
-        alert('Failed to generate production migration package.');
+        showToast('Failed to generate production migration package.', 'error');
       }
     } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to generate migration package.');
+      showToast(err.response?.data?.error || 'Failed to generate migration package.', 'error');
     } finally {
       setMigrationCreating(false);
     }
@@ -233,13 +266,14 @@ export default function Settings() {
     try {
       const res = await axios.post(`${API}/enterprise-recovery/simulate-restore`);
       if (res.data.passed) {
-        alert(`🏆 Non-Destructive Recovery Simulation PASSED! \nRecovery Confidence Score: ${res.data.confidenceScore}% ✅\nAll 10 Integrity Checks Verified.`);
+        showToast(`🏆 Recovery Simulation PASSED! Confidence: ${res.data.confidenceScore}%`, 'success');
       } else {
-        alert(`⚠️ Simulation failed: ${res.data.report?.reason || 'Unknown error'}`);
+        showToast(`⚠️ Simulation failed: ${res.data.report?.reason || 'Unknown error'}`, 'warning');
       }
       fetchEnterpriseRecoveryData();
+      fetchHeartbeat();
     } catch (err: any) {
-      alert('Failed to execute restore simulation.');
+      showToast('Failed to execute restore simulation.', 'error');
     } finally {
       setSimulationRunning(false);
     }
@@ -267,13 +301,13 @@ export default function Settings() {
     try {
       const res = await axios.post(`${API}/enterprise-recovery/restore`, { snapshotPath: selectedBackupForRestore.fullPath });
       if (res.data.success) {
-        alert(`✅ Database restored from snapshot successfully!\nSafety backup saved at: ${res.data.safetyBackupPath}`);
-        window.location.reload();
+        showToast('✅ Database restored successfully! Reloading...', 'success');
+        setTimeout(() => window.location.reload(), 1500);
       } else {
-        alert(`Restore failed: ${res.data.message}`);
+        showToast(`Restore failed: ${res.data.message}`, 'error');
       }
     } catch (err: any) {
-      alert(err.response?.data?.error || 'Restore failed.');
+      showToast(err.response?.data?.error || 'Restore failed.', 'error');
     } finally {
       setExecutingRestore(false);
       setIsCompareModalOpen(false);
@@ -284,8 +318,10 @@ export default function Settings() {
     try {
       await axios.put(`${API}/enterprise-recovery/retention`, { days });
       fetchEnterpriseRecoveryData();
+      fetchHeartbeat();
+      showToast(`Retention policy updated to ${days === 0 ? 'Unlimited' : days + ' Days'}`, 'success');
     } catch (err: any) {
-      alert('Failed to update retention policy.');
+      showToast('Failed to update retention policy.', 'error');
     }
   };
 
@@ -316,8 +352,21 @@ export default function Settings() {
   };
 
   return (
-    <div className="max-w-[1440px] w-full mx-auto space-y-8 animate-in fade-in duration-300 pb-16 px-4 sm:px-8 font-sans">
+    <div className="max-w-[1440px] w-full mx-auto space-y-8 animate-in fade-in duration-300 pb-16 px-4 sm:px-8 font-sans relative">
       
+      {/* ── ELEGANT TOAST NOTIFICATION BANNER ── */}
+      {toast && (
+        <div className={`fixed top-4 right-4 z-50 px-5 py-3 rounded-2xl shadow-2xl border text-xs font-black flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-300 ${
+          toast.type === 'success' ? 'bg-emerald-950/90 text-emerald-300 border-emerald-500/40 shadow-emerald-500/10' :
+          toast.type === 'warning' ? 'bg-amber-950/90 text-amber-300 border-amber-500/40 shadow-amber-500/10' :
+          toast.type === 'error' ? 'bg-rose-950/90 text-rose-300 border-rose-500/40 shadow-rose-500/10' :
+          'bg-slate-900/90 text-white border-slate-700'
+        }`}>
+          <Sparkles className="w-4 h-4 shrink-0" />
+          <span>{toast.message}</span>
+        </div>
+      )}
+
       {/* ── TOP CONFIDENCE HEADER ── */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-6">
         <div>
@@ -347,7 +396,7 @@ export default function Settings() {
         <div className="flex items-center space-x-6 flex-wrap gap-3">
           <div>
             <span className="text-[9px] text-slate-400 font-bold uppercase block">Last Backup</span>
-            <span className="text-white font-extrabold font-mono">{heartbeatData.lastBackupTime || '18:00:12'}</span>
+            <span className="text-white font-extrabold font-mono">{formatLocalTime(heartbeatData.lastBackupTime)}</span>
           </div>
 
           <div>
@@ -357,7 +406,7 @@ export default function Settings() {
 
           <div>
             <span className="text-[9px] text-slate-400 font-bold uppercase block">Last Verification</span>
-            <span className="text-slate-300 font-extrabold font-mono">{heartbeatData.lastVerificationTime || '18:00:15'}</span>
+            <span className="text-slate-300 font-extrabold font-mono">{formatLocalTime(heartbeatData.lastVerificationTime)}</span>
           </div>
 
           <div>
@@ -388,10 +437,10 @@ export default function Settings() {
         <div className="p-5 bg-white dark:bg-slate-900/80 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-2 shadow-sm">
           <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">2. Latest Recoverable Backup</span>
           <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
-            {heartbeatData.latestMetadata?.backupDate || 'Today'} • {heartbeatData.lastBackupTime || '6:00 PM'}
+            {formatLocalDate(heartbeatData.latestMetadata?.timestamp || heartbeatData.latestMetadata?.backupDate)} • {formatLocalTime(heartbeatData.latestMetadata?.timestamp || heartbeatData.lastBackupTime)}
           </h3>
           <div className="space-y-1 text-xs font-bold text-slate-600 dark:text-slate-300 pt-1 border-t border-slate-100 dark:border-slate-800">
-            <div className="flex justify-between"><span>Records:</span><span className="text-slate-900 dark:text-white font-mono">{heartbeatData.localRecords || 203}</span></div>
+            <div className="flex justify-between"><span>Records:</span><span className="text-slate-900 dark:text-white font-mono">{heartbeatData.localRecords || 0}</span></div>
             <div className="flex justify-between"><span>Integrity:</span><span className="text-emerald-500">Verified (SHA256)</span></div>
             <div className="flex justify-between"><span>Database Size:</span><span className="text-slate-900 dark:text-white font-mono">{heartbeatData.latestMetadata?.databaseSize || '1.2 MB'}</span></div>
           </div>
@@ -496,7 +545,9 @@ export default function Settings() {
               <div className="flex items-center space-x-3">
                 <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${b.type?.includes('Golden') ? 'bg-purple-500' : 'bg-emerald-500'}`} />
                 <div>
-                  <span className="font-bold text-slate-900 dark:text-white block">{b.date} • {b.time}</span>
+                  <span className="font-bold text-slate-900 dark:text-white block">
+                    {formatLocalDate(b.date)} • {formatLocalTime(b.time || b.date)}
+                  </span>
                   <span className="text-[10px] text-slate-400 font-medium">{b.type} · {b.totalRecords || heartbeatData.localRecords} records · {b.size}</span>
                 </div>
               </div>
