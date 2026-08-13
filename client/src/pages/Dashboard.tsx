@@ -1397,16 +1397,6 @@ export default function Dashboard() {
         />
       )}
 
-      {/* NEXT MONTH COMMITMENT PLANNER WIDGET */}
-      {widgets.nextMonthPlanner && (
-        <NextMonthCommitmentPlannerWidget
-          data={nextMonthCommitmentsData}
-          availableBalance={availableBalance}
-          navigate={navigate}
-          getCategoryIcon={getCategoryIcon}
-        />
-      )}
-
       {/* FINANCIAL INSIGHTS SECTION */}
       {widgets.financialInsights && (
         <div className="space-y-4 animate-in fade-in duration-500">
@@ -2449,6 +2439,16 @@ export default function Dashboard() {
             <a href="/transactions" className="text-xs font-bold text-primary hover:underline">View All Transactions →</a>
           </div>
         </div>
+      )}
+
+      {/* NEXT MONTH COMMITMENT PLANNER WIDGET (MOVED TO END OF DASHBOARD PAGE) */}
+      {widgets.nextMonthPlanner && (
+        <NextMonthCommitmentPlannerWidget
+          data={nextMonthCommitmentsData}
+          availableBalance={availableBalance}
+          navigate={navigate}
+          getCategoryIcon={getCategoryIcon}
+        />
       )}
 
       {/* QUICK TRANSACTION MODAL */}
