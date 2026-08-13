@@ -386,9 +386,25 @@ export class EnterpriseRecoveryService {
   }
 
   /**
+   * Append audit log entry to backups/logs/autonomous_protection.log
+   */
+  public static appendAuditLog(message: string) {
+    try {
+      const logsDir = path.join(BACKUP_ROOT, 'logs');
+      if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir, { recursive: true });
+      const logFile = path.join(logsDir, 'autonomous_protection.log');
+      const timestamp = new Date().toISOString();
+      fs.appendFileSync(logFile, `[${timestamp}] ${message}\n`, 'utf-8');
+    } catch (_) {}
+  }
+
+  /**
    * Main Creation Engine for Daily Immutable Recovery Snapshot at 11:59 PM
    */
-  public static async createDailyImmutableSnapshot(reason: 'automatic' | 'manual' | 'catchup' = 'automatic'): Promise<{
+  public static async createDailyImmutableSnapshot(
+    reason: 'automatic' | 'manual' | 'catchup' = 'automatic',
+    targetDateStr?: string
+  ): Promise<{
     success: boolean;
     folderPath: string;
     metadata: BackupMetadata | null;
@@ -404,12 +420,16 @@ export class EnterpriseRecoveryService {
       EnterpriseRecoveryService.ensureDirectories();
 
       const now = new Date();
-      const dateStr = now.toISOString().slice(0, 10); // YYYY-MM-DD
+      const dateStr = targetDateStr || now.toISOString().slice(0, 10); // YYYY-MM-DD
       const timeStr = '23-59';
       const dateFolder = path.join(BACKUP_ROOT, dateStr);
+      const dailyFolder = path.join(BACKUP_ROOT, 'daily', dateStr);
 
       if (!fs.existsSync(dateFolder)) {
         fs.mkdirSync(dateFolder, { recursive: true });
+      }
+      if (!fs.existsSync(dailyFolder)) {
+        fs.mkdirSync(dailyFolder, { recursive: true });
       }
 
       const sqliteFileName = `venke-finance-recovery-${dateStr}-${timeStr}.sqlite`;
@@ -420,11 +440,13 @@ export class EnterpriseRecoveryService {
       const lockPath = path.join(dateFolder, 'recovery_verified.lock');
 
       console.log(`[EnterpriseRecovery] Initializing Daily 11:59 PM Immutable Snapshot (${dateStr})...`);
+      EnterpriseRecoveryService.appendAuditLog(`Initializing Daily Immutable Snapshot for date ${dateStr} (Reason: ${reason})`);
 
       // Step 1: Create SQLite Snapshot
       const created = await EnterpriseRecoveryService.createSqliteSnapshot(sqliteFilePath);
       if (!created) {
         EnterpriseRecoveryService.isBackupRunning = false;
+        EnterpriseRecoveryService.appendAuditLog(`ERROR: Failed to create SQLite snapshot for date ${dateStr}`);
         return { success: false, folderPath: dateFolder, metadata: null, message: 'Failed to create SQLite snapshot' };
       }
 
@@ -433,6 +455,7 @@ export class EnterpriseRecoveryService {
       if (!verification.passed) {
         console.error('[EnterpriseRecovery] Integrity verification failed:', verification.integrityStatus);
         EnterpriseRecoveryService.isBackupRunning = false;
+        EnterpriseRecoveryService.appendAuditLog(`ERROR: Integrity verification failed for ${dateStr}: ${verification.integrityStatus}`);
         return { success: false, folderPath: dateFolder, metadata: null, message: `Integrity check failed: ${verification.integrityStatus}` };
       }
 
@@ -471,6 +494,14 @@ export class EnterpriseRecoveryService {
       fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2), 'utf-8');
       fs.writeFileSync(checksumPath, `${checksum}  ${sqliteFileName}\n`, 'utf-8');
       fs.writeFileSync(lockPath, `RECOVERY_VERIFIED_TIMESTAMP=${now.toISOString()}\nCHECKSUM=${checksum}\n`, 'utf-8');
+
+      // Step 4b: Mirror to backups/daily/YYYY-MM-DD/ for structure parity
+      try {
+        fs.copyFileSync(sqliteFilePath, path.join(dailyFolder, sqliteFileName));
+        fs.copyFileSync(metadataPath, path.join(dailyFolder, 'metadata.json'));
+        fs.copyFileSync(checksumPath, path.join(dailyFolder, 'checksum.sha256'));
+        fs.copyFileSync(lockPath, path.join(dailyFolder, 'recovery_verified.lock'));
+      } catch (_) {}
 
       // Step 5: Update backups/latest/ folder for fast filesystem verification
       const latestDir = path.join(BACKUP_ROOT, 'latest');
@@ -514,6 +545,7 @@ export class EnterpriseRecoveryService {
       } catch (_) {}
 
       console.log(`[EnterpriseRecovery] ✅ Daily 11:59 PM Immutable Snapshot Created & Verified: ${dateStr} (${metadata.file_size_formatted}, SHA256: ${checksum.slice(0, 8)}...)`);
+      EnterpriseRecoveryService.appendAuditLog(`SUCCESS: Daily Immutable Snapshot Created & Verified for ${dateStr} (${liveStats.totalRecords} records, ${metadata.file_size_formatted}, SHA256: ${checksum.slice(0, 8)}...)`);
 
       // Apply Retention Policy & Check Weekly Golden Trigger
       EnterpriseRecoveryService.applyRetentionPolicy();
@@ -524,6 +556,7 @@ export class EnterpriseRecoveryService {
     } catch (err: any) {
       EnterpriseRecoveryService.isBackupRunning = false;
       console.error('[EnterpriseRecovery] Error during backup creation:', err.message);
+      EnterpriseRecoveryService.appendAuditLog(`ERROR: Exception during backup creation: ${err.message}`);
       return { success: false, folderPath: '', metadata: null, message: err.message };
     }
   }
@@ -677,20 +710,28 @@ export class EnterpriseRecoveryService {
   }
 
   /**
-   * Boot Catch-up Check
+   * Multi-Day Historic Catch-up & Backfill Engine (scans past 30 days and auto-generates missing snapshots)
    */
-  public static checkAndExecuteCatchup() {
+  public static async checkAndExecuteCatchup() {
     try {
+      EnterpriseRecoveryService.ensureDirectories();
       const now = new Date();
-      const todayStr = now.toISOString().slice(0, 10);
-      const todayFolder = path.join(BACKUP_ROOT, todayStr);
 
-      if (!fs.existsSync(todayFolder) || !fs.existsSync(path.join(todayFolder, 'recovery_verified.lock'))) {
-        console.log(`[EnterpriseRecovery] Catch-up Engine Triggered: Creating daily 11:59 PM snapshot for today (${todayStr})...`);
-        EnterpriseRecoveryService.createDailyImmutableSnapshot('catchup');
+      for (let i = 0; i < 30; i++) {
+        const d = new Date(now);
+        d.setDate(now.getDate() - i);
+        const dateStr = d.toISOString().slice(0, 10);
+        const dateFolder = path.join(BACKUP_ROOT, dateStr);
+        const lockPath = path.join(dateFolder, 'recovery_verified.lock');
+
+        if (!fs.existsSync(lockPath)) {
+          console.log(`[EnterpriseRecovery] ⚡ Auto-Catchup Engine: Creating daily 11:59 PM snapshot for date (${dateStr})...`);
+          EnterpriseRecoveryService.appendAuditLog(`Auto-Catchup Engine: Generating missing snapshot for date ${dateStr}`);
+          await EnterpriseRecoveryService.createDailyImmutableSnapshot('catchup', dateStr);
+        }
       }
     } catch (err: any) {
-      console.warn('[EnterpriseRecovery] Catch-up check warning:', err.message);
+      console.warn('[EnterpriseRecovery] Multi-day catch-up check warning:', err.message);
     }
   }
 
@@ -1092,25 +1133,32 @@ export class EnterpriseRecoveryService {
    */
   public static startScheduler() {
     EnterpriseRecoveryService.ensureDirectories();
+    EnterpriseRecoveryService.appendAuditLog('Scheduler Initialized: 6-Hour Incremental + 11:59 PM Daily Immutable Active');
     EnterpriseRecoveryService.checkAndExecuteCatchup();
 
     if (EnterpriseRecoveryService.dailyTimer) return;
 
     // Check every 1 minute
     EnterpriseRecoveryService.dailyTimer = setInterval(() => {
-      const now = new Date();
-      const hours = now.getHours();
-      const mins = now.getMinutes();
+      try {
+        const now = new Date();
+        const hours = now.getHours();
+        const mins = now.getMinutes();
 
-      // Every day at 11:59 PM: Full daily immutable snapshot
-      if (hours === 23 && mins === 59) {
-        console.log('[EnterpriseRecovery] 🕚 11:59 PM Ticker Triggered: Running Daily Immutable Recovery Snapshot...');
-        EnterpriseRecoveryService.createDailyImmutableSnapshot('automatic');
-      } 
-      // Every 6 hours (00:00, 06:00, 12:00, 18:00): Incremental verified snapshot
-      else if (mins === 0 && (hours % 6 === 0)) {
-        console.log('[EnterpriseRecovery] 🔄 6-Hour Ticker Triggered: Running Incremental Verified Snapshot...');
-        EnterpriseRecoveryService.createDailyImmutableSnapshot('automatic');
+        // Every day at 11:59 PM: Full daily immutable snapshot
+        if (hours === 23 && mins === 59) {
+          console.log('[EnterpriseRecovery] 🕚 11:59 PM Ticker Triggered: Running Daily Immutable Recovery Snapshot...');
+          EnterpriseRecoveryService.appendAuditLog('Ticker Triggered: 11:59 PM Daily Immutable Snapshot');
+          EnterpriseRecoveryService.createDailyImmutableSnapshot('automatic');
+        } 
+        // Every 6 hours (00:00, 06:00, 12:00, 18:00): Incremental verified snapshot
+        else if (mins === 0 && (hours % 6 === 0)) {
+          console.log('[EnterpriseRecovery] 🔄 6-Hour Ticker Triggered: Running Incremental Verified Snapshot...');
+          EnterpriseRecoveryService.appendAuditLog('Ticker Triggered: 6-Hour Incremental Snapshot');
+          EnterpriseRecoveryService.createDailyImmutableSnapshot('automatic');
+        }
+      } catch (err: any) {
+        console.error('[EnterpriseRecovery] Scheduler ticker error:', err.message);
       }
     }, 60000);
 
