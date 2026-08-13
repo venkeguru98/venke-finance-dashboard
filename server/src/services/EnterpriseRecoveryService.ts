@@ -503,33 +503,36 @@ export class EnterpriseRecoveryService {
         fs.copyFileSync(lockPath, path.join(dailyFolder, 'recovery_verified.lock'));
       } catch (_) {}
 
-      // Step 5: Update backups/latest/ folder for fast filesystem verification
-      const latestDir = path.join(BACKUP_ROOT, 'latest');
-      if (!fs.existsSync(latestDir)) fs.mkdirSync(latestDir, { recursive: true });
-      
-      const latestSqlite = path.join(latestDir, 'venke_finance_latest.sqlite');
-      const latestMeta = path.join(latestDir, 'metadata.json');
-      const latestChecksum = path.join(latestDir, 'checksum.sha256');
+      // Step 5: Update backups/latest/ folder for fast filesystem verification (Only for today's current snapshot)
+      const todayStr = now.toISOString().slice(0, 10);
+      if (dateStr === todayStr) {
+        const latestDir = path.join(BACKUP_ROOT, 'latest');
+        if (!fs.existsSync(latestDir)) fs.mkdirSync(latestDir, { recursive: true });
+        
+        const latestSqlite = path.join(latestDir, 'venke_finance_latest.sqlite');
+        const latestMeta = path.join(latestDir, 'metadata.json');
+        const latestChecksum = path.join(latestDir, 'checksum.sha256');
 
-      fs.copyFileSync(sqliteFilePath, latestSqlite);
-      fs.writeFileSync(latestChecksum, `${checksum}  venke_finance_latest.sqlite\n`, 'utf-8');
+        fs.copyFileSync(sqliteFilePath, latestSqlite);
+        fs.writeFileSync(latestChecksum, `${checksum}  venke_finance_latest.sqlite\n`, 'utf-8');
 
-      const userFacingMeta = {
-        backupDate: dateStr,
-        backupTime: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }),
-        timestamp: now.toISOString(),
-        records: liveStats.totalRecords,
-        checksum: checksum,
-        verified: true,
-        databaseSize: EnterpriseRecoveryService.formatBytes(fileStat.size),
-        tablesCount: Object.keys(liveStats.counts).length,
-        cloudRecords: liveStats.totalRecords,
-        localRecords: liveStats.totalRecords,
-        difference: 0,
-        cloudParityMatched: true,
-        sqliteIntegrity: 'ok'
-      };
-      fs.writeFileSync(latestMeta, JSON.stringify(userFacingMeta, null, 2), 'utf-8');
+        const userFacingMeta = {
+          backupDate: dateStr,
+          backupTime: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }),
+          timestamp: now.toISOString(),
+          records: liveStats.totalRecords,
+          checksum: checksum,
+          verified: true,
+          databaseSize: EnterpriseRecoveryService.formatBytes(fileStat.size),
+          tablesCount: Object.keys(liveStats.counts).length,
+          cloudRecords: liveStats.totalRecords,
+          localRecords: liveStats.totalRecords,
+          difference: 0,
+          cloudParityMatched: true,
+          sqliteIntegrity: 'ok'
+        };
+        fs.writeFileSync(latestMeta, JSON.stringify(userFacingMeta, null, 2), 'utf-8');
+      }
 
       // Step 6: Compress Archive via AdmZip
       const zip = new AdmZip();
