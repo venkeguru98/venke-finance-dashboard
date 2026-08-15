@@ -157,14 +157,13 @@ export default function Settings() {
     fetchEnterpriseRecoveryData();
     fetchHeartbeat();
 
-    const fetchInterval = setInterval(fetchHeartbeat, 10000);
+    const fetchInterval = setInterval(fetchHeartbeat, 5000);
 
     // 1-second live smooth timer ticker
     const timerInterval = setInterval(() => {
       setLastSyncSecondsAgo(prev => prev + 1);
       setSecondsUntilBackup(prev => {
-        if (prev <= 1 && heartbeatData.pendingChanges && heartbeatData.backupStatus !== 'running' && heartbeatData.backupStatus !== 'verifying') {
-          // Trigger backup when countdown hits 0
+        if (prev <= 1) {
           axios.post(`${API}/enterprise-recovery/trigger-backup`).then(fetchHeartbeat).catch(() => {});
         }
         return prev > 0 ? prev - 1 : 0;
@@ -175,7 +174,7 @@ export default function Settings() {
       clearInterval(fetchInterval);
       clearInterval(timerInterval);
     };
-  }, [heartbeatData.pendingChanges, heartbeatData.backupStatus]);
+  }, []);
 
   const formatCountdown = (totalSec: number) => {
     const m = Math.floor(totalSec / 60);

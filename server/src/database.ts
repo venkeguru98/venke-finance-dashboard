@@ -108,6 +108,13 @@ const convertSql = (sql: string): string => {
 };
 
 export const query = async (sql: string, params: any[] = []): Promise<any[]> => {
+  if (/^\s*(INSERT|UPDATE|DELETE|ALTER|DROP|TRUNCATE)/i.test(sql)) {
+    try {
+      const { EnterpriseRecoveryService } = require('./services/EnterpriseRecoveryService');
+      EnterpriseRecoveryService.notifyDataMutation();
+    } catch (_) {}
+  }
+
   const pool = getPgPool();
   if (isPg && pool) {
     try {

@@ -819,7 +819,9 @@ export class EnterpriseRecoveryService {
 
     const now = new Date();
     const lastBackupEpoch = EnterpriseRecoveryService.lastBackupEpoch || (cert?.generated_at ? new Date(cert.generated_at).getTime() : now.getTime() - (15 * 60 * 1000));
-    const nextBackupEpoch = EnterpriseRecoveryService.nextScheduledEpoch || (lastBackupEpoch + (30 * 60 * 1000));
+    const nextBackupEpoch = (EnterpriseRecoveryService.nextScheduledEpoch && EnterpriseRecoveryService.nextScheduledEpoch > now.getTime())
+      ? EnterpriseRecoveryService.nextScheduledEpoch
+      : (lastBackupEpoch + (30 * 60 * 1000));
 
     const pendingBackup = (diff > 0) || EnterpriseRecoveryService.pendingSnapshotFlag;
     const pendingChangeCount = EnterpriseRecoveryService.pendingChangeCount || Math.max(0, cloudRecords - localRecords);
@@ -834,11 +836,11 @@ export class EnterpriseRecoveryService {
       pendingBackup,
       pendingChangeCount,
       lastMutationTime,
-      nextBackupTime: new Date(nextBackupEpoch).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      nextBackupTime: new Date(nextBackupEpoch).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
       nextBackupEpoch,
       lastBackupEpoch,
-      lastBackupTime: cert?.backup_time || now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      lastVerifiedTime: cert?.generated_at ? new Date(cert.generated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      lastBackupTime: cert?.backup_time || new Date(lastBackupEpoch).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      lastVerifiedTime: cert?.generated_at ? new Date(cert.generated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : new Date(lastBackupEpoch).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
       liveRecordCount: cloudRecords,
       verifiedRecordCount: localRecords,
       cloudConnected: true,
