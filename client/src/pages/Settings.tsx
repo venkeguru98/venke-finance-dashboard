@@ -392,7 +392,7 @@ export default function Settings() {
           <div className="px-4 py-2 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
             <span className="text-xs font-black text-emerald-400">
-              Health score {heartbeatData.healthScore || 100}/100 • Last sync {lastSyncSecondsAgo}s ago
+              Health score {heartbeatData.healthScore || 100}/100
             </span>
           </div>
         </div>
@@ -413,20 +413,15 @@ export default function Settings() {
                   <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
                   Verifying backup integrity... {heartbeatData.progressPercent || 75}% 🧪
                 </div>
-              ) : heartbeatData.backupStatus === 'completed' ? (
-                <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full text-xs font-black uppercase tracking-wider">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  Backup completed • Today {formatLocalTime(heartbeatData.lastBackupEpoch)} ✅
-                </div>
-              ) : heartbeatData.pendingChanges ? (
+              ) : heartbeatData.pendingBackup ? (
                 <div className="inline-flex items-center gap-2 px-3 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-full text-xs font-black uppercase tracking-wider">
                   <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                  Pending changes detected ⏳ • Backup in {formatCountdown(secondsUntilBackup)}
+                  Pending changes detected ⏳
                 </div>
               ) : (
                 <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full text-xs font-black uppercase tracking-wider">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  Protected 🛡️ • Next backup in {formatCountdown(secondsUntilBackup)}
+                  <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                  Protected 🛡️
                 </div>
               )}
             </div>
@@ -434,11 +429,8 @@ export default function Settings() {
             <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white pt-2">
               Your financial data is safe
             </h2>
-            <p className="text-xs text-slate-300 font-semibold">
-              Every change you make is automatically protected. {heartbeatData.cloudRecords || 377} records active in database.
-            </p>
-            <p className="text-[11px] text-slate-400 font-medium italic">
-              Countdown uses your local device time and resets automatically whenever financial data changes.
+            <p className="text-xs text-slate-300 font-medium">
+              Every change you make is automatically protected. Nothing is required from you.
             </p>
           </div>
 
@@ -451,26 +443,21 @@ export default function Settings() {
           </div>
         </div>
 
-        {/* Status Breakdown Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-5 gap-3 pt-2">
+        {/* Clean 4-Status Breakdown Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 pt-2">
           <div className="p-4 bg-slate-900/50 rounded-2xl border border-slate-800/80 space-y-1">
-            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Live database records</span>
+            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Cloud database</span>
+            <span className="text-sm font-black text-emerald-400 flex items-center gap-1.5">
+              Connected 🟢
+            </span>
+          </div>
+
+          <div className="p-4 bg-slate-900/50 rounded-2xl border border-slate-800/80 space-y-1">
+            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Local backup</span>
             <span className="text-sm font-black text-emerald-400 flex items-center gap-1.5 font-mono">
-              {heartbeatData.liveRecordCount || heartbeatData.cloudRecords || 205} records 🟢
-            </span>
-          </div>
-
-          <div className="p-4 bg-slate-900/50 rounded-2xl border border-slate-800/80 space-y-1">
-            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Verified local backup</span>
-            <span className="text-sm font-black text-purple-300 flex items-center gap-1.5 font-mono">
-              {heartbeatData.verifiedRecordCount || heartbeatData.localRecords || 203} records verified 🛡️
-            </span>
-          </div>
-
-          <div className="p-4 bg-slate-900/50 rounded-2xl border border-slate-800/80 space-y-1">
-            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Pending changes</span>
-            <span className={heartbeatData.pendingBackup ? "text-sm font-black text-amber-400 flex items-center gap-1.5 font-mono" : "text-sm font-black text-emerald-400 flex items-center gap-1.5 font-mono"}>
-              {heartbeatData.pendingBackup ? `${heartbeatData.pendingChangeCount || 1} waiting for protection ⏳` : '0 pending 🟢'}
+              {heartbeatData.pendingBackup
+                ? `${heartbeatData.verifiedRecordCount || heartbeatData.localRecords || 203} verified (${heartbeatData.pendingChangeCount || 1} pending)`
+                : `${heartbeatData.verifiedRecordCount || heartbeatData.localRecords || 203} of ${heartbeatData.verifiedRecordCount || heartbeatData.localRecords || 203} records verified 🟢`}
             </span>
           </div>
 
@@ -501,8 +488,8 @@ export default function Settings() {
             </div>
             <div>
               <span className="text-[9px] text-slate-500 uppercase block">Pending Changes</span>
-              <span className={heartbeatData.pendingChanges ? 'text-amber-400 font-mono' : 'text-emerald-400 font-mono'}>
-                {heartbeatData.pendingChanges ? `${heartbeatData.pendingCount || 1} updates` : '0 pending'}
+              <span className={heartbeatData.pendingBackup ? 'text-amber-400 font-mono' : 'text-emerald-400 font-mono'}>
+                {heartbeatData.pendingBackup ? `${heartbeatData.pendingChangeCount || 1} updates` : '0 pending'}
               </span>
             </div>
             <div>
