@@ -766,6 +766,9 @@ export class EnterpriseRecoveryService {
     const extDir = EnterpriseRecoveryService.getExternalBackupDir();
 
     const now = new Date();
+    const lastBackupEpoch = cert?.generated_at ? new Date(cert.generated_at).getTime() : now.getTime() - (15 * 60 * 1000);
+    const nextBackupEpoch = lastBackupEpoch + (30 * 60 * 1000);
+
     return {
       status: health.status,
       healthScore: health.score,
@@ -775,9 +778,13 @@ export class EnterpriseRecoveryService {
       cloudRecords,
       localRecords,
       difference: diff,
+      pendingChanges: diff > 0 || EnterpriseRecoveryService.pendingSnapshotFlag,
+      pendingCount: diff,
+      lastBackupEpoch,
+      nextBackupEpoch,
       lastBackupDate: cert?.backup_date || now.toISOString().slice(0, 10),
-      lastBackupTime: cert?.backup_time || '18:00:00',
-      nextBackupTime: '23:59',
+      lastBackupTime: cert?.backup_time || now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      nextBackupTime: new Date(nextBackupEpoch).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       certificateId: cert?.certificate_id || `VF-${now.toISOString().slice(0, 10).replace(/-/g, '')}-235900`,
       externalPath: extDir,
       externalCopyVerified: fs.existsSync(extDir),

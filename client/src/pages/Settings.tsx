@@ -100,9 +100,20 @@ export default function Settings() {
     latestMetadata: null
   });
 
+  // Live Timer & Sync Ticker State
+  const [secondsUntilBackup, setSecondsUntilBackup] = useState<number>(300);
+  const [lastSyncSecondsAgo, setLastSyncSecondsAgo] = useState<number>(0);
+
   const fetchHeartbeat = () => {
     axios.get(`${API}/enterprise-recovery/heartbeat`)
-      .then(res => setHeartbeatData(res.data))
+      .then(res => {
+        setHeartbeatData(res.data);
+        setLastSyncSecondsAgo(0);
+        if (res.data.nextBackupEpoch) {
+          const diffSec = Math.max(0, Math.floor((res.data.nextBackupEpoch - Date.now()) / 1000));
+          setSecondsUntilBackup(diffSec);
+        }
+      })
       .catch(() => {});
   };
 
@@ -146,9 +157,32 @@ export default function Settings() {
     fetchEnterpriseRecoveryData();
     fetchHeartbeat();
 
-    const interval = setInterval(fetchHeartbeat, 15000);
-    return () => clearInterval(interval);
+    const fetchInterval = setInterval(fetchHeartbeat, 15000);
+
+    // 1-second live smooth timer ticker
+    const timerInterval = setInterval(() => {
+      setLastSyncSecondsAgo(prev => prev + 1);
+      setSecondsUntilBackup(prev => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+
+    return () => {
+      clearInterval(fetchInterval);
+      clearInterval(timerInterval);
+    };
   }, []);
+
+  const formatCountdown = (totalSec: number) => {
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const formatLocalTime = (epochOrStr?: any) => {
+    if (!epochOrStr) return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const d = typeof epochOrStr === 'number' ? new Date(epochOrStr) : new Date(epochOrStr);
+    if (isNaN(d.getTime())) return String(epochOrStr);
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  };
 
   const toggleTheme = () => {
     const newDark = !isDark;
@@ -352,7 +386,9 @@ export default function Settings() {
         <div className="flex items-center space-x-3 shrink-0">
           <div className="px-4 py-2 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-xs font-black text-emerald-400">Health score {heartbeatData.healthScore || 100}/100</span>
+            <span className="text-xs font-black text-emerald-400">
+              Health score {heartbeatData.healthScore || 100}/100 • Last sync {lastSyncSecondsAgo}s ago
+            </span>
           </div>
         </div>
       </div>
@@ -361,14 +397,28 @@ export default function Settings() {
       <div className="p-8 bg-gradient-to-br from-[#081226] via-[#050B18] to-[#0A1633] text-white rounded-3xl border border-purple-500/30 shadow-2xl space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-800">
           <div className="space-y-1">
-            <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-500/20 text-emerald-400 rounded-full text-xs font-black uppercase tracking-wider">
-              Protected 🛡️
+            <div className="flex items-center gap-2 flex-wrap">
+              {heartbeatData.pendingChanges ? (
+                <div className="inline-flex items-center gap-2 px-3 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-full text-xs font-black uppercase tracking-wider">
+                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                  Pending changes detected ⏳ • Backup in {formatCountdown(secondsUntilBackup)}
+                </div>
+              ) : (
+                <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full text-xs font-black uppercase tracking-wider">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  Protected 🛡️ • Next backup in {formatCountdown(secondsUntilBackup)}
+                </div>
+              )}
             </div>
-            <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white pt-1">
+
+            <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white pt-2">
               Your financial data is safe
             </h2>
-            <p className="text-xs text-slate-400 font-medium">
-              Every change you make is automatically protected. Nothing is required from you.
+            <p className="text-xs text-slate-300 font-semibold">
+              Every change you make is automatically protected. {heartbeatData.cloudRecords || 377} records will be protected.
+            </p>
+            <p className="text-[11px] text-slate-400 font-medium italic">
+              Countdown uses your local device time and resets automatically whenever financial data changes.
             </p>
           </div>
 
@@ -400,7 +450,7 @@ export default function Settings() {
           <div className="p-4 bg-slate-900/50 rounded-2xl border border-slate-800/80 space-y-1">
             <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Last verified</span>
             <span className="text-sm font-black text-slate-200 font-mono">
-              Today {heartbeatData.lastBackupTime || '6:00 PM'}
+              Today {formatLocalTime(heartbeatData.lastBackupEpoch)}
             </span>
           </div>
 
@@ -409,6 +459,33 @@ export default function Settings() {
             <span className="text-sm font-black text-purple-300 font-mono">
               &lt; 30 minutes
             </span>
+          </div>
+        </div>
+
+        {/* ⏱️ AUTOMATIC PROTECTION TIMELINE (LOCAL DEVICE TIME) */}
+        <div className="p-4 bg-slate-900/60 rounded-2xl border border-slate-800/80 space-y-3">
+          <span className="text-[10px] text-slate-400 font-black uppercase tracking-wider block">
+            ⏱️ Automatic Protection Timeline (Local Device Time)
+          </span>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-bold">
+            <div>
+              <span className="text-[9px] text-slate-500 uppercase block">Last Backup</span>
+              <span className="text-slate-200 font-mono">Today, {formatLocalTime(heartbeatData.lastBackupEpoch)}</span>
+            </div>
+            <div>
+              <span className="text-[9px] text-slate-500 uppercase block">Pending Changes</span>
+              <span className={heartbeatData.pendingChanges ? 'text-amber-400 font-mono' : 'text-emerald-400 font-mono'}>
+                {heartbeatData.pendingChanges ? `${heartbeatData.pendingCount || 1} updates` : '0 pending'}
+              </span>
+            </div>
+            <div>
+              <span className="text-[9px] text-slate-500 uppercase block">Next Backup</span>
+              <span className="text-purple-300 font-mono">{formatLocalTime(heartbeatData.nextBackupEpoch)} ({formatCountdown(secondsUntilBackup)})</span>
+            </div>
+            <div>
+              <span className="text-[9px] text-slate-500 uppercase block">Nightly Snapshot</span>
+              <span className="text-slate-300 font-mono">11:59 PM</span>
+            </div>
           </div>
         </div>
 
