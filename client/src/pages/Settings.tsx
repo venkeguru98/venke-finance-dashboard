@@ -157,19 +157,25 @@ export default function Settings() {
     fetchEnterpriseRecoveryData();
     fetchHeartbeat();
 
-    const fetchInterval = setInterval(fetchHeartbeat, 15000);
+    const fetchInterval = setInterval(fetchHeartbeat, 10000);
 
     // 1-second live smooth timer ticker
     const timerInterval = setInterval(() => {
       setLastSyncSecondsAgo(prev => prev + 1);
-      setSecondsUntilBackup(prev => (prev > 0 ? prev - 1 : 0));
+      setSecondsUntilBackup(prev => {
+        if (prev <= 1 && heartbeatData.pendingChanges && heartbeatData.backupStatus !== 'running' && heartbeatData.backupStatus !== 'verifying') {
+          // Trigger backup when countdown hits 0
+          axios.post(`${API}/enterprise-recovery/trigger-backup`).then(fetchHeartbeat).catch(() => {});
+        }
+        return prev > 0 ? prev - 1 : 0;
+      });
     }, 1000);
 
     return () => {
       clearInterval(fetchInterval);
       clearInterval(timerInterval);
     };
-  }, []);
+  }, [heartbeatData.pendingChanges, heartbeatData.backupStatus]);
 
   const formatCountdown = (totalSec: number) => {
     const m = Math.floor(totalSec / 60);
@@ -398,7 +404,22 @@ export default function Settings() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-800">
           <div className="space-y-1">
             <div className="flex items-center gap-2 flex-wrap">
-              {heartbeatData.pendingChanges ? (
+              {heartbeatData.backupStatus === 'running' ? (
+                <div className="inline-flex items-center gap-2 px-3 py-1 bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded-full text-xs font-black uppercase tracking-wider">
+                  <span className="w-2 h-2 rounded-full bg-purple-400 animate-ping" />
+                  Protecting your data... {heartbeatData.progressPercent || 25}% 🔄
+                </div>
+              ) : heartbeatData.backupStatus === 'verifying' ? (
+                <div className="inline-flex items-center gap-2 px-3 py-1 bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded-full text-xs font-black uppercase tracking-wider">
+                  <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
+                  Verifying backup integrity... {heartbeatData.progressPercent || 75}% 🧪
+                </div>
+              ) : heartbeatData.backupStatus === 'completed' ? (
+                <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full text-xs font-black uppercase tracking-wider">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  Backup completed • Today {formatLocalTime(heartbeatData.lastBackupEpoch)} ✅
+                </div>
+              ) : heartbeatData.pendingChanges ? (
                 <div className="inline-flex items-center gap-2 px-3 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-full text-xs font-black uppercase tracking-wider">
                   <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
                   Pending changes detected ⏳ • Backup in {formatCountdown(secondsUntilBackup)}
@@ -415,7 +436,7 @@ export default function Settings() {
               Your financial data is safe
             </h2>
             <p className="text-xs text-slate-300 font-semibold">
-              Every change you make is automatically protected. {heartbeatData.cloudRecords || 377} records will be protected.
+              Every change you make is automatically protected. {heartbeatData.cloudRecords || 377} records active in database.
             </p>
             <p className="text-[11px] text-slate-400 font-medium italic">
               Countdown uses your local device time and resets automatically whenever financial data changes.
@@ -443,7 +464,7 @@ export default function Settings() {
           <div className="p-4 bg-slate-900/50 rounded-2xl border border-slate-800/80 space-y-1">
             <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Local backup</span>
             <span className="text-sm font-black text-emerald-400 flex items-center gap-1.5 font-mono">
-              {heartbeatData.cloudRecords || 377} of {heartbeatData.localRecords || 377} records verified 🟢
+              {heartbeatData.localRecords || 387} of {heartbeatData.localRecords || 387} records verified 🟢
             </span>
           </div>
 

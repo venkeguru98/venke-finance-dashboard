@@ -15,13 +15,23 @@ router.get('/status', async (_req, res) => {
   }
 });
 
-// GET /api/enterprise-recovery/heartbeat
-router.get('/heartbeat', async (_req, res) => {
+// GET /api/enterprise-recovery/backup-status
+router.get('/backup-status', async (_req, res) => {
   try {
-    const heartbeat = await EnterpriseRecoveryService.getSystemRecoveryStatus();
-    res.json(heartbeat);
+    const status = await EnterpriseRecoveryService.getSystemRecoveryStatus();
+    res.json(status);
   } catch (err: any) {
-    res.status(500).json({ error: err.message || 'Error fetching heartbeat status' });
+    res.status(500).json({ error: err.message || 'Error fetching backup status' });
+  }
+});
+
+// POST /api/enterprise-recovery/trigger-backup
+router.post('/trigger-backup', async (_req, res) => {
+  try {
+    const result = await EnterpriseRecoveryService.createDailyImmutableSnapshot('automatic');
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Error triggering backup' });
   }
 });
 
