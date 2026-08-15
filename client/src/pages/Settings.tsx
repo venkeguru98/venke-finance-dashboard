@@ -100,15 +100,13 @@ export default function Settings() {
     latestMetadata: null
   });
 
-  // Live Timer & Sync Ticker State
+  // Live Timer State
   const [secondsUntilBackup, setSecondsUntilBackup] = useState<number>(300);
-  const [lastSyncSecondsAgo, setLastSyncSecondsAgo] = useState<number>(0);
 
   const fetchHeartbeat = () => {
-    axios.get(`${API}/enterprise-recovery/heartbeat`)
+    axios.get(`${API}/enterprise-recovery/backup-status`)
       .then(res => {
         setHeartbeatData(res.data);
-        setLastSyncSecondsAgo(0);
         if (res.data.nextBackupEpoch) {
           const diffSec = Math.max(0, Math.floor((res.data.nextBackupEpoch - Date.now()) / 1000));
           setSecondsUntilBackup(diffSec);
@@ -161,7 +159,6 @@ export default function Settings() {
 
     // 1-second live smooth timer ticker
     const timerInterval = setInterval(() => {
-      setLastSyncSecondsAgo(prev => prev + 1);
       setSecondsUntilBackup(prev => {
         if (prev <= 1) {
           axios.post(`${API}/enterprise-recovery/trigger-backup`).then(fetchHeartbeat).catch(() => {});
