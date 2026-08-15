@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import path from 'path';
 import fs from 'fs';
-import { EnterpriseRecoveryService } from '../services/EnterpriseRecoveryService';
+import { EnterpriseRecoveryService, getBackupRootDir } from '../services/EnterpriseRecoveryService';
 
 const router = Router();
 
@@ -18,135 +18,69 @@ router.get('/status', async (_req, res) => {
 // GET /api/enterprise-recovery/heartbeat
 router.get('/heartbeat', async (_req, res) => {
   try {
-    const heartbeat = await EnterpriseRecoveryService.getHeartbeatStatus();
+    const heartbeat = await EnterpriseRecoveryService.getSystemRecoveryStatus();
     res.json(heartbeat);
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Error fetching heartbeat status' });
   }
 });
 
-// GET /api/enterprise-recovery/list
-router.get('/list', (_req, res) => {
+// GET /api/enterprise-recovery/ledger
+router.get('/ledger', async (_req, res) => {
   try {
-    const backups = EnterpriseRecoveryService.listAllBackups();
-    res.json({ backups, count: backups.length });
+    const entries = await EnterpriseRecoveryService.getLedgerEntries(50);
+    res.json({ entries, count: entries.length });
   } catch (err: any) {
-    res.status(500).json({ error: err.message || 'Error listing recovery backups' });
+    res.status(500).json({ error: err.message || 'Error fetching backup ledger' });
   }
 });
 
-// POST /api/enterprise-recovery/create-daily
-router.post('/create-daily', async (_req, res) => {
+// GET /api/enterprise-recovery/health
+router.get('/health', async (_req, res) => {
   try {
-    const result = await EnterpriseRecoveryService.createDailyImmutableSnapshot('manual');
+    const health = await EnterpriseRecoveryService.calculateBackupHealthScore();
+    res.json(health);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Error calculating health score' });
+  }
+});
+
+// GET /api/enterprise-recovery/external-path
+router.get('/external-path', (_req, res) => {
+  try {
+    const externalPath = EnterpriseRecoveryService.getExternalBackupDir();
+    const exists = fs.existsSync(externalPath);
+    res.json({ externalPath, verified: exists });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/enterprise-recovery/external-path
+router.post('/external-path', (req, res) => {
+  try {
+    const { customPath } = req.body || {};
+    if (!customPath) return res.status(400).json({ error: 'customPath is required' });
+    const result = EnterpriseRecoveryService.setExternalBackupDir(customPath);
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: err.message || 'Error creating daily immutable snapshot' });
+    res.status(500).json({ error: err.message });
   }
 });
 
-// POST /api/enterprise-recovery/create-migration-package
-router.post('/create-migration-package', async (_req, res) => {
+// GET /api/enterprise-recovery/download-golden-bundle
+router.get('/download-golden-bundle', (_req, res) => {
   try {
-    const result = await EnterpriseRecoveryService.createProductionMigrationPackage();
-    res.json(result);
+    const backupRoot = getBackupRootDir();
+    const bundlePath = path.join(backupRoot, 'latest', 'latest_recovery_bundle.zip');
+
+    if (!fs.existsSync(bundlePath)) {
+      return res.status(404).json({ error: 'Golden recovery bundle not yet generated' });
+    }
+
+    res.download(bundlePath, 'latest_recovery_bundle.zip');
   } catch (err: any) {
-    res.status(500).json({ error: err.message || 'Error generating production migration package' });
-  }
-});
-
-// POST /api/enterprise-recovery/simulate-restore
-router.post('/simulate-restore', async (_req, res) => {
-  try {
-    const result = await EnterpriseRecoveryService.runRecoveryReadinessSimulation();
-    res.json(result);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message || 'Error running restore simulation' });
-  }
-});
-
-// POST /api/enterprise-recovery/compare
-router.post('/compare', async (req, res) => {
-  try {
-    const { snapshotPath } = req.body || {};
-    if (!snapshotPath) {
-      return res.status(400).json({ error: 'snapshotPath is required' });
-    }
-    const result = await EnterpriseRecoveryService.compareSnapshotWithLive(snapshotPath);
-    res.json(result);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message || 'Error comparing snapshot' });
-  }
-});
-
-// POST /api/enterprise-recovery/restore
-router.post('/restore', async (req, res) => {
-  try {
-    const { snapshotPath } = req.body || {};
-    if (!snapshotPath) {
-      return res.status(400).json({ error: 'snapshotPath is required' });
-    }
-    const result = await EnterpriseRecoveryService.restoreFromSnapshot(snapshotPath);
-    res.json(result);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message || 'Error restoring from snapshot' });
-  }
-});
-
-// PUT /api/enterprise-recovery/retention
-router.put('/retention', (req, res) => {
-  try {
-    const { days } = req.body || {};
-    const retentionDays = Number(days);
-    if (isNaN(retentionDays)) {
-      return res.status(400).json({ error: 'Valid retention days required' });
-    }
-    const result = EnterpriseRecoveryService.setRetentionDays(retentionDays);
-    res.json(result);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message || 'Error updating retention policy' });
-  }
-});
-
-// GET /api/enterprise-recovery/export
-router.get('/export', (req, res) => {
-  try {
-    const { filePath, folder } = req.query || {};
-    const targetPath = (filePath || folder || '') as string;
-
-    if (!targetPath) {
-      return res.status(400).json({ error: 'filePath or folder parameter required' });
-    }
-
-    const backupRoot = path.resolve(__dirname, '../../../backups');
-    let resolvedPath = path.resolve(targetPath);
-
-    if (!resolvedPath.startsWith(backupRoot)) {
-      resolvedPath = path.join(backupRoot, targetPath);
-    }
-
-    if (!fs.existsSync(resolvedPath)) {
-      return res.status(404).json({ error: 'Requested backup file or folder not found' });
-    }
-
-    // If target is a directory, locate .zip or .sqlite file inside
-    if (fs.statSync(resolvedPath).isDirectory()) {
-      const files = fs.readdirSync(resolvedPath);
-      const zipFile = files.find(f => f.endsWith('.zip'));
-      const sqliteFile = files.find(f => f.endsWith('.sqlite'));
-
-      if (zipFile) {
-        resolvedPath = path.join(resolvedPath, zipFile);
-      } else if (sqliteFile) {
-        resolvedPath = path.join(resolvedPath, sqliteFile);
-      } else {
-        return res.status(404).json({ error: 'No downloadable snapshot file found in directory' });
-      }
-    }
-
-    res.download(resolvedPath, path.basename(resolvedPath));
-  } catch (err: any) {
-    res.status(500).json({ error: err.message || 'Error exporting backup file' });
+    res.status(500).json({ error: err.message });
   }
 });
 

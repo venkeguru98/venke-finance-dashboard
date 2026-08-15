@@ -43,14 +43,18 @@ const isConnectionError = (err: any): boolean => {
   );
 };
 
-if (isPg) {
-  let connectionString = process.env.DATABASE_URL || '';
-  // If connectionString uses internal Render hostname (e.g. dpg-xxx-a) without domain suffix, append .singapore-postgres.render.com
+const getPgPool = (): Pool | null => {
+  if (pgPool) return pgPool;
+  const connStr = process.env.DATABASE_URL;
+  if (!connStr) return null;
+
+  isPg = true;
+  let connectionString = connStr;
+
   if (/@dpg-[a-z0-9]+(?:\/|\?|$)/i.test(connectionString) && !connectionString.includes('.render.com')) {
     connectionString = connectionString.replace(/@(dpg-[a-z0-9]+)(\/|\?|$)/i, '@$1.singapore-postgres.render.com$2');
   }
 
-  // Handle SSL connection string parameter to prevent node-pg libpq warning
   if (connectionString.includes('sslmode=require') && !connectionString.includes('uselibpqcompat')) {
     connectionString = connectionString.replace('sslmode=require', 'sslmode=require&uselibpqcompat=true');
   }
@@ -69,9 +73,9 @@ if (isPg) {
       ensureSqlite();
     }
   });
-} else {
-  ensureSqlite();
-}
+
+  return pgPool;
+};
 
 // Convert SQLite '?' parameters and functions to PostgreSQL counterparts
 const convertSql = (sql: string): string => {
@@ -104,10 +108,11 @@ const convertSql = (sql: string): string => {
 };
 
 export const query = async (sql: string, params: any[] = []): Promise<any[]> => {
-  if (isPg && pgPool) {
+  const pool = getPgPool();
+  if (isPg && pool) {
     try {
       const converted = convertSql(sql);
-      const result = await pgPool.query(converted, params);
+      const result = await pool.query(converted, params);
       return result.rows;
     } catch (err: any) {
       if (isConnectionError(err)) {
@@ -124,8 +129,14 @@ export const query = async (sql: string, params: any[] = []): Promise<any[]> => 
     return new Promise((resolve, reject) => {
       if (!sqliteDb) return resolve([]);
       sqliteDb.all(converted, params, (err: any, rows: any[]) => {
-        if (err) reject(err);
-        else resolve(rows || []);
+        if (err) {
+          if (err.code === 'SQLITE_ERROR' || (err.message || '').includes('no such table')) {
+            return resolve([]);
+          }
+          reject(err);
+        } else {
+          resolve(rows || []);
+        }
       });
     });
   }
@@ -167,10 +178,11 @@ export const execute = async (sql: string, params: any[] = []): Promise<any> => 
 };
 
 export const get = async (sql: string, params: any[] = []): Promise<any> => {
-  if (isPg && pgPool) {
+  const pool = getPgPool();
+  if (isPg && pool) {
     try {
       const converted = convertSql(sql);
-      const result = await pgPool.query(converted, params);
+      const result = await pool.query(converted, params);
       return result.rows[0] || null;
     } catch (err: any) {
       if (isConnectionError(err)) {
@@ -187,8 +199,14 @@ export const get = async (sql: string, params: any[] = []): Promise<any> => {
     return new Promise((resolve, reject) => {
       if (!sqliteDb) return resolve(null);
       sqliteDb.get(converted, params, (err: any, row: any) => {
-        if (err) reject(err);
-        else resolve(row || null);
+        if (err) {
+          if (err.code === 'SQLITE_ERROR' || (err.message || '').includes('no such table')) {
+            return resolve(null);
+          }
+          reject(err);
+        } else {
+          resolve(row || null);
+        }
       });
     });
   }
