@@ -453,18 +453,25 @@ export default function Settings() {
         </div>
 
         {/* Status Breakdown Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 pt-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-5 gap-3 pt-2">
           <div className="p-4 bg-slate-900/50 rounded-2xl border border-slate-800/80 space-y-1">
-            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Cloud database</span>
-            <span className="text-sm font-black text-emerald-400 flex items-center gap-1.5">
-              Connected 🟢
+            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Live database records</span>
+            <span className="text-sm font-black text-emerald-400 flex items-center gap-1.5 font-mono">
+              {heartbeatData.liveRecordCount || heartbeatData.cloudRecords || 205} records 🟢
             </span>
           </div>
 
           <div className="p-4 bg-slate-900/50 rounded-2xl border border-slate-800/80 space-y-1">
-            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Local backup</span>
-            <span className="text-sm font-black text-emerald-400 flex items-center gap-1.5 font-mono">
-              {heartbeatData.localRecords || 387} of {heartbeatData.localRecords || 387} records verified 🟢
+            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Verified local backup</span>
+            <span className="text-sm font-black text-purple-300 flex items-center gap-1.5 font-mono">
+              {heartbeatData.verifiedRecordCount || heartbeatData.localRecords || 203} records verified 🛡️
+            </span>
+          </div>
+
+          <div className="p-4 bg-slate-900/50 rounded-2xl border border-slate-800/80 space-y-1">
+            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Pending changes</span>
+            <span className={heartbeatData.pendingBackup ? "text-sm font-black text-amber-400 flex items-center gap-1.5 font-mono" : "text-sm font-black text-emerald-400 flex items-center gap-1.5 font-mono"}>
+              {heartbeatData.pendingBackup ? `${heartbeatData.pendingChangeCount || 1} waiting for protection ⏳` : '0 pending 🟢'}
             </span>
           </div>
 

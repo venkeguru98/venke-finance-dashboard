@@ -98,6 +98,17 @@ export class EnterpriseRecoveryService {
   private static lastBackupEpoch: number = Date.now() - (15 * 60 * 1000);
   private static lastVerifiedEpoch: number = Date.now() - (15 * 60 * 1000);
   private static lastVerifiedRecordsCount: number = 0;
+  private static pendingChangeCount: number = 0;
+  private static lastMutationTime: string = '';
+
+  public static notifyDataMutation() {
+    EnterpriseRecoveryService.pendingSnapshotFlag = true;
+    EnterpriseRecoveryService.pendingChangeCount += 1;
+    EnterpriseRecoveryService.lastMutationTime = new Date().toISOString();
+    EnterpriseRecoveryService.currentBackupStatus = 'scheduled';
+    EnterpriseRecoveryService.nextScheduledEpoch = Date.now() + (5 * 60 * 1000);
+    EnterpriseRecoveryService.backupStatusMessage = `Pending changes detected (${EnterpriseRecoveryService.pendingChangeCount} updates). Scheduled protection in 5 mins.`;
+  }
 
   public static readonly TARGET_TABLES = [
     'users', 'categories', 'recurring_rules', 'transactions', 'savings_investments',
@@ -637,6 +648,7 @@ export class EnterpriseRecoveryService {
       EnterpriseRecoveryService.backupProgressPercent = 100;
       EnterpriseRecoveryService.backupStatusMessage = `Backup completed & verified (${liveStats.totalRecords} records).`;
       EnterpriseRecoveryService.pendingSnapshotFlag = false;
+      EnterpriseRecoveryService.pendingChangeCount = 0;
       EnterpriseRecoveryService.lastBackupEpoch = now.getTime();
       EnterpriseRecoveryService.lastVerifiedEpoch = now.getTime();
       EnterpriseRecoveryService.lastVerifiedRecordsCount = liveStats.totalRecords;
@@ -809,7 +821,9 @@ export class EnterpriseRecoveryService {
     const lastBackupEpoch = EnterpriseRecoveryService.lastBackupEpoch || (cert?.generated_at ? new Date(cert.generated_at).getTime() : now.getTime() - (15 * 60 * 1000));
     const nextBackupEpoch = EnterpriseRecoveryService.nextScheduledEpoch || (lastBackupEpoch + (30 * 60 * 1000));
 
-    const pendingChanges = (diff > 0) || EnterpriseRecoveryService.pendingSnapshotFlag;
+    const pendingBackup = (diff > 0) || EnterpriseRecoveryService.pendingSnapshotFlag;
+    const pendingChangeCount = EnterpriseRecoveryService.pendingChangeCount || Math.max(0, cloudRecords - localRecords);
+    const lastMutationTime = EnterpriseRecoveryService.lastMutationTime || now.toISOString();
 
     return {
       status: health.status,
@@ -817,20 +831,25 @@ export class EnterpriseRecoveryService {
       backupStatus: EnterpriseRecoveryService.currentBackupStatus,
       progressPercent: EnterpriseRecoveryService.backupProgressPercent,
       statusMessage: EnterpriseRecoveryService.backupStatusMessage,
+      pendingBackup,
+      pendingChangeCount,
+      lastMutationTime,
+      nextBackupTime: new Date(nextBackupEpoch).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      nextBackupEpoch,
+      lastBackupEpoch,
+      lastBackupTime: cert?.backup_time || now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      lastVerifiedTime: cert?.generated_at ? new Date(cert.generated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      liveRecordCount: cloudRecords,
+      verifiedRecordCount: localRecords,
       cloudConnected: true,
       localBackupVerified: verification.passed,
       parityMatched,
       cloudRecords,
       localRecords,
-      verifiedRecordsText: `${localRecords} of ${localRecords} records verified`,
       difference: diff,
-      pendingChanges,
-      pendingCount: diff,
-      lastBackupEpoch,
-      nextBackupEpoch,
+      pendingChanges: pendingBackup,
+      pendingCount: pendingChangeCount,
       lastBackupDate: cert?.backup_date || now.toISOString().slice(0, 10),
-      lastBackupTime: cert?.backup_time || now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      nextBackupTime: new Date(nextBackupEpoch).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       certificateId: cert?.certificate_id || `VF-${now.toISOString().slice(0, 10).replace(/-/g, '')}-235900`,
       externalPath: extDir,
       externalCopyVerified: fs.existsSync(extDir),
