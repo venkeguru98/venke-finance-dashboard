@@ -17,10 +17,10 @@ export default function Button({
   const baseStyles = "inline-flex items-center justify-center font-medium rounded-xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed";
   
   const variants = {
-    primary: "bg-primary text-white hover:bg-blue-700 shadow-md shadow-primary/20 focus:ring-primary",
-    secondary: "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 focus:ring-slate-500",
-    danger: "bg-danger text-white hover:bg-red-700 shadow-md shadow-danger/20 focus:ring-danger",
-    ghost: "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100",
+    primary: "text-white shadow-md focus:ring-2",
+    secondary: "border hover:opacity-90 focus:ring-2",
+    danger: "bg-red-600 text-white hover:bg-red-700 shadow-md focus:ring-red-500",
+    ghost: "hover:bg-white/10 hover:text-white",
   };
   
   const sizes = {
@@ -29,8 +29,26 @@ export default function Button({
     lg: "px-6 py-3 text-base",
   };
 
+  const getCustomStyle = () => {
+    if (variant === 'primary') {
+      return {
+        backgroundColor: 'var(--accent-primary)',
+        boxShadow: '0 4px 14px var(--accent-glow)'
+      };
+    }
+    if (variant === 'secondary') {
+      return {
+        backgroundColor: 'var(--bg-card)',
+        borderColor: 'var(--border-color)',
+        color: 'var(--text-primary)'
+      };
+    }
+    return {};
+  };
+
   return (
     <button
+      style={getCustomStyle()}
       className={`${baseStyles} ${variants[variant]} ${sizes[size]} ${className}`}
       disabled={isLoading || props.disabled}
       {...props}

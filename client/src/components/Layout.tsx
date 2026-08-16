@@ -265,7 +265,11 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
 
       {/* ── 1. THREE-ZONE HEADER WITH SCROLL-AWARE FLOATING COMMAND DOCK ─────── */}
       <header
-        className={`fixed top-0 left-0 right-0 flex items-center justify-between px-4 sm:px-8 z-[1000] border-b border-[#1E2A44]/80 bg-[#081226]/85 backdrop-blur-2xl w-full transition-all duration-220 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+        style={{
+          backgroundColor: themeData.bgSecondary + 'E6', // ~90% opacity backdrop
+          borderColor: themeData.borderColor
+        }}
+        className={`fixed top-0 left-0 right-0 flex items-center justify-between px-4 sm:px-8 z-[1000] border-b backdrop-blur-2xl w-full transition-all duration-220 ease-[cubic-bezier(0.16,1,0.3,1)] ${
           isAtTop ? 'h-[72px]' : 'h-[58px] shadow-[0_16px_40px_rgba(0,0,0,0.5)]'
         } ${
           isHeaderVisible
@@ -280,17 +284,20 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
             onClick={() => navigate('/')} 
             className="flex items-center space-x-3 cursor-pointer group"
           >
-            <div className={`rounded-xl bg-gradient-to-br from-[#8B5CF6] via-[#4F7CFF] to-[#A855F7] flex items-center justify-center text-white animate-logo-glow group-hover:scale-105 transition-all duration-200 shrink-0 ${
-              isAtTop ? 'w-10 h-10' : 'w-8 h-8'
-            }`}>
+            <div 
+              style={{ background: `linear-gradient(135deg, ${themeData.accentPrimary}, ${themeData.accentSecondary})` }}
+              className={`rounded-xl flex items-center justify-center text-white animate-logo-glow group-hover:scale-105 transition-all duration-200 shrink-0 ${
+                isAtTop ? 'w-10 h-10' : 'w-8 h-8'
+              }`}
+            >
               <Wallet className={isAtTop ? "w-5 h-5" : "w-4 h-4"} />
             </div>
             <div className="flex flex-col">
-              <span className="font-extrabold text-xs tracking-tight text-white uppercase leading-none font-sans">
+              <span className="font-extrabold text-xs tracking-tight uppercase leading-none font-sans" style={{ color: themeData.textPrimary }}>
                 VENKE FINANCE
               </span>
               {isAtTop && (
-                <span className="text-[8px] font-black uppercase tracking-widest text-[#8B5CF6] mt-1 animate-in fade-in duration-150">
+                <span className="text-[8px] font-black uppercase tracking-widest mt-1 animate-in fade-in duration-150" style={{ color: themeData.accentPrimary }}>
                   Track • Save • Grow
                 </span>
               )}
@@ -303,7 +310,11 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
           <nav
             onMouseEnter={handleDockMouseEnter}
             onMouseLeave={handleDockMouseLeave}
-            className={`flex items-center space-x-1.5 px-3 rounded-[24px] backdrop-blur-2xl bg-[#081226]/90 border border-[#1E2A44] shadow-[0_16px_50px_rgba(0,0,0,0.5)] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] max-w-full overflow-x-auto no-scrollbar will-change-transform ${
+            style={{
+              backgroundColor: themeData.bgCard + 'F2',
+              borderColor: themeData.borderColor
+            }}
+            className={`flex items-center space-x-1.5 px-3 rounded-[24px] backdrop-blur-2xl border shadow-[0_16px_50px_rgba(0,0,0,0.5)] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] max-w-full overflow-x-auto no-scrollbar will-change-transform ${
               isAtTop ? 'h-[64px]' : 'h-[48px]'
             } ${
               showLabels ? 'px-4' : 'px-2.5'

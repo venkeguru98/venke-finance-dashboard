@@ -4,9 +4,9 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { Plus, Search, RefreshCw, Flame, LayoutGrid, CheckCircle2, Target, TrendingUp, Info, X, ChevronLeft, ChevronRight, ArrowRightLeft, Sparkles, Wallet, Calendar, ShieldCheck } from 'lucide-react';
 import axios from 'axios';
 import Button from '../components/ui/Button';
+import { useTheme } from '../context/ThemeContext';
 
 const API = window.location.port === '5173' ? 'http://localhost:5000/api' : '/api';
-const COLORS = ['#F59E0B', '#8B5CF6', '#3B82F6', '#EC4899', '#10B981', '#EF4444', '#06B6D4', '#F97316'];
 
 const formatLocalYYYYMM = (date: Date) => {
   const y = date.getFullYear();
@@ -118,6 +118,8 @@ const DEFAULT_WIDGETS = {
 };
 
 export default function Dashboard() {
+  const { chartColors } = useTheme();
+  const COLORS = chartColors;
   // Global Dashboard month context (persisted or defaulting to latest transaction month)
   const [now, setNow] = useState(() => {
     const saved = localStorage.getItem('dashboard_selected_month');

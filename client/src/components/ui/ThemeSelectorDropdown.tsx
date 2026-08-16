@@ -45,13 +45,13 @@ export const ThemeSelectorDropdown: React.FC = () => {
         {/* Active Theme Indicator Glow Dot */}
         <span 
           className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border border-[#081226] shadow-sm animate-pulse"
-          style={{ backgroundColor: themeData.accent }}
+          style={{ backgroundColor: themeData.accentPrimary }}
         />
       </button>
 
       {/* Premium Theme Dropdown Panel */}
       {isOpen && (
-        <div className="absolute right-0 mt-3 w-72 rounded-2xl bg-[#081226]/95 border border-[#1E2A44] shadow-[0_20px_50px_rgba(0,0,0,0.7)] backdrop-blur-2xl z-[1100] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        <div className="absolute right-0 mt-3 w-80 rounded-2xl bg-[#081226]/95 border border-[#1E2A44] shadow-[0_20px_50px_rgba(0,0,0,0.7)] backdrop-blur-2xl z-[1100] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
           
           {/* Header */}
           <div className="px-4 py-3 border-b border-[#1E2A44] bg-[#0A1633]/60 flex items-center justify-between">
@@ -62,7 +62,7 @@ export const ThemeSelectorDropdown: React.FC = () => {
               </span>
             </div>
             <span className="text-[10px] font-mono text-slate-400 bg-white/5 px-2 py-0.5 rounded-md border border-white/10">
-              {THEMES.length} Themes
+              {THEMES.length} Profiles
             </span>
           </div>
 
@@ -110,12 +110,11 @@ export const ThemeSelectorDropdown: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Gradient Swatch Preview Pill */}
-                  <div className="flex items-center space-x-1 shrink-0 ml-2">
-                    <div
-                      className="w-3.5 h-3.5 rounded-full border border-white/20 shadow-sm"
-                      style={{ background: `linear-gradient(135deg, ${t.swatch[0]}, ${t.swatch[1]})` }}
-                    />
+                  {/* 3-Color Miniature Preview Dots */}
+                  <div className="flex items-center space-x-1 shrink-0 ml-2 bg-black/40 px-2 py-1 rounded-lg border border-white/10">
+                    <span className="w-2.5 h-2.5 rounded-full border border-white/20 shadow-sm" title="Background Color" style={{ backgroundColor: t.swatch[0] }} />
+                    <span className="w-2.5 h-2.5 rounded-full border border-white/20 shadow-sm" title="Primary Accent" style={{ backgroundColor: t.swatch[1] }} />
+                    <span className="w-2.5 h-2.5 rounded-full border border-white/20 shadow-sm" title="Secondary Accent" style={{ backgroundColor: t.swatch[2] }} />
                   </div>
                 </button>
               );

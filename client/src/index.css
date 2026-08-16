@@ -9,32 +9,55 @@
 
 @layer base {
   :root {
-    --background: #ffffff;
-    --foreground: #0f172a;
-    --card: #ffffff;
-    --card-foreground: #0f172a;
-    --border: #e2e8f0;
-    
-    --primary: #2563EB;
-    --success: #16A34A;
-    --warning: #F59E0B;
-    --danger: #DC2626;
-  }
-  
-  .dark {
-    --background: #0f172a;
-    --foreground: #f8fafc;
-    --card: #1e293b;
-    --card-foreground: #f8fafc;
-    --border: #334155;
+    --bg-primary: #040816;
+    --bg-secondary: #081226;
+    --bg-card: #081226;
+    --bg-card-hover: #0D1B3A;
+    --bg-elevated: #0D1B3A;
+    --border-color: #1E2A44;
+    --border-hover: #8B5CF6;
+    --text-primary: #F8FAFC;
+    --text-secondary: #94A3B8;
+    --text-muted: #64748B;
+    --accent-primary: #8B5CF6;
+    --accent-secondary: #4F7CFF;
+    --accent-glow: rgba(139, 92, 246, 0.4);
+    --success-color: #10B981;
+    --warning-color: #F59E0B;
+    --danger-color: #EF4444;
+
+    --chart-1: #8B5CF6;
+    --chart-2: #3B82F6;
+    --chart-3: #10B981;
+    --chart-4: #F59E0B;
+    --chart-5: #EC4899;
+    --chart-6: #06B6D4;
   }
 
   body {
-    background-color: var(--background);
-    color: var(--foreground);
-    @apply transition-colors duration-200;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    transition: background-color 300ms ease, color 300ms ease;
   }
 }
+
+/* Global Theme Helper Classes */
+.theme-bg-primary { background-color: var(--bg-primary) !important; }
+.theme-bg-secondary { background-color: var(--bg-secondary) !important; }
+.theme-bg-card { background-color: var(--bg-card) !important; }
+.theme-bg-card-hover:hover { background-color: var(--bg-card-hover) !important; }
+.theme-bg-elevated { background-color: var(--bg-elevated) !important; }
+
+.theme-border { border-color: var(--border-color) !important; }
+.theme-border-hover:hover { border-color: var(--border-hover) !important; }
+
+.theme-text-primary { color: var(--text-primary) !important; }
+.theme-text-secondary { color: var(--text-secondary) !important; }
+.theme-text-muted { color: var(--text-muted) !important; }
+
+.theme-accent { color: var(--accent-primary) !important; }
+.theme-bg-accent { background-color: var(--accent-primary) !important; }
+.theme-border-accent { border-color: var(--accent-primary) !important; }
 
 /* Dashboard Micro-Animation Utilities */
 @keyframes fadeInUp {

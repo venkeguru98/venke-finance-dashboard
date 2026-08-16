@@ -2,11 +2,13 @@ import { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
 import axios from 'axios';
 import { RefreshCw, ShieldCheck, HeartPulse, Award } from 'lucide-react';
+import { useTheme } from '../context/ThemeContext';
 
 const API = window.location.port === '5173' ? 'http://localhost:5000/api' : '/api';
-const COLORS = ['#F59E0B', '#8B5CF6', '#3B82F6', '#EC4899', '#10B981', '#EF4444', '#06B6D4', '#F97316'];
 
 export default function Analytics() {
+  const { chartColors } = useTheme();
+  const COLORS = chartColors;
   const [monthlyData, setMonthlyData] = useState<any[]>([]);
   const [categoryData, setCategoryData] = useState<any[]>([]);
   const [summary, setSummary] = useState<any>({ income: 0, expenses: 0, balance: 0, savingsRate: 0 });

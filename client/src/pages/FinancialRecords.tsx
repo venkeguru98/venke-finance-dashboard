@@ -6,6 +6,7 @@ import {
   TrendingUp, Coins, Wallet, CreditCard, ArrowUpRight, CheckCircle2, Layers, Activity
 } from 'lucide-react';
 import { subscribeLicUpdates } from '../utils/licEvents';
+import { useTheme } from '../context/ThemeContext';
 
 // Lazy load sub-modules for extreme performance
 const LicModule = lazy(() => import('../components/records/LicModule'));
@@ -15,9 +16,10 @@ const SavingsModule = lazy(() => import('../components/records/SavingsModule'));
 const DebtModule = lazy(() => import('../components/records/DebtModule'));
 
 const API = window.location.port === '5173' ? 'http://localhost:5000/api' : '/api';
-const COLORS = ['#635BFF', '#06B6D4', '#F59E0B', '#10B981', '#EC4899', '#EF4444', '#3B82F6'];
 
 export default function FinancialRecords() {
+  const { chartColors } = useTheme();
+  const COLORS = chartColors;
   const [subView, setSubView] = useState<null | 'lic' | 'gold' | 'chit' | 'savings' | 'debt' | 'mutual'>(null);
   const [selectedCategory, setSelectedCategory] = useState<'lic' | 'gold' | 'chit' | 'savings' | 'debt' | 'mutual'>('lic');
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'assets' | 'liabilities' | 'investments'>('all');
