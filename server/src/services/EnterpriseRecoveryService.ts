@@ -836,6 +836,9 @@ export class EnterpriseRecoveryService {
       pendingBackup,
       pendingChangeCount,
       lastMutationTime,
+      lastBackupAt: new Date(lastBackupEpoch).toISOString(),
+      lastVerifiedAt: cert?.generated_at || new Date(lastBackupEpoch).toISOString(),
+      nextBackupAt: new Date(nextBackupEpoch).toISOString(),
       nextBackupTime: new Date(nextBackupEpoch).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
       nextBackupEpoch,
       lastBackupEpoch,
@@ -856,6 +859,7 @@ export class EnterpriseRecoveryService {
       externalPath: extDir,
       externalCopyVerified: fs.existsSync(extDir),
       rpo: '< 30 minutes',
+      rpoMinutes: 30,
       recoveryGuarantee: '100% PROVEN RECOVERABLE'
     };
   }

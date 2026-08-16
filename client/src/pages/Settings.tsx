@@ -100,19 +100,32 @@ export default function Settings() {
     latestMetadata: null
   });
 
-  // Live Timer State
-  const [secondsUntilBackup, setSecondsUntilBackup] = useState<number>(300);
+  // Deduplication & Backoff Refs for Monitoring Status Endpoint
+  const isFetchingRef = useRef(false);
+  const isTriggeringRef = useRef(false);
+  const backoffDelayRef = useRef(12000); // Base polling interval: 12s
+  const heartbeatDataRef = useRef<any>(null);
+  const nextBackupEpochRef = useRef<number>(Date.now() + 300000);
 
-  const fetchHeartbeat = () => {
-    axios.get(`${API}/enterprise-recovery/backup-status`)
-      .then(res => {
-        setHeartbeatData(res.data);
-        if (res.data.nextBackupEpoch) {
-          const diffSec = Math.max(0, Math.floor((res.data.nextBackupEpoch - Date.now()) / 1000));
-          setSecondsUntilBackup(diffSec);
-        }
-      })
-      .catch(() => {});
+  const fetchConsolidatedStatus = async () => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+    try {
+      const res = await axios.get(`${API}/enterprise-recovery/status`);
+      setHeartbeatData(res.data);
+      heartbeatDataRef.current = res.data;
+      if (res.data.nextBackupEpoch) {
+        nextBackupEpochRef.current = res.data.nextBackupEpoch;
+        const diffSec = Math.max(0, Math.floor((res.data.nextBackupEpoch - Date.now()) / 1000));
+        setSecondsUntilBackup(diffSec);
+      }
+      backoffDelayRef.current = 12000; // Reset backoff on success
+    } catch (err: any) {
+      console.warn('[DataSafety] Status fetch error or 429 backoff:', err.message);
+      backoffDelayRef.current = Math.min(60000, Math.floor(backoffDelayRef.current * 1.5));
+    } finally {
+      isFetchingRef.current = false;
+    }
   };
 
   const fetchCategories = () => {
@@ -131,44 +144,44 @@ export default function Settings() {
     }
   };
 
-  const fetchSystemStatus = () => {
-    axios.get(`${API}/system/status`)
-      .then(res => setSystemStatus(res.data))
-      .catch(() => console.warn('Could not connect to system status API'));
-  };
-
-  const fetchEnterpriseRecoveryData = () => {
-    axios.get(`${API}/enterprise-recovery/status`)
-      .then(res => setRecoveryStatus(res.data))
-      .catch(() => {});
-
-    axios.get(`${API}/enterprise-recovery/list`)
-      .then(res => setRecoveryBackups(res.data.backups || []))
-      .catch(() => {});
-  };
-
   useEffect(() => {
     fetchCategories();
     axios.get(`${API}/transactions`).then(res => setTxCount(res.data.length)).catch(() => {});
-    fetchSystemStatus();
     fetchTelegramDetails();
-    fetchEnterpriseRecoveryData();
-    fetchHeartbeat();
+    fetchConsolidatedStatus();
 
-    const fetchInterval = setInterval(fetchHeartbeat, 5000);
+    let timeoutId: NodeJS.Timeout;
+    const scheduleNextPoll = () => {
+      timeoutId = setTimeout(async () => {
+        await fetchConsolidatedStatus();
+        scheduleNextPoll();
+      }, backoffDelayRef.current);
+    };
+    scheduleNextPoll();
 
-    // 1-second live smooth timer ticker
+    // 1-second client-side live timer (NO API CALLS FOR TICKER)
     const timerInterval = setInterval(() => {
-      setSecondsUntilBackup(prev => {
-        if (prev <= 1) {
-          axios.post(`${API}/enterprise-recovery/trigger-backup`).then(fetchHeartbeat).catch(() => {});
+      const targetEpoch = nextBackupEpochRef.current;
+      const diffSec = Math.max(0, Math.floor((targetEpoch - Date.now()) / 1000));
+      setSecondsUntilBackup(diffSec);
+
+      // When countdown reaches 0 and pending backup is true, trigger backup once
+      if (diffSec === 0 && heartbeatDataRef.current?.pendingBackup && !isTriggeringRef.current) {
+        const bStatus = heartbeatDataRef.current?.backupStatus;
+        if (bStatus !== 'running' && bStatus !== 'verifying') {
+          isTriggeringRef.current = true;
+          axios.post(`${API}/enterprise-recovery/trigger-backup`)
+            .then(() => fetchConsolidatedStatus())
+            .catch(() => {})
+            .finally(() => {
+              setTimeout(() => { isTriggeringRef.current = false; }, 5000);
+            });
         }
-        return prev > 0 ? prev - 1 : 0;
-      });
+      }
     }, 1000);
 
     return () => {
-      clearInterval(fetchInterval);
+      clearTimeout(timeoutId);
       clearInterval(timerInterval);
     };
   }, []);

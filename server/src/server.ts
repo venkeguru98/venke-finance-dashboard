@@ -75,13 +75,23 @@ app.use(cors({
 }));
 
 // ─── Rate Limiting ─────────────────────────────────────────────────────────
-// Global limiter: 200 requests per 15 minutes
+// Global limiter: 1000 requests per 15 minutes (~67 req/min)
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 200,
+  max: 1000,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests. Please try again later.' },
+  skip: (req) => req.path.startsWith('/api/enterprise-recovery') || req.path.startsWith('/api/health'),
+});
+
+// Dedicated Data Safety status monitoring limiter: 120 polling requests per 15 minutes (~8 req/min)
+const statusLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Data safety monitoring request limit reached. Backing off...' },
 });
 
 // Auth-specific limiter: 15 attempts per 15 minutes (brute-force protection)
@@ -276,6 +286,7 @@ const startServer = async () => {
   app.use('/api/auth', authLimiter, authRoutes);
 
   // ─── API Routes (protected by auth middleware inside router) ──────────────
+  app.use('/api/enterprise-recovery/status', statusLimiter);
   app.use('/api/enterprise-recovery', enterpriseRecoveryRoutes);
   app.use('/api/telegram', telegramRoutes);
   app.use('/api/ai', aiRoutes);
