@@ -365,13 +365,17 @@ router.get('/next-month-commitments', async (req: Request, res: Response) => {
 
     // 3. Digital & Physical Gold
     const goldItems = await query(
-      `SELECT id, investment_name, amount, type FROM digital_gold WHERE user_id = ?`,
+      `SELECT * FROM digital_gold WHERE user_id = ?`,
       [userId]
     );
     for (const g of goldItems) {
-      const amt = Number(g.amount) || 0;
+      const latestTx = await get(
+        `SELECT amount FROM digital_gold_transactions WHERE gold_id = ? ORDER BY id DESC LIMIT 1`,
+        [g.id]
+      );
+      const amt = Number(latestTx?.amount || g.amount || g.monthly_amount || 0);
       if (amt > 0) {
-        const cat = (g.type || '').toLowerCase().includes('physical') ? 'Physical Gold' : 'Digital Gold';
+        const cat = (g.type || g.platform || '').toLowerCase().includes('physical') ? 'Physical Gold' : 'Digital Gold';
         const dueDay = 15;
         commitments.push({
           id: `gold-${g.id}`,
@@ -388,28 +392,55 @@ router.get('/next-month-commitments', async (req: Request, res: Response) => {
       }
     }
 
-    // 4. Debt & EMI Commitments
-    const debtTx = await query(
-      `SELECT id, person_name, amount, type, status FROM debt_transactions WHERE user_id = ? AND status != 'Settled' AND type = 'Borrowed'`,
-      [userId]
-    );
-    for (const d of debtTx) {
-      const amt = Number(d.amount) || 0;
-      if (amt > 0) {
-        const dueDay = 10;
-        commitments.push({
-          id: `debt-${d.id}`,
-          category: 'EMIs & Loans',
-          name: `Loan Repayment (${d.person_name})`,
-          amount: amt,
-          dueDay,
-          dueDateStr: `${dueDay} ${nextMonthShort}`,
-          dueDateFull: `${nextYearNum}-${String(nextMonthNum).padStart(2, '0')}-${String(dueDay).padStart(2, '0')}`,
-          recordType: 'debt',
-          modulePath: '/records',
-          details: 'Loan Repayment Commitment'
-        });
+    // 4. Debt & EMI Commitments (with safe fallback for table schemas)
+    try {
+      const debtTx = await query(
+        `SELECT id, person_name, amount, type, status FROM debt_transactions WHERE user_id = ? AND status != 'Settled' AND type = 'Borrowed'`,
+        [userId]
+      );
+      for (const d of debtTx) {
+        const amt = Number(d.amount) || 0;
+        if (amt > 0) {
+          const dueDay = 10;
+          commitments.push({
+            id: `debt-${d.id}`,
+            category: 'EMIs & Loans',
+            name: `Loan Repayment (${d.person_name})`,
+            amount: amt,
+            dueDay,
+            dueDateStr: `${dueDay} ${nextMonthShort}`,
+            dueDateFull: `${nextYearNum}-${String(nextMonthNum).padStart(2, '0')}-${String(dueDay).padStart(2, '0')}`,
+            recordType: 'debt',
+            modulePath: '/records',
+            details: 'Loan Repayment Commitment'
+          });
+        }
       }
+    } catch (_) {
+      try {
+        const legacyDebts = await query(
+          `SELECT id, person_name, amount, type, status FROM debts WHERE user_id = ? AND status != 'settled' AND type = 'borrowed'`,
+          [userId]
+        );
+        for (const d of legacyDebts) {
+          const amt = Number(d.amount) || 0;
+          if (amt > 0) {
+            const dueDay = 10;
+            commitments.push({
+              id: `debt-${d.id}`,
+              category: 'EMIs & Loans',
+              name: `Loan Repayment (${d.person_name})`,
+              amount: amt,
+              dueDay,
+              dueDateStr: `${dueDay} ${nextMonthShort}`,
+              dueDateFull: `${nextYearNum}-${String(nextMonthNum).padStart(2, '0')}-${String(dueDay).padStart(2, '0')}`,
+              recordType: 'debt',
+              modulePath: '/records',
+              details: 'Loan Repayment Commitment'
+            });
+          }
+        }
+      } catch (_) {}
     }
 
     // Sort commitments chronologically by due day
