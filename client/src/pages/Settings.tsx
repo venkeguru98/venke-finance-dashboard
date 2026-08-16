@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   Moon, Sun, User, Palette, Database, Trash2, Download, Plus, X, 
   ShieldAlert, Send, ShieldCheck, CheckCircle2, Lock, Sparkles, HardDrive
@@ -25,7 +25,7 @@ export default function Settings() {
   const [txCount, setTxCount] = useState(0);
 
   // System Status State
-  const [systemStatus, setSystemStatus] = useState<any>({
+  const [systemStatus] = useState<any>({
     appVersion: '3.0.0',
     serverStatus: 'Running',
     databaseStatus: 'Connected',
@@ -57,7 +57,7 @@ export default function Settings() {
     lastSimulationPassed: true,
     isCloudIndependent: true
   });
-  const [recoveryBackups, setRecoveryBackups] = useState<any[]>([]);
+  const [recoveryBackups] = useState<any[]>([]);
 
   // Compare & Restore Modal States
   const [isCompareModalOpen, setIsCompareModalOpen] = useState(false);
@@ -69,11 +69,11 @@ export default function Settings() {
   const [simulationRunning, setSimulationRunning] = useState(false);
   const [migrationCreating, setMigrationCreating] = useState(false);
 
-  // Telegram States
-  const [telegramToken, setTelegramToken] = useState('');
-  const [telegramBotUrl, setTelegramBotUrl] = useState('');
-  const [isTelegramLinked, setIsTelegramLinked] = useState(false);
-  const [isBotConfigured, setIsBotConfigured] = useState(false);
+  // Telegram Integration States
+  const [telegramToken, setTelegramToken] = useState<string>('');
+  const [telegramBotUrl, setTelegramBotUrl] = useState<string>('');
+  const [isTelegramLinked, setIsTelegramLinked] = useState<boolean>(false);
+  const [isBotConfigured, setIsBotConfigured] = useState<boolean>(false);
 
   // Toast Notification State
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'warning' | 'info' | 'error' } | null>(null);
@@ -100,6 +100,9 @@ export default function Settings() {
     latestMetadata: null
   });
 
+  // Live Timer State
+  const [secondsUntilBackup, setSecondsUntilBackup] = useState<number>(300);
+
   // Deduplication & Backoff Refs for Monitoring Status Endpoint
   const isFetchingRef = useRef(false);
   const isTriggeringRef = useRef(false);
@@ -113,6 +116,7 @@ export default function Settings() {
     try {
       const res = await axios.get(`${API}/enterprise-recovery/status`);
       setHeartbeatData(res.data);
+      setRecoveryStatus(res.data);
       heartbeatDataRef.current = res.data;
       if (res.data.nextBackupEpoch) {
         nextBackupEpochRef.current = res.data.nextBackupEpoch;
@@ -127,6 +131,10 @@ export default function Settings() {
       isFetchingRef.current = false;
     }
   };
+
+  // Aliases for legacy handlers
+  const fetchHeartbeat = fetchConsolidatedStatus;
+  const fetchEnterpriseRecoveryData = fetchConsolidatedStatus;
 
   const fetchCategories = () => {
     axios.get(`${API}/categories`).then(res => setCategories(res.data)).catch(() => {});
