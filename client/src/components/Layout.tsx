@@ -237,9 +237,9 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
         />
         
         {/* Floating Ambient Orbs */}
-        <div className="absolute top-1/4 left-10 w-72 h-72 rounded-full blur-3xl animate-bounce" style={{ animationDuration: '28s', backgroundColor: themeData.accent, opacity: 0.08 }} />
-        <div className="absolute top-2/3 right-12 w-80 h-80 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '32s', backgroundColor: themeData.swatch[1], opacity: 0.08 }} />
-        <div className="absolute bottom-10 left-1/3 w-64 h-64 rounded-full blur-3xl" style={{ backgroundColor: themeData.accent, opacity: 0.06 }} />
+        <div className="absolute top-1/4 left-10 w-72 h-72 rounded-full blur-3xl animate-bounce" style={{ animationDuration: '28s', backgroundColor: themeData.accentPrimary, opacity: 0.08 }} />
+        <div className="absolute top-2/3 right-12 w-80 h-80 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '32s', backgroundColor: themeData.swatch[2], opacity: 0.08 }} />
+        <div className="absolute bottom-10 left-1/3 w-64 h-64 rounded-full blur-3xl" style={{ backgroundColor: themeData.accentPrimary, opacity: 0.06 }} />
 
         {/* Subtle Vignette Overlay */}
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.7)_100%)] pointer-events-none" />
