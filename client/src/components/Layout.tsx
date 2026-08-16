@@ -6,6 +6,8 @@ import {
   Sliders, Pin, PinOff, Moon, Sun
 } from 'lucide-react';
 import { UserProfileDropdown } from './ui/UserProfileDropdown';
+import { ThemeSelectorDropdown } from './ui/ThemeSelectorDropdown';
+import { useTheme } from '../context/ThemeContext';
 
 // Memoized Adaptive Nav Tab Component
 const NavTab = memo(({ 
@@ -80,6 +82,8 @@ const NavTab = memo(({
 });
 
 export default function Layout({ children, onLogout }: { children: ReactNode; onLogout?: () => void }) {
+  const { themeData } = useTheme();
+
   // Adaptive Dock States
   const [isHovered, setIsHovered] = useState(false);
   const [isPinned, setIsPinned] = useState<boolean>(() => {
@@ -211,24 +215,34 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
   const showLabels = isPinned || isHovered;
 
   return (
-    <div className={`w-full min-h-screen font-sans relative overflow-x-hidden transition-colors duration-500 ${
-      isFocusMode ? 'bg-[#02040a] text-slate-200' : 'bg-[#040816] text-slate-100'
-    }`}>
+    <div 
+      className="w-full min-h-screen font-sans relative overflow-x-hidden transition-colors duration-500"
+      style={{
+        backgroundColor: isFocusMode ? '#02040a' : themeData.bgPrimary,
+        color: themeData.textPrimary
+      }}
+    >
       
       {/* ── AMBIENT BACKGROUND LIGHTING LAYER ─────────────────────────────────── */}
       <div className="fixed inset-0 pointer-events-none z-[-1] overflow-hidden">
         {/* Slow 35s Animated Ambient Light Bloom & Floating Gradient Orbs */}
-        <div className={`absolute -top-40 left-1/2 -translate-x-1/2 w-[900px] h-[500px] bg-radial from-[#8B5CF6]/15 via-[#4F7CFF]/10 to-transparent blur-[140px] transition-opacity duration-700 ${
-          isFocusMode ? 'opacity-20' : 'opacity-100 animate-pulse'
-        }`} style={{ animationDuration: '35s' }} />
+        <div 
+          className={`absolute -top-40 left-1/2 -translate-x-1/2 w-[900px] h-[500px] blur-[140px] transition-opacity duration-700 ${
+            isFocusMode ? 'opacity-20' : 'opacity-100 animate-pulse'
+          }`} 
+          style={{ 
+            animationDuration: '35s',
+            background: `radial-gradient(circle, ${themeData.accentGlow} 0%, transparent 70%)`
+          }} 
+        />
         
         {/* Floating Ambient Orbs */}
-        <div className="absolute top-1/4 left-10 w-72 h-72 rounded-full bg-[#8B5CF6]/10 blur-3xl animate-bounce" style={{ animationDuration: '28s' }} />
-        <div className="absolute top-2/3 right-12 w-80 h-80 rounded-full bg-[#4F7CFF]/10 blur-3xl animate-pulse" style={{ animationDuration: '32s' }} />
-        <div className="absolute bottom-10 left-1/3 w-64 h-64 rounded-full bg-[#A855F7]/10 blur-3xl" />
+        <div className="absolute top-1/4 left-10 w-72 h-72 rounded-full blur-3xl animate-bounce" style={{ animationDuration: '28s', backgroundColor: themeData.accent, opacity: 0.08 }} />
+        <div className="absolute top-2/3 right-12 w-80 h-80 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '32s', backgroundColor: themeData.swatch[1], opacity: 0.08 }} />
+        <div className="absolute bottom-10 left-1/3 w-64 h-64 rounded-full blur-3xl" style={{ backgroundColor: themeData.accent, opacity: 0.06 }} />
 
         {/* Subtle Vignette Overlay */}
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(2,4,10,0.85)_100%)] pointer-events-none" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.7)_100%)] pointer-events-none" />
       </div>
 
       {/* Dynamic Keyframes for Breathing Glow & Scrollbar Masking */}
@@ -312,7 +326,7 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
           </nav>
         </div>
 
-        {/* ── RIGHT ZONE (Width 240px: Search, Bell, Pin Toggle, Profile) ───── */}
+        {/* ── RIGHT ZONE (Width 240px: Search, Theme, Bell, Pin Toggle, Profile) ───── */}
         <div className="w-56 sm:w-60 shrink-0 flex items-center justify-end space-x-2">
           {/* Cmd + K Trigger */}
           <div 
@@ -323,6 +337,9 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
             <span className="hidden lg:inline font-medium text-slate-400">Search...</span>
             <span className="text-[10px] font-mono text-[#8B5CF6] border border-[#8B5CF6]/30 px-1.5 py-0.5 rounded font-bold ml-1">⌘K</span>
           </div>
+
+          {/* 🎨 Theme Selector Dropdown */}
+          <ThemeSelectorDropdown />
 
           {/* Notification Bell */}
           <button className="p-2 rounded-full relative transition-transform hover:rotate-6 hover:bg-[#0D1830]">
