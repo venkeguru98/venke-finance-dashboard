@@ -287,6 +287,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     root.style.setProperty('--chart-tooltip-text', currentTheme.textPrimary);
     currentTheme.chartColors.forEach((color, idx) => {
       root.style.setProperty(`--chart-${idx + 1}`, color);
+    });
   }, [theme, currentTheme]);
 
   return (
