@@ -59,6 +59,71 @@
 .theme-bg-accent { background-color: var(--accent-primary) !important; }
 .theme-border-accent { border-color: var(--accent-primary) !important; }
 
+/* Global Hardcoded Class Bridge for 100% Theme Token Compliance */
+html[data-theme] {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+/* Light Mode Overrides for Hardcoded Backgrounds & Texts */
+html[data-theme="light"] {
+  color-scheme: light;
+}
+
+html[data-theme="light"] .bg-\[\#081226\],
+html[data-theme="light"] .bg-\[\#040816\],
+html[data-theme="light"] .bg-\[\#060B1A\],
+html[data-theme="light"] .bg-\[\#0D1630\],
+html[data-theme="light"] .bg-\[\#050B18\],
+html[data-theme="light"] .bg-\[\#0F1C3A\],
+html[data-theme="light"] .bg-\[\#0D1830\],
+html[data-theme="light"] .bg-[#081226],
+html[data-theme="light"] .bg-[#040816],
+html[data-theme="light"] .bg-slate-900,
+html[data-theme="light"] .bg-slate-950,
+html[data-theme="light"] .bg-slate-900\/90,
+html[data-theme="light"] .bg-slate-900\/95,
+html[data-theme="light"] .bg-slate-900\/80 {
+  background-color: var(--bg-card) !important;
+}
+
+html[data-theme="light"] .border-\[\#1E2A44\],
+html[data-theme="light"] .border-\[\#1E2B4A\],
+html[data-theme="light"] .border-slate-800,
+html[data-theme="light"] .border-slate-800\/80,
+html[data-theme="light"] .border-slate-700 {
+  border-color: var(--border-color) !important;
+}
+
+html[data-theme="light"] .text-white,
+html[data-theme="light"] .text-slate-100,
+html[data-theme="light"] .text-slate-200 {
+  color: var(--text-primary) !important;
+}
+
+html[data-theme="light"] .text-slate-300,
+html[data-theme="light"] .text-slate-400 {
+  color: var(--text-secondary) !important;
+}
+
+html[data-theme="light"] .text-slate-500 {
+  color: var(--text-muted) !important;
+}
+
+/* Dynamic Recharts Chart Grid & Tooltip Overrides */
+.recharts-default-tooltip {
+  background-color: var(--chart-tooltip-bg) !important;
+  border-color: var(--border-color) !important;
+  color: var(--chart-tooltip-text) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25) !important;
+}
+
+.recharts-cartesian-grid-horizontal line,
+.recharts-cartesian-grid-vertical line {
+  stroke: var(--chart-grid) !important;
+}
+
 /* Dashboard Micro-Animation Utilities */
 @keyframes fadeInUp {
   from {

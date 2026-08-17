@@ -51,17 +51,33 @@ export const ThemeSelectorDropdown: React.FC = () => {
 
       {/* Premium Theme Dropdown Panel */}
       {isOpen && (
-        <div className="absolute right-0 mt-3 w-80 rounded-2xl bg-[#081226]/95 border border-[#1E2A44] shadow-[0_20px_50px_rgba(0,0,0,0.7)] backdrop-blur-2xl z-[1100] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        <div 
+          style={{
+            backgroundColor: themeData.bgElevated,
+            borderColor: themeData.borderColor,
+            color: themeData.textPrimary
+          }}
+          className="absolute right-0 mt-3 w-80 rounded-2xl border shadow-[0_20px_50px_rgba(0,0,0,0.7)] backdrop-blur-2xl z-[1100] overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+        >
           
           {/* Header */}
-          <div className="px-4 py-3 border-b border-[#1E2A44] bg-[#0A1633]/60 flex items-center justify-between">
+          <div 
+            style={{
+              backgroundColor: themeData.bgSecondary,
+              borderColor: themeData.borderColor
+            }}
+            className="px-4 py-3 border-b flex items-center justify-between"
+          >
             <div className="flex items-center space-x-2">
-              <Sparkles className="w-4 h-4 text-[#8B5CF6]" />
-              <span className="text-xs font-black text-white uppercase tracking-wider">
+              <Sparkles className="w-4 h-4" style={{ color: themeData.accentPrimary }} />
+              <span className="text-xs font-black uppercase tracking-wider" style={{ color: themeData.textPrimary }}>
                 VENKE Appearance
               </span>
             </div>
-            <span className="text-[10px] font-mono text-slate-400 bg-white/5 px-2 py-0.5 rounded-md border border-white/10">
+            <span 
+              style={{ borderColor: themeData.borderColor, color: themeData.textMuted }}
+              className="text-[10px] font-mono px-2 py-0.5 rounded-md border"
+            >
               {THEMES.length} Profiles
             </span>
           </div>
@@ -77,41 +93,56 @@ export const ThemeSelectorDropdown: React.FC = () => {
                     setTheme(t.id as ThemeKey);
                     setIsOpen(false);
                   }}
+                  style={isSelected ? {
+                    backgroundColor: t.bgCard,
+                    borderColor: t.accentPrimary,
+                    color: t.textPrimary
+                  } : {}}
                   className={`w-full flex items-center justify-between p-2.5 rounded-xl transition-all duration-150 text-left group ${
                     isSelected
-                      ? 'bg-gradient-to-r from-[#8B5CF6]/25 via-[#4F7CFF]/20 to-transparent border border-[#8B5CF6]/40 text-white font-bold'
-                      : 'hover:bg-white/5 text-slate-300 hover:text-white border border-transparent'
+                      ? 'border font-bold shadow-sm'
+                      : 'hover:bg-white/10 text-slate-300 border border-transparent'
                   }`}
                 >
                   <div className="flex items-center space-x-3 min-w-0">
                     {/* Radio Indicator */}
-                    <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-colors ${
-                      isSelected
-                        ? 'border-[#8B5CF6] bg-[#8B5CF6] text-white shadow-[0_0_8px_rgba(139,92,246,0.6)]'
-                        : 'border-slate-600 group-hover:border-slate-400'
-                    }`}>
+                    <div 
+                      style={isSelected ? {
+                        borderColor: t.accentPrimary,
+                        backgroundColor: t.accentPrimary,
+                        color: '#FFFFFF'
+                      } : {}}
+                      className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-colors ${
+                        isSelected
+                          ? 'shadow-[0_0_8px_rgba(139,92,246,0.6)]'
+                          : 'border-slate-500 group-hover:border-slate-300'
+                      }`}
+                    >
                       {isSelected && <Check className="w-2.5 h-2.5 stroke-[3]" />}
                     </div>
 
                     <div className="flex flex-col min-w-0">
                       <div className="flex items-center space-x-1.5">
-                        <span className="text-xs font-extrabold truncate text-white">
+                        <span className="text-xs font-extrabold truncate" style={{ color: isSelected ? t.textPrimary : 'inherit' }}>
                           {t.name}
                         </span>
                         {t.id === 'midnight' && (
-                          <span className="text-[9px] font-bold text-[#8B5CF6] bg-[#8B5CF6]/20 px-1.5 py-0.2 rounded-full border border-[#8B5CF6]/30">
+                          <span 
+                            style={{ color: t.accentPrimary, backgroundColor: t.accentPrimary + '20', borderColor: t.accentPrimary + '40' }}
+                            className="text-[9px] font-bold px-1.5 py-0.2 rounded-full border"
+                          >
                             Default
                           </span>
                         )}
                       </div>
-                      <span className="text-[10px] text-slate-400 truncate font-medium">
+                      <span className="text-[10px] truncate font-medium opacity-75">
                         {t.subtitle}
                       </span>
                     </div>
                   </div>
 
                   {/* 3-Color Miniature Preview Dots */}
-                  <div className="flex items-center space-x-1 shrink-0 ml-2 bg-black/40 px-2 py-1 rounded-lg border border-white/10">
+                  <div className="flex items-center space-x-1 shrink-0 ml-2 bg-black/30 px-2 py-1 rounded-lg border border-white/10">
                     <span className="w-2.5 h-2.5 rounded-full border border-white/20 shadow-sm" title="Background Color" style={{ backgroundColor: t.swatch[0] }} />
                     <span className="w-2.5 h-2.5 rounded-full border border-white/20 shadow-sm" title="Primary Accent" style={{ backgroundColor: t.swatch[1] }} />
                     <span className="w-2.5 h-2.5 rounded-full border border-white/20 shadow-sm" title="Secondary Accent" style={{ backgroundColor: t.swatch[2] }} />
@@ -122,7 +153,10 @@ export const ThemeSelectorDropdown: React.FC = () => {
           </div>
 
           {/* Footer Note */}
-          <div className="px-4 py-2 border-t border-[#1E2A44] bg-[#050B18] text-[10px] text-slate-400 font-medium text-center">
+          <div 
+            style={{ backgroundColor: themeData.bgSecondary, borderColor: themeData.borderColor, color: themeData.textMuted }}
+            className="px-4 py-2 border-t text-[10px] font-medium text-center"
+          >
             Theme preference auto-saved to your profile
           </div>
         </div>

@@ -10,6 +10,8 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { downloadBackupExport } from '../../utils/exportUtils';
 
+import { useTheme } from '../../context/ThemeContext';
+
 const API = window.location.port === '5173' ? 'http://localhost:5000/api' : '/api';
 
 interface UserProfileDropdownProps {
@@ -87,6 +89,7 @@ const isSavingsCommitment = (t: any, categories: any[]) => {
 };
 
 export const UserProfileDropdown = memo(({ onLogout, onOpenCmdK }: UserProfileDropdownProps) => {
+  const { themeData } = useTheme();
   const [isOpen, setIsOpen] = useState(false);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [isBackingUp, setIsBackingUp] = useState(false);
@@ -292,27 +295,34 @@ export const UserProfileDropdown = memo(({ onLogout, onOpenCmdK }: UserProfileDr
         onClick={() => setIsOpen(prev => !prev)}
         aria-expanded={isOpen}
         aria-haspopup="true"
-        className={`flex items-center space-x-2.5 cursor-pointer p-1 pr-3 rounded-full transition-all duration-180 border outline-none group ${
-          isOpen
-            ? 'bg-[#0D1830] border-[#8B5CF6] shadow-[0_0_20px_rgba(139,92,246,0.4)] scale-[0.98]'
-            : 'bg-[#081226]/80 border-[#1E2A44] hover:border-[#8B5CF6]/50 hover:bg-[#0D1830] hover:scale-[1.02]'
-        }`}
+        style={{
+          backgroundColor: isOpen ? themeData.bgCard : themeData.bgSecondary,
+          borderColor: isOpen ? themeData.accentPrimary : themeData.borderColor,
+          color: themeData.textPrimary
+        }}
+        className="flex items-center space-x-2.5 cursor-pointer p-1 pr-3 rounded-full transition-all duration-180 border outline-none group"
       >
         <div className="relative flex items-center justify-center">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#8B5CF6] via-[#4F7CFF] to-[#A855F7] p-[1.5px] shadow-md transition-transform group-hover:scale-105">
-            <div className="w-full h-full rounded-full bg-[#081226] flex items-center justify-center font-extrabold text-xs text-white">
+          <div 
+            style={{ background: `linear-gradient(135deg, ${themeData.accentPrimary}, ${themeData.accentSecondary})` }}
+            className="w-8 h-8 rounded-full p-[1.5px] shadow-md transition-transform group-hover:scale-105"
+          >
+            <div 
+              style={{ backgroundColor: themeData.bgCard, color: themeData.textPrimary }}
+              className="w-full h-full rounded-full flex items-center justify-center font-extrabold text-xs"
+            >
               V
             </div>
           </div>
           {/* Online Indicator Badge */}
-          <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-[#081226] shadow-sm animate-pulse" />
+          <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 shadow-sm animate-pulse" style={{ borderColor: themeData.bgCard }} />
         </div>
 
         <div className="hidden sm:flex flex-col text-left">
-          <span className="text-xs font-black tracking-tight text-white group-hover:text-[#8B5CF6] transition-colors leading-none">
+          <span className="text-xs font-black tracking-tight transition-colors leading-none" style={{ color: themeData.textPrimary }}>
             Venke
           </span>
-          <span className="text-[9px] font-bold text-slate-400 leading-tight mt-0.5 flex items-center gap-1">
+          <span className="text-[9px] font-bold leading-tight mt-0.5 flex items-center gap-1" style={{ color: themeData.textMuted }}>
             Workspace
           </span>
         </div>
@@ -330,10 +340,13 @@ export const UserProfileDropdown = memo(({ onLogout, onOpenCmdK }: UserProfileDr
             transition={{ type: 'spring', stiffness: 380, damping: 28, duration: 0.2 }}
             role="menu"
             aria-label="User Account Center"
-            className="fixed sm:absolute right-4 sm:right-0 top-18 sm:top-full mt-2 w-[calc(100vw-32px)] sm:w-[355px] max-h-[min(80vh,720px)] overflow-y-auto overscroll-contain no-scrollbar rounded-[24px] bg-[#081226]/95 backdrop-blur-2xl border border-[#1E2A44] shadow-[0_25px_65px_-15px_rgba(0,0,0,0.9),0_0_35px_rgba(139,92,246,0.18)] z-[1100] text-slate-100 divide-y divide-[#1E2A44]/60 font-sans"
             style={{
-              backgroundImage: `radial-gradient(400px circle at ${mousePos.x}px ${mousePos.y}px, rgba(139,92,246,0.12), transparent 80%)`
+              backgroundColor: themeData.bgElevated,
+              borderColor: themeData.borderColor,
+              color: themeData.textPrimary,
+              backgroundImage: `radial-gradient(400px circle at ${mousePos.x}px ${mousePos.y}px, ${themeData.accentGlow}, transparent 80%)`
             }}
+            className="fixed sm:absolute right-4 sm:right-0 top-18 sm:top-full mt-2 w-[calc(100vw-32px)] sm:w-[355px] max-h-[min(80vh,720px)] overflow-y-auto overscroll-contain no-scrollbar rounded-[24px] backdrop-blur-2xl border shadow-2xl z-[1100] font-sans"
           >
             {/* CSS FOR VISUALLY HIDDEN SCROLLBAR */}
             <style>{`

@@ -342,44 +342,48 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
           {/* Cmd + K Trigger */}
           <div 
             onClick={() => setIsCmdKOpen(true)}
-            className="flex items-center rounded-full px-3 py-1.5 text-xs border border-[#1E2A44] bg-[#0D1830] text-slate-400 hover:border-[#8B5CF6] cursor-pointer transition shadow-sm"
+            style={{
+              backgroundColor: themeData.bgCard,
+              borderColor: themeData.borderColor,
+              color: themeData.textSecondary
+            }}
+            className="flex items-center rounded-full px-3 py-1.5 text-xs border cursor-pointer transition shadow-sm"
           >
-            <Search className="w-3.5 h-3.5 text-slate-400 mr-1.5 shrink-0" />
-            <span className="hidden lg:inline font-medium text-slate-400">Search...</span>
-            <span className="text-[10px] font-mono text-[#8B5CF6] border border-[#8B5CF6]/30 px-1.5 py-0.5 rounded font-bold ml-1">⌘K</span>
+            <Search className="w-3.5 h-3.5 mr-1.5 shrink-0" style={{ color: themeData.textMuted }} />
+            <span className="hidden lg:inline font-medium" style={{ color: themeData.textSecondary }}>Search...</span>
+            <span 
+              style={{ color: themeData.accentPrimary, borderColor: themeData.accentPrimary + '40' }}
+              className="text-[10px] font-mono border px-1.5 py-0.5 rounded font-bold ml-1"
+            >
+              ⌘K
+            </span>
           </div>
 
           {/* 🎨 Theme Selector Dropdown */}
           <ThemeSelectorDropdown />
 
           {/* Notification Bell */}
-          <button className="p-2 rounded-full relative transition-transform hover:rotate-6 hover:bg-[#0D1830]">
-            <Bell className="w-4.5 h-4.5 text-slate-400" />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#8B5CF6] rounded-full animate-pulse" />
+          <button className="p-2 rounded-full relative transition-transform hover:rotate-6 hover:bg-white/10">
+            <Bell className="w-4.5 h-4.5" style={{ color: themeData.textSecondary }} />
+            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: themeData.accentPrimary }} />
           </button>
 
           {/* Focus Mode Toggle */}
           <button 
             onClick={toggleFocusMode}
-            className={`p-2 rounded-full hidden sm:flex transition-all ${
-              isFocusMode 
-                ? 'bg-[#8B5CF6]/30 text-[#8B5CF6] border border-[#8B5CF6]/50 shadow-[0_0_15px_rgba(139,92,246,0.4)]' 
-                : 'text-slate-400 hover:bg-[#0D1830]'
-            }`}
+            className="p-2 rounded-full hidden sm:flex transition-all hover:bg-white/10"
             title={isFocusMode ? 'Exit Focus Mode' : 'Enter Focus Mode (Dim Distractions)'}
           >
-            {isFocusMode ? <Sun className="w-4 h-4 text-amber-400 animate-spin-once" /> : <Moon className="w-4 h-4 text-[#8B5CF6]" />}
+            {isFocusMode ? <Sun className="w-4 h-4 text-amber-400 animate-spin-once" /> : <Moon className="w-4 h-4" style={{ color: themeData.accentPrimary }} />}
           </button>
 
           {/* Dock Pin Toggle */}
           <button 
             onClick={togglePin}
-            className={`p-2 rounded-full hidden md:flex transition ${
-              isPinned ? 'bg-[#8B5CF6]/20 text-[#8B5CF6] border border-[#8B5CF6]/40' : 'text-slate-400 hover:bg-[#0D1830]'
-            }`}
+            className="p-2 rounded-full hidden md:flex transition hover:bg-white/10"
             title={isPinned ? 'Unpin Dock Auto-Hide' : 'Pin Dock Always Expanded'}
           >
-            {isPinned ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
+            {isPinned ? <PinOff className="w-4 h-4" style={{ color: themeData.accentPrimary }} /> : <Pin className="w-4 h-4" style={{ color: themeData.textMuted }} />}
           </button>
 
           {/* User Profile Dropdown Panel */}
@@ -398,9 +402,15 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
       </div>
 
       {/* ── 3. MOBILE FLOATING BOTTOM DOCK ───────────────────────────────────── */}
-      <nav className={`fixed bottom-4 left-4 right-4 h-16 backdrop-blur-2xl bg-[#081226]/95 border border-[#1E2A44] rounded-full shadow-2xl z-50 md:hidden flex justify-around items-center px-4 transition-all duration-220 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-        isHeaderVisible ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-20 opacity-0 scale-95 pointer-events-none'
-      }`}>
+      <nav 
+        style={{
+          backgroundColor: themeData.bgSecondary + 'F5',
+          borderColor: themeData.borderColor
+        }}
+        className={`fixed bottom-4 left-4 right-4 h-16 backdrop-blur-2xl border rounded-full shadow-2xl z-50 md:hidden flex justify-around items-center px-4 transition-all duration-220 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+          isHeaderVisible ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-20 opacity-0 scale-95 pointer-events-none'
+        }`}
+      >
         {[
           { to: '/', icon: <LayoutDashboard size={20} />, label: 'Home' },
           { to: '/transactions', icon: <ReceiptText size={20} />, label: 'TXs' },
