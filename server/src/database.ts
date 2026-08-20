@@ -950,6 +950,165 @@ export const initializeDatabase = async () => {
         console.error('Migration failed for lic_premium_schedule table:', licSchErr);
       }
 
+      // ─── Initialize Isolated VENKE PLANNER Database Tables ─────────────────────
+      try {
+        if (isPg) {
+          await execute(`
+            CREATE TABLE IF NOT EXISTS planner_tasks (
+              id SERIAL PRIMARY KEY,
+              user_id INTEGER NOT NULL DEFAULT 1,
+              title VARCHAR(255) NOT NULL,
+              description TEXT,
+              status VARCHAR(20) DEFAULT 'todo',
+              priority VARCHAR(20) DEFAULT 'medium',
+              due_at TIMESTAMP NULL,
+              reminder_at TIMESTAMP NULL,
+              recurring_rule VARCHAR(50) DEFAULT 'none',
+              tags TEXT,
+              notes TEXT,
+              completed_at TIMESTAMP NULL,
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+          `);
+          await execute(`
+            CREATE TABLE IF NOT EXISTS planner_notes (
+              id SERIAL PRIMARY KEY,
+              user_id INTEGER NOT NULL DEFAULT 1,
+              title VARCHAR(255) NOT NULL,
+              content TEXT,
+              color VARCHAR(30) DEFAULT 'default',
+              priority VARCHAR(20) DEFAULT 'normal',
+              pinned INTEGER DEFAULT 0,
+              archived INTEGER DEFAULT 0,
+              reminder_at TIMESTAMP NULL,
+              tags TEXT,
+              checklist TEXT,
+              rotation INTEGER DEFAULT 0,
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+          `);
+          await execute(`
+            CREATE TABLE IF NOT EXISTS planner_reminders (
+              id SERIAL PRIMARY KEY,
+              user_id INTEGER NOT NULL DEFAULT 1,
+              title VARCHAR(255) NOT NULL,
+              reminder_at TIMESTAMP NOT NULL,
+              recurring_rule VARCHAR(50) DEFAULT 'none',
+              status VARCHAR(20) DEFAULT 'pending',
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+          `);
+          await execute(`
+            CREATE TABLE IF NOT EXISTS planner_goals (
+              id SERIAL PRIMARY KEY,
+              user_id INTEGER NOT NULL DEFAULT 1,
+              title VARCHAR(255) NOT NULL,
+              category VARCHAR(30) DEFAULT 'personal',
+              target_description TEXT,
+              deadline DATE NULL,
+              progress INTEGER DEFAULT 0,
+              notes TEXT,
+              status VARCHAR(20) DEFAULT 'active',
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+          `);
+          await execute(`
+            CREATE TABLE IF NOT EXISTS planner_tags (
+              id SERIAL PRIMARY KEY,
+              user_id INTEGER NOT NULL DEFAULT 1,
+              name VARCHAR(50) NOT NULL,
+              color VARCHAR(30) DEFAULT 'accent',
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              UNIQUE(user_id, name)
+            )
+          `);
+        } else {
+          await execute(`
+            CREATE TABLE IF NOT EXISTS planner_tasks (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              user_id INTEGER NOT NULL DEFAULT 1,
+              title TEXT NOT NULL,
+              description TEXT,
+              status TEXT DEFAULT 'todo',
+              priority TEXT DEFAULT 'medium',
+              due_at DATETIME NULL,
+              reminder_at DATETIME NULL,
+              recurring_rule TEXT DEFAULT 'none',
+              tags TEXT,
+              notes TEXT,
+              completed_at DATETIME NULL,
+              created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+              updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+          `);
+          await execute(`
+            CREATE TABLE IF NOT EXISTS planner_notes (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              user_id INTEGER NOT NULL DEFAULT 1,
+              title TEXT NOT NULL,
+              content TEXT,
+              color TEXT DEFAULT 'default',
+              priority TEXT DEFAULT 'normal',
+              pinned INTEGER DEFAULT 0,
+              archived INTEGER DEFAULT 0,
+              reminder_at DATETIME NULL,
+              tags TEXT,
+              checklist TEXT,
+              rotation INTEGER DEFAULT 0,
+              created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+              updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+          `);
+          await execute(`
+            CREATE TABLE IF NOT EXISTS planner_reminders (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              user_id INTEGER NOT NULL DEFAULT 1,
+              title TEXT NOT NULL,
+              reminder_at DATETIME NOT NULL,
+              recurring_rule TEXT DEFAULT 'none',
+              status TEXT DEFAULT 'pending',
+              created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+          `);
+          await execute(`
+            CREATE TABLE IF NOT EXISTS planner_goals (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              user_id INTEGER NOT NULL DEFAULT 1,
+              title TEXT NOT NULL,
+              category TEXT DEFAULT 'personal',
+              target_description TEXT,
+              deadline DATE NULL,
+              progress INTEGER DEFAULT 0,
+              notes TEXT,
+              status TEXT DEFAULT 'active',
+              created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+              updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+          `);
+          await execute(`
+            CREATE TABLE IF NOT EXISTS planner_tags (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              user_id INTEGER NOT NULL DEFAULT 1,
+              name TEXT NOT NULL,
+              color TEXT DEFAULT 'accent',
+              created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+              UNIQUE(user_id, name),
+              FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+          `);
+        }
+        console.log('✦ [VENKE Planner] Database tables (planner_tasks, planner_notes, planner_reminders, planner_goals, planner_tags) verified/created.');
+      } catch (plannerErr) {
+        console.error('Failed to create VENKE Planner tables:', plannerErr);
+      }
+
       console.log('Recurring commitment automation database tables verified/created.');
     } catch (rErr) {
       console.error('Migration failed for recurring commitment automation tables:', rErr);

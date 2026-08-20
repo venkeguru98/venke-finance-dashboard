@@ -113,8 +113,35 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
   const navigate = useNavigate();
   const autoHideTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Dynamic Planner Summary Badge state
+  const [plannerBadge, setPlannerBadge] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchPlannerSummary = () => {
+      const API = window.location.port === '5173' ? 'http://localhost:5000/api' : '/api';
+      fetch(`${API}/planner/summary`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token') || ''}` }
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data && (data.overdueCount > 0 || data.todayCount > 0)) {
+            const totalAlerts = data.overdueCount + data.todayCount;
+            setPlannerBadge(String(totalAlerts));
+          } else {
+            setPlannerBadge(null);
+          }
+        })
+        .catch(() => {});
+    };
+
+    fetchPlannerSummary();
+    const interval = setInterval(fetchPlannerSummary, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
   const financeNavItems = [
     { to: '/', icon: <LayoutDashboard size={18} />, label: 'Dashboard', badge: null },
+    { to: '/planner', icon: <Sparkles size={18} />, label: 'Planner', badge: plannerBadge },
     { to: '/transactions', icon: <ReceiptText size={18} />, label: 'Transactions', badge: null },
     { to: '/financial-records', icon: <Wallet size={18} />, label: 'Records', badge: '3' },
     { to: '/budgets', icon: <PieChart size={18} />, label: 'Budgets', badge: null },
@@ -413,6 +440,7 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
       >
         {[
           { to: '/', icon: <LayoutDashboard size={20} />, label: 'Home' },
+          { to: '/planner', icon: <Sparkles size={20} />, label: 'Planner' },
           { to: '/transactions', icon: <ReceiptText size={20} />, label: 'TXs' },
           { to: '/financial-records', icon: <Wallet size={20} />, label: 'Records' },
           { to: '/budgets', icon: <PieChart size={20} />, label: 'Budgets' },
