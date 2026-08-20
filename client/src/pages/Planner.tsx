@@ -1,12 +1,22 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Sparkles, CheckSquare, Layers, Clock, Plus, Pin, 
-  Trash2, Tag, Search, Check, RefreshCw, 
-  CalendarDays, Target, X, Zap, Sun, Bell
+  Sparkles, CheckSquare, Layers, Clock, Plus, Tag, 
+  Search, Check, RefreshCw, CalendarDays, Target, X, Zap, Sun, Bell, Trash2
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import Button from '../components/ui/Button';
+
+// Scoped Planner UI Subcomponents
+import PlannerAmbientBackground from '../components/planner/PlannerAmbientBackground';
+import PlannerHeader from '../components/planner/PlannerHeader';
+import PlannerSidebar, { ViewMode } from '../components/planner/PlannerSidebar';
+import PlannerSearch from '../components/planner/PlannerSearch';
+import PlannerTaskItem from '../components/planner/PlannerTaskItem';
+import PlannerNoteCard from '../components/planner/PlannerNoteCard';
+import PlannerQuickCapture from '../components/planner/PlannerQuickCapture';
+import PlannerEmptyState from '../components/planner/PlannerEmptyState';
 
 const API = window.location.port === '5173' ? 'http://localhost:5000/api' : '/api';
 
@@ -63,9 +73,6 @@ export interface PlannerGoal {
   created_at?: string;
 }
 
-type ViewMode = 'today' | 'notes' | 'tasks' | 'upcoming' | 'calendar' | 'goals';
-
-// Formatting local device time helper
 const formatLocalTime = (isoString?: string | null) => {
   if (!isoString) return '';
   const d = new Date(isoString);
@@ -87,7 +94,7 @@ export default function Planner() {
   const [searchQuery, setSearchQuery] = useState('');
   const [tagFilter, setTagFilter] = useState<string>('all');
 
-  // Modals & Panels
+  // Modals & Control States
   const [isQuickCaptureOpen, setIsQuickCaptureOpen] = useState(false);
   const [quickTitle, setQuickTitle] = useState('');
   const [quickType, setQuickType] = useState<'task' | 'note' | 'reminder' | 'goal'>('task');
@@ -103,8 +110,6 @@ export default function Planner() {
   const [noteTitle, setNoteTitle] = useState('');
   const [noteContent, setNoteContent] = useState('');
   const [noteColor, setNoteColor] = useState('default');
-  const noteTags = '';
-  const notePinned = 0;
 
   // Calendar State
   const calendarDate = new Date();
@@ -251,7 +256,7 @@ export default function Planner() {
     }
   };
 
-  // Create or Update Note Submit
+  // Save Sticky Note
   const handleSaveNote = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!noteTitle.trim()) return;
@@ -261,9 +266,7 @@ export default function Planner() {
         await axios.put(`${API}/planner/notes/${editingNote.id}`, {
           title: noteTitle.trim(),
           content: noteContent,
-          color: noteColor,
-          pinned: notePinned,
-          tags: noteTags
+          color: noteColor
         });
       } else {
         const randRotation = Math.floor(Math.random() * 5) - 2;
@@ -271,8 +274,6 @@ export default function Planner() {
           title: noteTitle.trim(),
           content: noteContent,
           color: noteColor,
-          pinned: notePinned,
-          tags: noteTags,
           rotation: randRotation
         });
       }
@@ -303,620 +304,440 @@ export default function Planner() {
     });
   }, [notes, searchQuery, tagFilter]);
 
-  // Priority Badges Helper
-  const renderPriorityBadge = (priority: string) => {
-    switch (priority) {
-      case 'urgent':
-        return <span className="w-2 h-2 rounded-full bg-rose-500 shadow-sm" title="Urgent Priority" />;
-      case 'high':
-        return <span className="w-2 h-2 rounded-full bg-amber-500 shadow-sm" title="High Priority" />;
-      case 'medium':
-        return <span className="w-2 h-2 rounded-full bg-blue-500 shadow-sm" title="Medium Priority" />;
-      default:
-        return <span className="w-2 h-2 rounded-full bg-slate-400 opacity-60" title="Low Priority" />;
-    }
-  };
-
-  // Dynamic Greeting based on local device hour
-  const now = new Date();
-  const currentHour = now.getHours();
-  const greeting = currentHour < 12 ? 'Good morning' : currentHour < 18 ? 'Good afternoon' : 'Good evening';
-  const formattedTodayDate = now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
-
-  // Today Focus tasks count
+  // Today focus items count
   const todayFocusCount = tasks.filter(t => t.status !== 'completed').length;
 
   return (
-    <div className="w-full space-y-6 animate-fade-in-up pb-12">
+    <div className="w-full space-y-6 animate-fade-in-up pb-16 relative">
       
-      {/* ── 1. HEADER BAR ─────────────────────────────────────────────────── */}
-      <div 
-        style={{ backgroundColor: themeData.bgCard, borderColor: themeData.borderColor }}
-        className="rounded-3xl p-6 border shadow-lg backdrop-blur-xl flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all"
-      >
-        <div className="space-y-1">
-          <div className="flex items-center space-x-2">
-            <span className="p-2 rounded-2xl" style={{ backgroundColor: themeData.accentPrimary + '20', color: themeData.accentPrimary }}>
-              <Sparkles className="w-5 h-5" />
-            </span>
-            <span className="text-xs font-black uppercase tracking-widest" style={{ color: themeData.accentPrimary }}>
-              VENKE PLANNER
-            </span>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full border" style={{ borderColor: themeData.borderColor, color: themeData.textMuted }}>
-              Local Time Workspace
-            </span>
-          </div>
+      {/* ── Scoped Ambient Lighting Background ───────────────────────────── */}
+      <PlannerAmbientBackground />
 
-          <h1 className="text-2xl sm:text-3xl font-black tracking-tight flex items-center gap-2" style={{ color: themeData.textPrimary }}>
-            {greeting}, Venke
-          </h1>
+      {/* ── 1. HEADER HERO BAR ───────────────────────────────────────────── */}
+      <PlannerHeader
+        todayFocusCount={todayFocusCount}
+        onOpenSmartPlan={handleGenerateSmartPlan}
+        onOpenQuickCapture={() => setIsQuickCaptureOpen(true)}
+      />
 
-          <p className="text-xs font-medium" style={{ color: themeData.textSecondary }}>
-            {formattedTodayDate} • <span className="font-extrabold" style={{ color: themeData.accentPrimary }}>{todayFocusCount} focus items</span> for your day.
-          </p>
-        </div>
-
-        {/* Right Actions Header Controls */}
-        <div className="flex items-center space-x-2.5">
-          <Button
-            variant="secondary"
-            onClick={handleGenerateSmartPlan}
-            className="text-xs font-bold flex items-center space-x-1.5 px-4 py-2.5"
-          >
-            <Zap className="w-4 h-4 text-amber-400 animate-pulse" />
-            <span>✨ Plan my day</span>
-          </Button>
-
-          <Button
-            variant="primary"
-            onClick={() => setIsQuickCaptureOpen(true)}
-            className="text-xs font-bold flex items-center space-x-1.5 px-4 py-2.5 shadow-lg"
-          >
-            <Plus className="w-4 h-4 stroke-[3]" />
-            <span>New Capture</span>
-          </Button>
-        </div>
-      </div>
-
-      {/* ── 2. THREE-ZONE SPATIAL WORKSPACE LAYOUT ───────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      {/* ── 2. SPATIAL THREE-ZONE WORKSPACE LAYOUT ───────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start relative z-10">
         
-        {/* ── LEFT ZONE: Views Navigation (Width 3 cols) ────────────────────── */}
-        <div className="lg:col-span-3 space-y-4">
-          <div 
-            style={{ backgroundColor: themeData.bgCard, borderColor: themeData.borderColor }}
-            className="rounded-3xl p-3 border shadow-md space-y-1"
-          >
-            <span className="text-[10px] font-black uppercase tracking-wider px-3 py-1 block" style={{ color: themeData.textMuted }}>
-              WORKSPACE VIEWS
-            </span>
-
-            {[
-              { id: 'today', label: 'Today', icon: <Sun className="w-4 h-4" />, count: tasks.filter(t => t.status !== 'completed').length },
-              { id: 'notes', label: 'Sticky Notes', icon: <Layers className="w-4 h-4" />, count: notes.filter(n => !n.archived).length },
-              { id: 'tasks', label: 'Tasks', icon: <CheckSquare className="w-4 h-4" />, count: tasks.length },
-              { id: 'upcoming', label: 'Upcoming', icon: <Clock className="w-4 h-4" />, count: null },
-              { id: 'calendar', label: 'Calendar', icon: <CalendarDays className="w-4 h-4" />, count: null },
-              { id: 'goals', label: 'Goals', icon: <Target className="w-4 h-4" />, count: goals.length },
-            ].map((v) => {
-              const isActive = activeView === v.id;
-              return (
-                <button
-                  key={v.id}
-                  onClick={() => setActiveView(v.id as ViewMode)}
-                  style={isActive ? {
-                    backgroundColor: themeData.accentPrimary,
-                    color: '#FFFFFF',
-                    boxShadow: `0 4px 14px ${themeData.accentGlow}`
-                  } : {
-                    color: themeData.textSecondary
-                  }}
-                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl transition-all text-xs font-bold group ${
-                    isActive ? 'scale-[1.02]' : 'hover:bg-white/5 hover:text-white'
-                  }`}
-                >
-                  <div className="flex items-center space-x-2.5">
-                    {v.icon}
-                    <span>{v.label}</span>
-                  </div>
-                  {v.count !== null && (
-                    <span 
-                      style={{
-                        backgroundColor: isActive ? 'rgba(255,255,255,0.25)' : themeData.bgSecondary,
-                        color: isActive ? '#FFFFFF' : themeData.textMuted
-                      }}
-                      className="text-[10px] font-extrabold px-2 py-0.5 rounded-full"
-                    >
-                      {v.count}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Quick Filter Tags Capsule */}
-          <div 
-            style={{ backgroundColor: themeData.bgCard, borderColor: themeData.borderColor }}
-            className="rounded-3xl p-4 border shadow-md space-y-3"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-black uppercase tracking-wider block" style={{ color: themeData.textMuted }}>
-                TAGS & FILTER
-              </span>
-              <Tag className="w-3.5 h-3.5" style={{ color: themeData.textMuted }} />
-            </div>
-
-            <div className="flex flex-wrap gap-1.5">
-              {['all', '#work', '#career', '#finance', '#important', '#personal', '#idea'].map(t => (
-                <button
-                  key={t}
-                  onClick={() => setTagFilter(t)}
-                  style={{
-                    backgroundColor: tagFilter === t ? themeData.accentPrimary : themeData.bgSecondary,
-                    color: tagFilter === t ? '#FFFFFF' : themeData.textSecondary,
-                    borderColor: themeData.borderColor
-                  }}
-                  className="text-[10px] font-bold px-2.5 py-1 rounded-full border transition hover:opacity-80"
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
-          </div>
+        {/* ── LEFT ZONE: Views Navigation (3 cols) ─────────────────────── */}
+        <div className="lg:col-span-3">
+          <PlannerSidebar
+            activeView={activeView}
+            setActiveView={setActiveView}
+            tasksCount={tasks.length}
+            notesCount={notes.filter(n => !n.archived).length}
+            goalsCount={goals.length}
+            tagFilter={tagFilter}
+            setTagFilter={setTagFilter}
+          />
         </div>
 
-        {/* ── MIDDLE ZONE: Primary Planning Workspace (Width 6 cols) ────────── */}
+        {/* ── MIDDLE ZONE: Primary Workspace (6 cols) ───────────────────── */}
         <div className="lg:col-span-6 space-y-6">
           
-          {/* View Search & Filter Header */}
-          <div 
-            style={{ backgroundColor: themeData.bgCard, borderColor: themeData.borderColor }}
-            className="rounded-3xl p-3 border shadow-md flex items-center space-x-3"
-          >
-            <Search className="w-4 h-4 ml-2" style={{ color: themeData.textMuted }} />
-            <input
-              type="text"
-              placeholder="Search notes, tasks, reminders, goals..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={{ color: themeData.textPrimary }}
-              className="bg-transparent border-none outline-none text-xs font-medium w-full placeholder:text-slate-500"
-            />
-            {searchQuery && (
-              <button onClick={() => setSearchQuery('')} className="p-1 hover:opacity-75">
-                <X className="w-3.5 h-3.5" style={{ color: themeData.textMuted }} />
-              </button>
-            )}
-          </div>
+          {/* Command-Center Search Bar */}
+          <PlannerSearch
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+          />
 
           {/* ── ACTIVE VIEW CONTENT RENDERING ────────────────────────────── */}
-
-          {/* VIEW 1: TODAY COMMAND CENTER */}
-          {activeView === 'today' && (
-            <div className="space-y-6">
-              
-              {/* Focus Section */}
-              <div 
-                style={{ backgroundColor: themeData.bgCard, borderColor: themeData.borderColor }}
-                className="rounded-3xl p-6 border shadow-lg space-y-4"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <CheckSquare className="w-4 h-4" style={{ color: themeData.accentPrimary }} />
-                    <h3 className="text-sm font-black uppercase tracking-wider" style={{ color: themeData.textPrimary }}>
-                      Today's Focus
-                    </h3>
-                  </div>
-                  <span className="text-[11px] font-bold" style={{ color: themeData.textMuted }}>
-                    {tasks.filter(t => t.status === 'completed').length} / {tasks.length} Completed
-                  </span>
-                </div>
-
-                {filteredTasks.length === 0 ? (
-                  <div className="py-12 text-center space-y-3">
-                    <div className="w-12 h-12 rounded-full mx-auto flex items-center justify-center" style={{ backgroundColor: themeData.accentPrimary + '20', color: themeData.accentPrimary }}>
-                      <Sparkles className="w-6 h-6" />
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeView}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            >
+              {/* VIEW 1: TODAY COMMAND CENTER */}
+              {activeView === 'today' && (
+                <div className="space-y-6">
+                  
+                  {/* Focus Tasks Section */}
+                  <div 
+                    style={{ backgroundColor: `${themeData.bgCard}E6`, borderColor: themeData.borderColor }}
+                    className="planner-glass-surface rounded-3xl p-6 border shadow-xl space-y-4 backdrop-blur-2xl"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2.5">
+                        <span className="p-1.5 rounded-xl bg-purple-500/20 text-purple-400 border border-purple-500/30">
+                          <CheckSquare className="w-4 h-4" />
+                        </span>
+                        <h3 className="text-sm font-black uppercase tracking-wider" style={{ color: themeData.textPrimary }}>
+                          Today's Focus Agenda
+                        </h3>
+                      </div>
+                      <span className="text-[11px] font-mono font-extrabold px-2.5 py-0.5 rounded-full border bg-black/20" style={{ borderColor: themeData.borderColor, color: themeData.textMuted }}>
+                        {tasks.filter(t => t.status === 'completed').length} / {tasks.length} Done
+                      </span>
                     </div>
-                    <h4 className="text-sm font-bold" style={{ color: themeData.textPrimary }}>Your day is clear ✨</h4>
-                    <p className="text-xs" style={{ color: themeData.textMuted }}>Capture an idea or task before it disappears.</p>
+
+                    {filteredTasks.length === 0 ? (
+                      <PlannerEmptyState
+                        title="Your day is completely clear ✨"
+                        description="Enjoy your focus time or capture a new idea before it slips away."
+                        actionText="+ Add Focus Task"
+                        onAction={() => setIsQuickCaptureOpen(true)}
+                        iconType="sparkles"
+                      />
+                    ) : (
+                      <div className="space-y-2.5 max-h-96 overflow-y-auto custom-scrollbar pr-1">
+                        <AnimatePresence>
+                          {filteredTasks.map(t => (
+                            <PlannerTaskItem
+                              key={t.id}
+                              task={t}
+                              onToggle={handleToggleTask}
+                              onDelete={handleDeleteTask}
+                            />
+                          ))}
+                        </AnimatePresence>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Quick Sticky Notes Section */}
+                  <div className="space-y-3.5">
+                    <div className="flex items-center justify-between px-1">
+                      <h3 className="text-xs font-black uppercase tracking-wider flex items-center gap-2" style={{ color: themeData.textPrimary }}>
+                        <Layers className="w-4 h-4 text-purple-400" />
+                        Quick Sticky Notes
+                      </h3>
+                      <button 
+                        onClick={() => {
+                          setEditingNote(null);
+                          setNoteTitle('');
+                          setNoteContent('');
+                          setIsNoteModalOpen(true);
+                        }}
+                        className="text-xs font-bold flex items-center space-x-1 hover:underline text-purple-400 transition"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>New Note</span>
+                      </button>
+                    </div>
+
+                    {filteredNotes.length === 0 ? (
+                      <PlannerEmptyState
+                        title="No sticky notes captured"
+                        description="Create freeform digital notes for thoughts, checklists, and quick ideas."
+                        actionText="+ New Sticky Note"
+                        onAction={() => {
+                          setEditingNote(null);
+                          setNoteTitle('');
+                          setNoteContent('');
+                          setIsNoteModalOpen(true);
+                        }}
+                        iconType="notes"
+                      />
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                        <AnimatePresence>
+                          {filteredNotes.slice(0, 4).map(note => (
+                            <PlannerNoteCard
+                              key={note.id}
+                              note={note}
+                              onTogglePin={handleTogglePinNote}
+                              onConvertToTask={handleConvertNoteToTask}
+                              onDelete={handleDeleteNote}
+                            />
+                          ))}
+                        </AnimatePresence>
+                      </div>
+                    )}
+                  </div>
+
+                </div>
+              )}
+
+              {/* VIEW 2: STICKY NOTES WALL */}
+              {activeView === 'notes' && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-base font-black tracking-tight" style={{ color: themeData.textPrimary }}>
+                        Sticky Notes Workspace
+                      </h3>
+                      <p className="text-xs font-medium" style={{ color: themeData.textMuted }}>
+                        Freeform digital paper cards with color profiles and checklist tools.
+                      </p>
+                    </div>
+                    <Button 
+                      variant="primary" 
+                      size="sm"
+                      onClick={() => {
+                        setEditingNote(null);
+                        setNoteTitle('');
+                        setNoteContent('');
+                        setIsNoteModalOpen(true);
+                      }}
+                    >
+                      + New Note
+                    </Button>
+                  </div>
+
+                  {filteredNotes.length === 0 ? (
+                    <PlannerEmptyState
+                      title="No sticky notes active"
+                      description="Click + New Note to capture ideas on digital paper cards."
+                      actionText="+ New Note"
+                      onAction={() => {
+                        setEditingNote(null);
+                        setNoteTitle('');
+                        setNoteContent('');
+                        setIsNoteModalOpen(true);
+                      }}
+                      iconType="notes"
+                    />
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <AnimatePresence>
+                        {filteredNotes.map(n => (
+                          <PlannerNoteCard
+                            key={n.id}
+                            note={n}
+                            onTogglePin={handleTogglePinNote}
+                            onConvertToTask={handleConvertNoteToTask}
+                            onDelete={handleDeleteNote}
+                          />
+                        ))}
+                      </AnimatePresence>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* VIEW 3: TASKS LIST */}
+              {activeView === 'tasks' && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-base font-black tracking-tight" style={{ color: themeData.textPrimary }}>
+                      All Planner Tasks ({filteredTasks.length})
+                    </h3>
                     <Button variant="primary" size="sm" onClick={() => setIsQuickCaptureOpen(true)}>
                       + Add Task
                     </Button>
                   </div>
-                ) : (
-                  <div className="space-y-2 max-h-96 overflow-y-auto custom-scrollbar pr-1">
-                    {filteredTasks.map(t => {
-                      const isCompleted = t.status === 'completed';
-                      return (
-                        <div
-                          key={t.id}
-                          style={{
-                            backgroundColor: isCompleted ? 'transparent' : themeData.bgSecondary,
-                            borderColor: themeData.borderColor
-                          }}
-                          className={`p-3.5 rounded-2xl border flex items-center justify-between transition-all duration-180 group ${
-                            isCompleted ? 'opacity-50 line-through' : 'hover:scale-[1.01]'
-                          }`}
-                        >
-                          <div className="flex items-center space-x-3 min-w-0">
-                            <button
-                              onClick={() => handleToggleTask(t)}
-                              className={`w-5 h-5 rounded-lg border flex items-center justify-center shrink-0 transition ${
-                                isCompleted
-                                  ? 'bg-emerald-500 border-emerald-500 text-white'
-                                  : 'border-slate-500 hover:border-slate-300'
-                              }`}
-                            >
-                              {isCompleted && <Check className="w-3.5 h-3.5 stroke-[3]" />}
-                            </button>
 
-                            <div className="flex flex-col min-w-0">
-                              <span className="text-xs font-bold truncate" style={{ color: themeData.textPrimary }}>
-                                {t.title}
-                              </span>
-                              {t.description && (
-                                <span className="text-[10px] truncate" style={{ color: themeData.textMuted }}>
-                                  {t.description}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="flex items-center space-x-2 shrink-0">
-                            {t.due_at && (
-                              <span className="text-[9px] font-mono px-2 py-0.5 rounded-full border flex items-center gap-1" style={{ borderColor: themeData.borderColor, color: themeData.textMuted }}>
-                                <Clock className="w-2.5 h-2.5" />
-                                {formatLocalTime(t.due_at)}
-                              </span>
-                            )}
-                            {renderPriorityBadge(t.priority)}
-                            <button onClick={() => handleDeleteTask(t.id)} className="p-1 opacity-0 group-hover:opacity-100 hover:text-rose-400 transition">
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* Quick Notes Section inside Today */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between px-1">
-                  <h3 className="text-xs font-black uppercase tracking-wider flex items-center gap-2" style={{ color: themeData.textPrimary }}>
-                    <Layers className="w-4 h-4" style={{ color: themeData.accentPrimary }} />
-                    Quick Sticky Notes
-                  </h3>
-                  <button 
-                    onClick={() => {
-                      setEditingNote(null);
-                      setNoteTitle('');
-                      setNoteContent('');
-                      setIsNoteModalOpen(true);
-                    }}
-                    className="text-xs font-bold flex items-center space-x-1 hover:underline"
-                    style={{ color: themeData.accentPrimary }}
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>New Note</span>
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {filteredNotes.slice(0, 4).map(note => (
-                    <div
-                      key={note.id}
-                      style={{
-                        backgroundColor: note.color === 'violet' ? 'rgba(139,92,246,0.15)' :
-                                         note.color === 'cyan' ? 'rgba(6,182,212,0.15)' :
-                                         note.color === 'emerald' ? 'rgba(16,185,129,0.15)' :
-                                         note.color === 'amber' ? 'rgba(245,158,11,0.15)' :
-                                         note.color === 'rose' ? 'rgba(244,63,94,0.15)' : themeData.bgCard,
-                        borderColor: note.pinned ? themeData.accentPrimary : themeData.borderColor,
-                        transform: `rotate(${note.rotation || 0}deg)`
-                      }}
-                      className="p-4 rounded-3xl border shadow-md space-y-2 transition hover:-translate-y-1 hover:shadow-xl relative group"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-extrabold truncate" style={{ color: themeData.textPrimary }}>
-                          {note.title}
-                        </span>
-                        <button onClick={() => handleTogglePinNote(note)} className="p-1 transition" style={{ color: note.pinned ? themeData.accentPrimary : themeData.textMuted }}>
-                          <Pin className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-
-                      <p className="text-xs line-clamp-3 font-medium" style={{ color: themeData.textSecondary }}>
-                        {note.content || 'No content...'}
-                      </p>
-
-                      <div className="pt-2 flex items-center justify-between text-[10px]" style={{ color: themeData.textMuted }}>
-                        <span>{note.tags || '#note'}</span>
-                        <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition">
-                          <button onClick={() => handleConvertNoteToTask(note)} title="Convert to Task" className="hover:text-emerald-400 p-0.5">
-                            <CheckSquare className="w-3.5 h-3.5" />
-                          </button>
-                          <button onClick={() => handleDeleteNote(note.id)} title="Delete Note" className="hover:text-rose-400 p-0.5">
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
+                  {filteredTasks.length === 0 ? (
+                    <PlannerEmptyState
+                      title="No tasks in list"
+                      description="Create action items with priority tags and due times."
+                      actionText="+ Add Task"
+                      onAction={() => setIsQuickCaptureOpen(true)}
+                      iconType="tasks"
+                    />
+                  ) : (
+                    <div className="space-y-2.5">
+                      <AnimatePresence>
+                        {filteredTasks.map(t => (
+                          <PlannerTaskItem
+                            key={t.id}
+                            task={t}
+                            onToggle={handleToggleTask}
+                            onDelete={handleDeleteTask}
+                          />
+                        ))}
+                      </AnimatePresence>
                     </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* VIEW 2: STICKY NOTES WALL */}
-          {activeView === 'notes' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-base font-black tracking-tight" style={{ color: themeData.textPrimary }}>
-                    Sticky Notes Workspace
-                  </h3>
-                  <p className="text-xs" style={{ color: themeData.textMuted }}>
-                    Free-flowing digital paper cards for quick thoughts and checklists.
-                  </p>
-                </div>
-                <Button 
-                  variant="primary" 
-                  size="sm"
-                  onClick={() => {
-                    setEditingNote(null);
-                    setNoteTitle('');
-                    setNoteContent('');
-                    setIsNoteModalOpen(true);
-                  }}
-                >
-                  + New Note
-                </Button>
-              </div>
-
-              {filteredNotes.length === 0 ? (
-                <div className="py-16 text-center space-y-3" style={{ backgroundColor: themeData.bgCard }}>
-                  <Layers className="w-10 h-10 mx-auto" style={{ color: themeData.textMuted }} />
-                  <p className="text-xs" style={{ color: themeData.textMuted }}>No sticky notes captured yet.</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {filteredNotes.map(n => (
-                    <div
-                      key={n.id}
-                      style={{
-                        backgroundColor: n.color === 'violet' ? 'rgba(139,92,246,0.15)' :
-                                         n.color === 'cyan' ? 'rgba(6,182,212,0.15)' :
-                                         n.color === 'emerald' ? 'rgba(16,185,129,0.15)' :
-                                         n.color === 'amber' ? 'rgba(245,158,11,0.15)' :
-                                         n.color === 'rose' ? 'rgba(244,63,94,0.15)' : themeData.bgCard,
-                        borderColor: n.pinned ? themeData.accentPrimary : themeData.borderColor,
-                        transform: `rotate(${n.rotation || 0}deg)`
-                      }}
-                      className="p-5 rounded-3xl border shadow-lg space-y-3 transition hover:-translate-y-1 hover:shadow-2xl relative group"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-extrabold truncate" style={{ color: themeData.textPrimary }}>
-                          {n.title}
-                        </span>
-                        <div className="flex items-center space-x-1">
-                          <button onClick={() => handleTogglePinNote(n)} className="p-1 hover:opacity-75" style={{ color: n.pinned ? themeData.accentPrimary : themeData.textMuted }}>
-                            <Pin className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-
-                      <p className="text-xs leading-relaxed font-medium whitespace-pre-wrap" style={{ color: themeData.textSecondary }}>
-                        {n.content || 'Empty note...'}
-                      </p>
-
-                      <div className="pt-2 border-t flex items-center justify-between text-[10px]" style={{ borderColor: themeData.borderColor, color: themeData.textMuted }}>
-                        <span>{n.tags || '#idea'}</span>
-                        <div className="flex items-center space-x-2">
-                          <button onClick={() => handleConvertNoteToTask(n)} className="hover:text-emerald-400 flex items-center gap-1 font-bold">
-                            <CheckSquare className="w-3 h-3" /> Convert
-                          </button>
-                          <button onClick={() => handleDeleteNote(n.id)} className="hover:text-rose-400">
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                  )}
                 </div>
               )}
-            </div>
-          )}
 
-          {/* VIEW 3: TASKS LIST */}
-          {activeView === 'tasks' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-base font-black tracking-tight" style={{ color: themeData.textPrimary }}>
-                  All Planner Tasks ({filteredTasks.length})
-                </h3>
-                <Button variant="primary" size="sm" onClick={() => setIsQuickCaptureOpen(true)}>
-                  + Add Task
-                </Button>
-              </div>
+              {/* VIEW 4: UPCOMING TIMELINE */}
+              {activeView === 'upcoming' && (
+                <div className="space-y-6">
+                  <h3 className="text-base font-black tracking-tight" style={{ color: themeData.textPrimary }}>
+                    Upcoming Schedule Timeline
+                  </h3>
 
-              <div className="space-y-2">
-                {filteredTasks.map(t => (
-                  <div
-                    key={t.id}
-                    style={{ backgroundColor: themeData.bgCard, borderColor: themeData.borderColor }}
-                    className="p-4 rounded-2xl border flex items-center justify-between group transition hover:scale-[1.01]"
-                  >
-                    <div className="flex items-center space-x-3">
-                      <button
-                        onClick={() => handleToggleTask(t)}
-                        className={`w-5 h-5 rounded-lg border flex items-center justify-center shrink-0 ${
-                          t.status === 'completed' ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-500'
-                        }`}
-                      >
-                        {t.status === 'completed' && <Check className="w-3.5 h-3.5 stroke-[3]" />}
-                      </button>
-                      <div>
-                        <span className={`text-xs font-bold block ${t.status === 'completed' ? 'line-through opacity-50' : ''}`} style={{ color: themeData.textPrimary }}>
-                          {t.title}
-                        </span>
-                        {t.description && <span className="text-[10px]" style={{ color: themeData.textMuted }}>{t.description}</span>}
+                  <div className="space-y-4 relative pl-4 border-l-2" style={{ borderColor: `${themeData.accentPrimary}40` }}>
+                    {['TODAY', 'TOMORROW', 'THIS WEEK', 'LATER'].map((period, pIdx) => (
+                      <div key={period} className="space-y-2.5">
+                        <div className="flex items-center space-x-2">
+                          <span className="w-3 h-3 rounded-full -ml-[22px] border-2 border-slate-900 shadow-sm" style={{ backgroundColor: themeData.accentPrimary }} />
+                          <span className="text-xs font-black tracking-wider" style={{ color: themeData.accentPrimary }}>
+                            {period}
+                          </span>
+                        </div>
+
+                        <div className="space-y-2 pl-2">
+                          {tasks.slice(pIdx * 2, pIdx * 2 + 2).map(t => (
+                            <div 
+                              key={t.id} 
+                              style={{ backgroundColor: `${themeData.bgCard}E6`, borderColor: themeData.borderColor }} 
+                              className="planner-glass-surface p-3.5 rounded-2xl border text-xs font-bold flex justify-between items-center"
+                            >
+                              <span style={{ color: themeData.textPrimary }}>{t.title}</span>
+                              <span className="font-mono text-[10px]" style={{ color: themeData.textMuted }}>
+                                {t.due_at ? formatLocalTime(t.due_at) : 'All day'}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
-                    <div className="flex items-center space-x-2">
-                      {renderPriorityBadge(t.priority)}
-                      <button onClick={() => handleDeleteTask(t.id)} className="p-1 hover:text-rose-400">
-                        <Trash2 className="w-3.5 h-3.5" style={{ color: themeData.textMuted }} />
-                      </button>
+              {/* VIEW 5: CALENDAR */}
+              {activeView === 'calendar' && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-base font-black tracking-tight" style={{ color: themeData.textPrimary }}>
+                      Calendar ({calendarDate.toLocaleDateString([], { month: 'long', year: 'numeric' })})
+                    </h3>
+                    <div className="flex space-x-1 p-1 rounded-2xl border bg-black/20" style={{ borderColor: themeData.borderColor }}>
+                      {['month', 'week', 'day', 'agenda'].map(tab => (
+                        <button
+                          key={tab}
+                          onClick={() => setCalendarSubTab(tab as any)}
+                          style={{
+                            backgroundColor: calendarSubTab === tab ? themeData.accentPrimary : 'transparent',
+                            color: calendarSubTab === tab ? '#FFFFFF' : themeData.textMuted
+                          }}
+                          className="px-3 py-1 rounded-xl text-xs font-extrabold capitalize transition cursor-pointer"
+                        >
+                          {tab}
+                        </button>
+                      ))}
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
 
-          {/* VIEW 4: UPCOMING TIMELINE */}
-          {activeView === 'upcoming' && (
-            <div className="space-y-6">
-              <h3 className="text-base font-black tracking-tight" style={{ color: themeData.textPrimary }}>
-                Upcoming Schedule Timeline
-              </h3>
-
-              <div className="space-y-4 relative pl-4 border-l-2" style={{ borderColor: themeData.accentPrimary + '40' }}>
-                {['TODAY', 'TOMORROW', 'THIS WEEK', 'LATER'].map((period, pIdx) => (
-                  <div key={period} className="space-y-2">
-                    <div className="flex items-center space-x-2">
-                      <span className="w-2.5 h-2.5 rounded-full -ml-[21px]" style={{ backgroundColor: themeData.accentPrimary }} />
-                      <span className="text-xs font-black tracking-wider" style={{ color: themeData.accentPrimary }}>
-                        {period}
-                      </span>
-                    </div>
-
-                    <div className="space-y-2 pl-2">
-                      {tasks.slice(pIdx * 2, pIdx * 2 + 2).map(t => (
-                        <div key={t.id} style={{ backgroundColor: themeData.bgCard, borderColor: themeData.borderColor }} className="p-3 rounded-2xl border text-xs font-bold flex justify-between">
-                          <span style={{ color: themeData.textPrimary }}>{t.title}</span>
-                          <span style={{ color: themeData.textMuted }}>{t.due_at ? formatLocalTime(t.due_at) : 'All day'}</span>
+                  <div 
+                    style={{ backgroundColor: `${themeData.bgCard}E6`, borderColor: themeData.borderColor }} 
+                    className="planner-glass-surface p-6 rounded-3xl border shadow-xl text-center space-y-4 backdrop-blur-2xl"
+                  >
+                    <p className="text-xs font-medium" style={{ color: themeData.textSecondary }}>
+                      Calendar view active. Schedule mapped to your browser timezone ({Intl.DateTimeFormat().resolvedOptions().timeZone}).
+                    </p>
+                    <div className="grid grid-cols-7 gap-2 text-center text-xs font-bold">
+                      {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
+                        <span key={d} style={{ color: themeData.textMuted }}>{d}</span>
+                      ))}
+                      {Array.from({ length: 31 }).map((_, i) => (
+                        <div 
+                          key={i} 
+                          style={{ 
+                            backgroundColor: i + 1 === calendarDate.getDate() ? `${themeData.accentPrimary}35` : `${themeData.bgSecondary}B0`, 
+                            borderColor: i + 1 === calendarDate.getDate() ? themeData.accentPrimary : themeData.borderColor 
+                          }} 
+                          className="p-3 rounded-2xl border text-xs font-black transition hover:scale-105 hover:border-purple-400 cursor-pointer"
+                        >
+                          {i + 1}
                         </div>
                       ))}
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* VIEW 5: CALENDAR */}
-          {activeView === 'calendar' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-base font-black tracking-tight" style={{ color: themeData.textPrimary }}>
-                  Calendar ({calendarDate.toLocaleDateString([], { month: 'long', year: 'numeric' })})
-                </h3>
-                <div className="flex space-x-1 p-1 rounded-2xl border" style={{ backgroundColor: themeData.bgCard, borderColor: themeData.borderColor }}>
-                  {['month', 'week', 'day', 'agenda'].map(tab => (
-                    <button
-                      key={tab}
-                      onClick={() => setCalendarSubTab(tab as any)}
-                      style={{
-                        backgroundColor: calendarSubTab === tab ? themeData.accentPrimary : 'transparent',
-                        color: calendarSubTab === tab ? '#FFFFFF' : themeData.textMuted
-                      }}
-                      className="px-3 py-1 rounded-xl text-xs font-extrabold capitalize transition"
-                    >
-                      {tab}
-                    </button>
-                  ))}
                 </div>
-              </div>
+              )}
 
-              <div style={{ backgroundColor: themeData.bgCard, borderColor: themeData.borderColor }} className="p-6 rounded-3xl border shadow-lg text-center space-y-4">
-                <p className="text-xs font-medium" style={{ color: themeData.textSecondary }}>
-                  Calendar integration active. Displaying events in your browser local time zone ({Intl.DateTimeFormat().resolvedOptions().timeZone}).
-                </p>
-                <div className="grid grid-cols-7 gap-2 text-center text-xs font-bold">
-                  {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
-                    <span key={d} style={{ color: themeData.textMuted }}>{d}</span>
-                  ))}
-                  {Array.from({ length: 31 }).map((_, i) => (
-                    <div 
-                      key={i} 
-                      style={{ backgroundColor: i + 1 === now.getDate() ? themeData.accentPrimary + '30' : themeData.bgSecondary, borderColor: themeData.borderColor }} 
-                      className="p-3 rounded-2xl border text-xs font-black hover:border-purple-500 cursor-pointer"
-                    >
-                      {i + 1}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* VIEW 6: GOALS */}
-          {activeView === 'goals' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-base font-black tracking-tight" style={{ color: themeData.textPrimary }}>
-                  Personal & Career Goals ({goals.length})
-                </h3>
-              </div>
-
-              <div className="space-y-3">
-                {goals.map(g => (
-                  <div key={g.id} style={{ backgroundColor: themeData.bgCard, borderColor: themeData.borderColor }} className="p-5 rounded-3xl border shadow-lg space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-extrabold" style={{ color: themeData.textPrimary }}>{g.title}</span>
-                      <span className="text-[10px] font-bold uppercase px-2.5 py-1 rounded-full border" style={{ borderColor: themeData.borderColor, color: themeData.accentPrimary }}>
-                        {g.category}
-                      </span>
-                    </div>
-
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-xs font-bold" style={{ color: themeData.textMuted }}>
-                        <span>Progress</span>
-                        <span>{g.progress}%</span>
-                      </div>
-                      <div className="w-full h-2 rounded-full overflow-hidden" style={{ backgroundColor: themeData.bgSecondary }}>
-                        <div className="h-full transition-all duration-300" style={{ width: `${g.progress}%`, backgroundColor: themeData.accentPrimary }} />
-                      </div>
-                    </div>
+              {/* VIEW 6: GOALS */}
+              {activeView === 'goals' && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-base font-black tracking-tight" style={{ color: themeData.textPrimary }}>
+                      Personal & Career Goals ({goals.length})
+                    </h3>
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
+
+                  {goals.length === 0 ? (
+                    <PlannerEmptyState
+                      title="No goals tracked yet"
+                      description="Create career, personal, or financial goals to track milestones."
+                      actionText="+ Add Goal"
+                      onAction={() => setIsQuickCaptureOpen(true)}
+                      iconType="sparkles"
+                    />
+                  ) : (
+                    <div className="space-y-3.5">
+                      {goals.map(g => (
+                        <div 
+                          key={g.id} 
+                          style={{ backgroundColor: `${themeData.bgCard}E6`, borderColor: themeData.borderColor }} 
+                          className="planner-glass-surface p-5 rounded-3xl border shadow-xl space-y-3 backdrop-blur-2xl"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-extrabold" style={{ color: themeData.textPrimary }}>{g.title}</span>
+                            <span 
+                              className="text-[10px] font-black uppercase px-3 py-1 rounded-full border bg-black/20" 
+                              style={{ borderColor: themeData.borderColor, color: themeData.accentPrimary }}
+                            >
+                              {g.category}
+                            </span>
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <div className="flex justify-between text-xs font-bold" style={{ color: themeData.textMuted }}>
+                              <span>Milestone Progress</span>
+                              <span>{g.progress}%</span>
+                            </div>
+                            <div className="w-full h-2 rounded-full overflow-hidden bg-black/30">
+                              <div 
+                                className="h-full transition-all duration-500 rounded-full" 
+                                style={{ 
+                                  width: `${g.progress}%`, 
+                                  background: `linear-gradient(90deg, ${themeData.accentPrimary} 0%, ${themeData.accentSecondary} 100%)` 
+                                }} 
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </motion.div>
+          </AnimatePresence>
 
         </div>
 
-        {/* ── RIGHT ZONE: Quick Context / Reminders Panel (Width 3 cols) ──── */}
-        <div className="lg:col-span-3 space-y-4">
+        {/* ── RIGHT ZONE: Reminders & Quick Capture Panel (3 cols) ────────── */}
+        <div className="lg:col-span-3 space-y-5">
           
           {/* Active Reminders Card */}
           <div 
-            style={{ backgroundColor: themeData.bgCard, borderColor: themeData.borderColor }}
-            className="rounded-3xl p-5 border shadow-md space-y-3"
+            style={{ backgroundColor: `${themeData.bgCard}E6`, borderColor: themeData.borderColor }}
+            className="planner-glass-surface rounded-3xl p-5 border shadow-xl space-y-3.5 backdrop-blur-2xl"
           >
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5" style={{ color: themeData.textMuted }}>
-                <Bell className="w-3.5 h-3.5" style={{ color: themeData.accentPrimary }} />
+                <Bell className="w-3.5 h-3.5 text-purple-400" />
                 ACTIVE REMINDERS
               </span>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: themeData.accentPrimary + '20', color: themeData.accentPrimary }}>
+              <span 
+                className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border" 
+                style={{ 
+                  backgroundColor: `${themeData.accentPrimary}20`, 
+                  borderColor: `${themeData.accentPrimary}40`,
+                  color: themeData.accentPrimary 
+                }}
+              >
                 {reminders.length}
               </span>
             </div>
 
             {reminders.length === 0 ? (
-              <p className="text-xs text-center py-4" style={{ color: themeData.textMuted }}>No active reminders scheduled.</p>
+              <p className="text-xs text-center py-4 font-medium" style={{ color: themeData.textMuted }}>
+                No active reminders scheduled.
+              </p>
             ) : (
               <div className="space-y-2">
                 {reminders.map(r => (
-                  <div key={r.id} style={{ backgroundColor: themeData.bgSecondary, borderColor: themeData.borderColor }} className="p-3 rounded-2xl border text-xs space-y-1">
+                  <div 
+                    key={r.id} 
+                    style={{ backgroundColor: `${themeData.bgSecondary}B0`, borderColor: themeData.borderColor }} 
+                    className="p-3 rounded-2xl border text-xs space-y-1"
+                  >
                     <span className="font-extrabold block" style={{ color: themeData.textPrimary }}>{r.title}</span>
-                    <span className="text-[10px] font-mono block" style={{ color: themeData.textMuted }}>
+                    <span className="text-[10px] font-mono block text-purple-400">
                       {formatLocalTime(r.reminder_at)}
                     </span>
                   </div>
@@ -925,61 +746,34 @@ export default function Planner() {
             )}
           </div>
 
-          {/* Quick Capture Box */}
-          <div 
-            style={{ backgroundColor: themeData.bgCard, borderColor: themeData.borderColor }}
-            className="rounded-3xl p-5 border shadow-md space-y-3"
-          >
-            <span className="text-[10px] font-black uppercase tracking-wider block" style={{ color: themeData.textMuted }}>
-              QUICK CAPTURE
-            </span>
-            <form onSubmit={handleQuickCapture} className="space-y-2">
-              <input
-                type="text"
-                placeholder="What do you want to remember?"
-                value={quickTitle}
-                onChange={(e) => setQuickTitle(e.target.value)}
-                style={{ backgroundColor: themeData.bgSecondary, borderColor: themeData.borderColor, color: themeData.textPrimary }}
-                className="w-full text-xs p-3 rounded-2xl border outline-none font-medium placeholder:text-slate-500"
-              />
-              <div className="flex gap-1.5">
-                {(['task', 'note', 'reminder', 'goal'] as const).map(t => (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => setQuickType(t)}
-                    style={{
-                      backgroundColor: quickType === t ? themeData.accentPrimary : themeData.bgSecondary,
-                      color: quickType === t ? '#FFFFFF' : themeData.textMuted
-                    }}
-                    className="flex-1 text-[10px] font-extrabold py-1.5 rounded-xl capitalize transition"
-                  >
-                    {t}
-                  </button>
-                ))}
-              </div>
-              <Button type="submit" variant="primary" size="sm" className="w-full text-xs font-bold py-2">
-                + Capture
-              </Button>
-            </form>
-          </div>
+          {/* Quick Capture Widget */}
+          <PlannerQuickCapture
+            quickTitle={quickTitle}
+            setQuickTitle={setQuickTitle}
+            quickType={quickType}
+            setQuickType={setQuickType}
+            onSubmit={handleQuickCapture}
+          />
         </div>
 
       </div>
 
       {/* ── SMART PLAN MODAL ───────────────────────────────────────────── */}
       {isSmartPlanOpen && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[1200] flex items-center justify-center p-4">
-          <div style={{ backgroundColor: themeData.bgElevated, borderColor: themeData.borderColor }} className="w-full max-w-lg rounded-3xl p-6 border shadow-2xl space-y-4 animate-in fade-in zoom-in-95">
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-xl z-[1200] flex items-center justify-center p-4">
+          <div 
+            style={{ backgroundColor: themeData.bgElevated, borderColor: themeData.borderColor }} 
+            className="w-full max-w-lg rounded-3xl p-6 border shadow-2xl space-y-4 animate-in fade-in zoom-in-95"
+          >
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
-                <Zap className="w-5 h-5 text-amber-400" />
+                <Zap className="w-5 h-5 text-amber-400 fill-amber-400/30" />
                 <h3 className="text-base font-black uppercase tracking-wider" style={{ color: themeData.textPrimary }}>
                   ✨ Plan My Day
                 </h3>
               </div>
-              <button onClick={() => setIsSmartPlanOpen(false)} className="p-1 hover:opacity-75">
-                <X className="w-4 h-4" style={{ color: themeData.textMuted }} />
+              <button onClick={() => setIsSmartPlanOpen(false)} className="p-1 hover:opacity-75 text-slate-400">
+                <X className="w-4 h-4" />
               </button>
             </div>
 
@@ -1026,14 +820,14 @@ export default function Planner() {
 
       {/* ── CREATE / EDIT NOTE MODAL ────────────────────────────────────── */}
       {isNoteModalOpen && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[1200] flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-xl z-[1200] flex items-center justify-center p-4">
           <form onSubmit={handleSaveNote} style={{ backgroundColor: themeData.bgElevated, borderColor: themeData.borderColor }} className="w-full max-w-lg rounded-3xl p-6 border shadow-2xl space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-black uppercase tracking-wider" style={{ color: themeData.textPrimary }}>
                 {editingNote ? 'Edit Sticky Note' : 'Create Sticky Note'}
               </h3>
-              <button type="button" onClick={() => setIsNoteModalOpen(false)} className="p-1 hover:opacity-75">
-                <X className="w-4 h-4" style={{ color: themeData.textMuted }} />
+              <button type="button" onClick={() => setIsNoteModalOpen(false)} className="p-1 hover:opacity-75 text-slate-400">
+                <X className="w-4 h-4" />
               </button>
             </div>
 
@@ -1090,14 +884,14 @@ export default function Planner() {
 
       {/* ── QUICK CAPTURE MODAL ────────────────────────────────────── */}
       {isQuickCaptureOpen && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[1200] flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-xl z-[1200] flex items-center justify-center p-4">
           <div style={{ backgroundColor: themeData.bgElevated, borderColor: themeData.borderColor }} className="w-full max-w-md rounded-3xl p-6 border shadow-2xl space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-black uppercase tracking-wider" style={{ color: themeData.textPrimary }}>
                 ⚡ Quick Capture
               </h3>
-              <button type="button" onClick={() => setIsQuickCaptureOpen(false)} className="p-1 hover:opacity-75">
-                <X className="w-4 h-4" style={{ color: themeData.textMuted }} />
+              <button type="button" onClick={() => setIsQuickCaptureOpen(false)} className="p-1 hover:opacity-75 text-slate-400">
+                <X className="w-4 h-4" />
               </button>
             </div>
 

@@ -224,6 +224,97 @@ html[data-theme="light"] .text-slate-500 {
   animation: drawPath 900ms ease-out forwards;
 }
 
+/* ── VENKE PLANNER SCOPED PREMIUM ANIMATION & GLASS UTILITIES ───────────── */
+@keyframes plannerAmbientFloat {
+  0%, 100% {
+    transform: translate(0px, 0px) scale(1);
+    opacity: 0.45;
+  }
+  33% {
+    transform: translate(30px, -20px) scale(1.08);
+    opacity: 0.6;
+  }
+  66% {
+    transform: translate(-25px, 25px) scale(0.95);
+    opacity: 0.4;
+  }
+}
+
+@keyframes plannerShimmerSweep {
+  0% {
+    transform: translateX(-100%) rotate(25deg);
+  }
+  100% {
+    transform: translateX(200%) rotate(25deg);
+  }
+}
+
+@keyframes plannerSparklePulse {
+  0%, 100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 0.9;
+  }
+  50% {
+    transform: scale(1.18) rotate(12deg);
+    opacity: 1;
+    filter: drop-shadow(0 0 8px rgba(139, 92, 246, 0.8));
+  }
+}
+
+@keyframes plannerCheckmarkDraw {
+  0% {
+    stroke-dashoffset: 24;
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+}
+
+.animate-planner-ambient {
+  animation: plannerAmbientFloat 14s ease-in-out infinite;
+}
+
+.animate-planner-sparkle {
+  animation: plannerSparklePulse 3.5s ease-in-out infinite;
+}
+
+/* Planner Glass Surface Utility */
+.planner-glass-surface {
+  background: var(--bg-card);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37),
+              inset 0 1px 0 0 rgba(255, 255, 255, 0.08);
+  transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 220ms ease,
+              box-shadow 220ms ease,
+              background-color 220ms ease;
+}
+
+.planner-glass-surface:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent-primary);
+  box-shadow: 0 16px 40px -10px rgba(139, 92, 246, 0.25),
+              inset 0 1px 0 0 rgba(255, 255, 255, 0.15);
+}
+
+/* Reduced Motion Override for Planner */
+@media (prefers-reduced-motion: reduce) {
+  .animate-planner-ambient,
+  .animate-planner-sparkle {
+    animation: none !important;
+  }
+  .planner-glass-surface:hover {
+    transform: none !important;
+  }
+}
+
 /* Reduced Motion Support */
 @media (prefers-reduced-motion: reduce) {
   .animate-fade-in-up,
