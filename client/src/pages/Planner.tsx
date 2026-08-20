@@ -1,11 +1,9 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { 
-  Sparkles, CheckSquare, Calendar, Layers, Flag, Clock, Plus, Pin, PinOff, 
-  Trash2, Edit3, ArrowRight, Tag, Search, Check, AlertCircle, RefreshCw, 
-  ChevronRight, CalendarDays, Target, FileText, CheckCircle2, ChevronLeft, 
-  X, Filter, Zap, ArrowUpRight, ShieldCheck, Sun, Moon, Bell, ListTodo,
-  TrendingUp, Award, MoreVertical, LayoutGrid
+  Sparkles, CheckSquare, Layers, Clock, Plus, Pin, 
+  Trash2, Tag, Search, Check, RefreshCw, 
+  CalendarDays, Target, X, Zap, Sun, Bell
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import Button from '../components/ui/Button';
@@ -75,13 +73,6 @@ const formatLocalTime = (isoString?: string | null) => {
   return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
 };
 
-const formatLocalDate = (isoString?: string | null) => {
-  if (!isoString) return '';
-  const d = new Date(isoString);
-  if (isNaN(d.getTime())) return '';
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
-};
-
 export default function Planner() {
   const { themeData } = useTheme();
   const [activeView, setActiveView] = useState<ViewMode>('today');
@@ -91,14 +82,12 @@ export default function Planner() {
   const [notes, setNotes] = useState<PlannerNote[]>([]);
   const [reminders, setReminders] = useState<PlannerReminder[]>([]);
   const [goals, setGoals] = useState<PlannerGoal[]>([]);
-  const [loading, setLoading] = useState(true);
 
   // Search & Filter
   const [searchQuery, setSearchQuery] = useState('');
   const [tagFilter, setTagFilter] = useState<string>('all');
 
   // Modals & Panels
-  const [isQuickCaptureOpen, setIsQuickCaptureOpen] = useState(false);
   const [quickTitle, setQuickTitle] = useState('');
   const [quickType, setQuickType] = useState<'task' | 'note' | 'reminder' | 'goal'>('task');
 
@@ -113,25 +102,15 @@ export default function Planner() {
   const [noteTitle, setNoteTitle] = useState('');
   const [noteContent, setNoteContent] = useState('');
   const [noteColor, setNoteColor] = useState('default');
-  const [noteTags, setNoteTags] = useState('');
-  const [notePinned, setNotePinned] = useState(0);
-
-  // Task Modal state
-  const [editingTask, setEditingTask] = useState<PlannerTask | null>(null);
-  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
-  const [taskTitle, setTaskTitle] = useState('');
-  const [taskDescription, setTaskDescription] = useState('');
-  const [taskPriority, setTaskPriority] = useState<'low' | 'medium' | 'high' | 'urgent'>('medium');
-  const [taskDueDate, setTaskDueDate] = useState('');
-  const [taskDueTime, setTaskDueTime] = useState('');
+  const noteTags = '';
+  const notePinned = 0;
 
   // Calendar State
-  const [calendarDate, setCalendarDate] = useState(new Date());
+  const calendarDate = new Date();
   const [calendarSubTab, setCalendarSubTab] = useState<'month' | 'week' | 'day' | 'agenda'>('month');
 
   // Load all planner datasets from backend
   const fetchPlannerData = async () => {
-    setLoading(true);
     try {
       const [tasksRes, notesRes, remRes, goalsRes] = await Promise.all([
         axios.get(`${API}/planner/tasks`),
@@ -145,8 +124,6 @@ export default function Planner() {
       setGoals(goalsRes.data || []);
     } catch (err: any) {
       console.error('Failed to load VENKE Planner data:', err);
-    } finally {
-      setLoading(false);
     }
   };
 

@@ -3,7 +3,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, ReceiptText, Upload, Settings, Bell, Search, 
   Wallet, Target, LineChart, CalendarDays, PieChart, X, CalendarRange,
-  Sliders, Pin, PinOff, Moon, Sun
+  Sliders, Pin, PinOff, Moon, Sun, Sparkles
 } from 'lucide-react';
 import { UserProfileDropdown } from './ui/UserProfileDropdown';
 import { ThemeSelectorDropdown } from './ui/ThemeSelectorDropdown';
