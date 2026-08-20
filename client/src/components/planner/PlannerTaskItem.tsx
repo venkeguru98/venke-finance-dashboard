@@ -1,8 +1,7 @@
-import React from 'react';
 import { motion } from 'framer-motion';
 import { Check, Clock, Trash2 } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
-import { PlannerTask } from '../../pages/Planner';
+import type { PlannerTask } from '../../pages/Planner';
 
 interface PlannerTaskItemProps {
   task: PlannerTask;

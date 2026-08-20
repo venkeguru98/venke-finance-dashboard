@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Sparkles, CheckSquare, Layers, Clock, Plus, Tag, 
-  Search, Check, RefreshCw, CalendarDays, Target, X, Zap, Sun, Bell, Trash2
+  CheckSquare, Layers, Plus, RefreshCw, X, Zap, Bell
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import Button from '../components/ui/Button';
@@ -11,7 +10,7 @@ import Button from '../components/ui/Button';
 // Scoped Planner UI Subcomponents
 import PlannerAmbientBackground from '../components/planner/PlannerAmbientBackground';
 import PlannerHeader from '../components/planner/PlannerHeader';
-import PlannerSidebar, { ViewMode } from '../components/planner/PlannerSidebar';
+import PlannerSidebar, { type ViewMode } from '../components/planner/PlannerSidebar';
 import PlannerSearch from '../components/planner/PlannerSearch';
 import PlannerTaskItem from '../components/planner/PlannerTaskItem';
 import PlannerNoteCard from '../components/planner/PlannerNoteCard';

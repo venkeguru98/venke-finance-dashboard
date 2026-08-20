@@ -1,8 +1,7 @@
-import React from 'react';
 import { motion } from 'framer-motion';
-import { Pin, CheckSquare, Trash2, Sparkles } from 'lucide-react';
+import { Pin, CheckSquare, Trash2 } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
-import { PlannerNote } from '../../pages/Planner';
+import type { PlannerNote } from '../../pages/Planner';
 
 interface PlannerNoteCardProps {
   note: PlannerNote;

@@ -1,4 +1,3 @@
-import React from 'react';
 import { Search, X, Command } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 

@@ -1,4 +1,3 @@
-import React from 'react';
 import { 
   Sun, Layers, CheckSquare, Clock, CalendarDays, Target, Tag 
 } from 'lucide-react';

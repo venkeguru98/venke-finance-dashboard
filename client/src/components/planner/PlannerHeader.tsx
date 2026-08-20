@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Sparkles, Plus, Zap, Clock, ShieldCheck } from 'lucide-react';
+import { useState } from 'react';
+import { Sparkles, Plus, Zap, Clock } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 
 interface PlannerHeaderProps {

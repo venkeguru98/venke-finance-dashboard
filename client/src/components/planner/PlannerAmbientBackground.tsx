@@ -1,4 +1,3 @@
-import React from 'react';
 import { useTheme } from '../../context/ThemeContext';
 
 export default function PlannerAmbientBackground() {
@@ -17,19 +16,19 @@ export default function PlannerAmbientBackground() {
       {/* Upper-Right Violet Glow */}
       <div 
         style={{
-          background: `radial-gradient(circle, ${themeData.accentSecondary}25 0%, rgba(0,0,0,0) 70%)`
+          background: `radial-gradient(circle, ${themeData.accentSecondary}25 0%, rgba(0,0,0,0) 70%)`,
+          animationDelay: '-5s'
         }}
         className="absolute top-20 -right-40 w-[600px] h-[600px] rounded-full blur-[160px] opacity-40 animate-planner-ambient"
-        style={{ animationDelay: '-5s' }}
       />
 
       {/* Lower-Left Deep Blue/Purple Ambient Glow */}
       <div 
         style={{
-          background: `radial-gradient(circle, ${themeData.accentPrimary}20 0%, rgba(0,0,0,0) 75%)`
+          background: `radial-gradient(circle, ${themeData.accentPrimary}20 0%, rgba(0,0,0,0) 75%)`,
+          animationDelay: '-9s'
         }}
         className="absolute -bottom-30 -left-40 w-[650px] h-[650px] rounded-full blur-[180px] opacity-50 animate-planner-ambient"
-        style={{ animationDelay: '-9s' }}
       />
 
       {/* Faint Subtle Grid Texture Overlay */}
