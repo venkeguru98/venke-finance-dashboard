@@ -454,16 +454,21 @@ export default function Planner() {
                 </div>
               )}
 
-              {/* VIEW 2: STICKY NOTES WALL */}
+              {/* VIEW 2: STICKY NOTES WORKSPACE BOARD */}
               {activeView === 'notes' && (
-                <div className="space-y-4">
+                <div className="space-y-5">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h3 className="text-base font-black tracking-tight" style={{ color: themeData.textPrimary }}>
-                        Sticky Notes Workspace
-                      </h3>
-                      <p className="text-xs font-medium" style={{ color: themeData.textMuted }}>
-                        Freeform digital paper cards with color profiles and checklist tools.
+                      <div className="flex items-center space-x-2">
+                        <span className="p-1.5 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                          <Layers className="w-4 h-4" />
+                        </span>
+                        <h3 className="text-base font-black tracking-tight" style={{ color: themeData.textPrimary }}>
+                          Sticky Notes Workspace Board
+                        </h3>
+                      </div>
+                      <p className="text-xs font-semibold mt-1" style={{ color: themeData.textMuted }}>
+                        Tactile digital paper notes with natural rotation, depth, and 3D proximity interaction.
                       </p>
                     </div>
                     <Button 
@@ -475,39 +480,59 @@ export default function Planner() {
                         setNoteContent('');
                         setIsNoteModalOpen(true);
                       }}
+                      className="shadow-lg"
                     >
                       + New Note
                     </Button>
                   </div>
 
-                  {filteredNotes.length === 0 ? (
-                    <PlannerEmptyState
-                      title="No sticky notes active"
-                      description="Click + New Note to capture ideas on digital paper cards."
-                      actionText="+ New Note"
-                      onAction={() => {
-                        setEditingNote(null);
-                        setNoteTitle('');
-                        setNoteContent('');
-                        setIsNoteModalOpen(true);
+                  {/* Digital Desk Board Surface */}
+                  <div 
+                    style={{ 
+                      backgroundColor: `${themeData.bgCard}B0`, 
+                      borderColor: themeData.borderColor,
+                      backgroundImage: `radial-gradient(${themeData.accentPrimary}20 1px, transparent 1px)`,
+                      backgroundSize: '24px 24px'
+                    }}
+                    className="planner-glass-surface rounded-3xl p-6 border shadow-2xl backdrop-blur-2xl min-h-[420px] relative overflow-hidden"
+                  >
+                    {/* Background Desk Ambient Glow */}
+                    <div 
+                      style={{
+                        background: `radial-gradient(circle, ${themeData.accentPrimary}25 0%, transparent 70%)`
                       }}
-                      iconType="notes"
+                      className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 rounded-full blur-3xl pointer-events-none opacity-40 animate-pulse"
                     />
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <AnimatePresence>
-                        {filteredNotes.map(n => (
-                          <PlannerNoteCard
-                            key={n.id}
-                            note={n}
-                            onTogglePin={handleTogglePinNote}
-                            onConvertToTask={handleConvertNoteToTask}
-                            onDelete={handleDeleteNote}
-                          />
-                        ))}
-                      </AnimatePresence>
-                    </div>
-                  )}
+
+                    {filteredNotes.length === 0 ? (
+                      <PlannerEmptyState
+                        title="Your ideas live here ✦"
+                        description="Capture thoughts, reminders, and quick ideas on tactile digital sticky notes before they disappear."
+                        actionText="+ Create Sticky Note"
+                        onAction={() => {
+                          setEditingNote(null);
+                          setNoteTitle('');
+                          setNoteContent('');
+                          setIsNoteModalOpen(true);
+                        }}
+                        iconType="notes"
+                      />
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 relative z-10">
+                        <AnimatePresence>
+                          {filteredNotes.map(n => (
+                            <PlannerNoteCard
+                              key={n.id}
+                              note={n}
+                              onTogglePin={handleTogglePinNote}
+                              onConvertToTask={handleConvertNoteToTask}
+                              onDelete={handleDeleteNote}
+                            />
+                          ))}
+                        </AnimatePresence>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
