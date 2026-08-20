@@ -827,17 +827,28 @@ export class EnterpriseRecoveryService {
     const pendingChangeCount = EnterpriseRecoveryService.pendingChangeCount || Math.max(0, cloudRecords - localRecords);
     const lastMutationTime = EnterpriseRecoveryService.lastMutationTime || now.toISOString();
 
-    // 1. Determine absolute local path of the latest backup snapshot file
+    // 1. Determine absolute paths for server container backup and local user destination path
     const dateStr = cert?.backup_date || now.toISOString().slice(0, 10);
     const dateSpecificBackupPath = path.join(BACKUP_ROOT, dateStr, `venke-finance-recovery-${dateStr}.sqlite`);
-    const latestBackupPath = fs.existsSync(dateSpecificBackupPath)
+    const serverBackupPath = fs.existsSync(dateSpecificBackupPath)
       ? dateSpecificBackupPath
       : path.resolve(latestSqlite);
+
+    const extDir = EnterpriseRecoveryService.getExternalBackupDir();
+    const localUserBackupPath = path.join(extDir, dateStr, `venke-finance-recovery-${dateStr}.sqlite`);
+
+    // Prefer local user destination path if configured or if running in local Windows environment
+    const isCloudContainer = !!process.env.RENDER || serverBackupPath.startsWith('/opt/') || serverBackupPath.startsWith('/var/');
+    const latestBackupPath = isCloudContainer && extDir 
+      ? localUserBackupPath 
+      : (fs.existsSync(serverBackupPath) ? serverBackupPath : localUserBackupPath);
 
     // 2. Compute dynamic database storage & usage metrics (Quota limit: 50 MB)
     let usedSizeBytes = 0;
     try {
-      if (fs.existsSync(latestBackupPath)) {
+      if (fs.existsSync(serverBackupPath)) {
+        usedSizeBytes = fs.statSync(serverBackupPath).size;
+      } else if (fs.existsSync(latestBackupPath)) {
         usedSizeBytes = fs.statSync(latestBackupPath).size;
       }
       if (usedSizeBytes < 100000 && fs.existsSync(LIVE_DB_PATH)) {
@@ -897,6 +908,9 @@ export class EnterpriseRecoveryService {
       externalPath: extDir,
       externalCopyVerified: fs.existsSync(extDir),
       latestBackupPath,
+      serverBackupPath,
+      localUserBackupPath,
+      isCloudContainer,
       storageMetrics,
       rpo: '< 30 minutes',
       rpoMinutes: 30,

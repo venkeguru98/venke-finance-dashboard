@@ -601,21 +601,25 @@ export default function Settings() {
           <div className="pt-3 border-t border-slate-800/80 space-y-2">
             <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-wider text-slate-400">
               <span className="flex items-center gap-1.5">
-                📁 LOCAL BACKUP DESTINATION PATH
+                📁 LOCAL DEVICE BACKUP DESTINATION PATH
               </span>
               <span className="text-[#00E599] font-mono text-[9px] lowercase">auto-updated</span>
             </div>
 
+            {/* Primary Local User Device Path */}
             <div className="p-3 bg-[#0F172A] border border-[#1E293B] rounded-xl flex items-center justify-between gap-3 shadow-inner group">
               <div className="flex items-center space-x-2.5 min-w-0">
-                <HardDrive className="w-4 h-4 text-purple-400 shrink-0" />
-                <code className="text-xs font-mono text-purple-300 truncate select-all">
-                  {heartbeatData.latestBackupPath || heartbeatData.localBackupPath || 'C:\\Users\\...\\backups\\latest\\venke_finance_latest.sqlite'}
-                </code>
+                <HardDrive className="w-4 h-4 text-[#00E599] shrink-0" />
+                <div className="flex flex-col min-w-0">
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Local Computer Destination</span>
+                  <code className="text-xs font-mono text-purple-300 truncate select-all">
+                    {heartbeatData.localUserBackupPath || heartbeatData.externalPath || 'C:\\Users\\Public\\Documents\\VENKE Finance Backups\\snapshot_20260820.sqlite'}
+                  </code>
+                </div>
               </div>
 
               <button
-                onClick={() => handleCopyPath(heartbeatData.latestBackupPath || heartbeatData.localBackupPath || 'C:\\Users\\...\\backups\\latest\\venke_finance_latest.sqlite')}
+                onClick={() => handleCopyPath(heartbeatData.localUserBackupPath || heartbeatData.externalPath || 'C:\\Users\\Public\\Documents\\VENKE Finance Backups\\snapshot_20260820.sqlite')}
                 className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-purple-600/30 border border-slate-700/60 hover:border-purple-500/50 text-slate-300 hover:text-white transition flex items-center gap-1.5 shrink-0 cursor-pointer shadow-sm"
                 title="Copy local backup path to clipboard"
               >
@@ -632,6 +636,23 @@ export default function Settings() {
                 )}
               </button>
             </div>
+
+            {/* Secondary Cloud Container Path Indicator (for Render cloud deployment) */}
+            {(heartbeatData.isCloudContainer || (heartbeatData.serverBackupPath && heartbeatData.serverBackupPath.startsWith('/opt/'))) && (
+              <div className="p-2.5 bg-slate-950/60 border border-slate-800/80 rounded-xl flex items-center justify-between text-[11px] text-slate-400 font-mono">
+                <div className="flex items-center space-x-2 truncate">
+                  <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse shrink-0" />
+                  <span className="text-[10px] text-slate-500 uppercase font-bold shrink-0">Cloud Server Archive:</span>
+                  <span className="truncate text-slate-300">{heartbeatData.serverBackupPath || '/opt/render/project/src/backups/latest'}</span>
+                </div>
+                <button 
+                  onClick={() => handleCopyPath(heartbeatData.serverBackupPath || '/opt/render/project/src/backups/latest')}
+                  className="text-[10px] text-purple-400 hover:text-purple-300 underline font-sans shrink-0 ml-2 cursor-pointer"
+                >
+                  Copy Server Path
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
