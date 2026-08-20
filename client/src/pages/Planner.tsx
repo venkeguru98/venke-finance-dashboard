@@ -88,6 +88,7 @@ export default function Planner() {
   const [tagFilter, setTagFilter] = useState<string>('all');
 
   // Modals & Panels
+  const [isQuickCaptureOpen, setIsQuickCaptureOpen] = useState(false);
   const [quickTitle, setQuickTitle] = useState('');
   const [quickType, setQuickType] = useState<'task' | 'note' | 'reminder' | 'goal'>('task');
 
@@ -1084,6 +1085,60 @@ export default function Planner() {
               </div>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* ── QUICK CAPTURE MODAL ────────────────────────────────────── */}
+      {isQuickCaptureOpen && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[1200] flex items-center justify-center p-4">
+          <div style={{ backgroundColor: themeData.bgElevated, borderColor: themeData.borderColor }} className="w-full max-w-md rounded-3xl p-6 border shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-black uppercase tracking-wider" style={{ color: themeData.textPrimary }}>
+                ⚡ Quick Capture
+              </h3>
+              <button type="button" onClick={() => setIsQuickCaptureOpen(false)} className="p-1 hover:opacity-75">
+                <X className="w-4 h-4" style={{ color: themeData.textMuted }} />
+              </button>
+            </div>
+
+            <form onSubmit={handleQuickCapture} className="space-y-3">
+              <input
+                type="text"
+                placeholder="What do you want to remember?"
+                value={quickTitle}
+                onChange={(e) => setQuickTitle(e.target.value)}
+                style={{ backgroundColor: themeData.bgSecondary, borderColor: themeData.borderColor, color: themeData.textPrimary }}
+                className="w-full text-xs p-3.5 rounded-2xl border outline-none font-bold placeholder:text-slate-500"
+                autoFocus
+              />
+
+              <div className="flex gap-1.5">
+                {(['task', 'note', 'reminder', 'goal'] as const).map(t => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setQuickType(t)}
+                    style={{
+                      backgroundColor: quickType === t ? themeData.accentPrimary : themeData.bgSecondary,
+                      color: quickType === t ? '#FFFFFF' : themeData.textMuted
+                    }}
+                    className="flex-1 text-[10px] font-extrabold py-2 rounded-xl capitalize transition"
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-2">
+                <Button type="button" variant="secondary" size="sm" onClick={() => setIsQuickCaptureOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" variant="primary" size="sm">
+                  + Capture
+                </Button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
