@@ -834,7 +834,6 @@ export class EnterpriseRecoveryService {
       ? dateSpecificBackupPath
       : path.resolve(latestSqlite);
 
-    const extDir = EnterpriseRecoveryService.getExternalBackupDir();
     const localUserBackupPath = path.join(extDir, dateStr, `venke-finance-recovery-${dateStr}.sqlite`);
 
     // Prefer local user destination path if configured or if running in local Windows environment
