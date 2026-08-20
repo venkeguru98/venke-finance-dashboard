@@ -97,8 +97,8 @@ const convertSql = (sql: string): string => {
   // 3b. Convert GROUP BY day_str -> GROUP BY to_char(date, 'DD')
   converted = converted.replace(/GROUP BY\s+day_str/gi, "GROUP BY to_char(date, 'DD')");
 
-  // 3c. Convert (t.)date LIKE -> CAST((t.)date AS TEXT) LIKE (PostgreSQL DATE type safety)
-  converted = converted.replace(/\b((?:[a-z_]+\.)?date)\s+LIKE\b/gi, "CAST($1 AS TEXT) LIKE");
+  // 3c. Convert timestamp/date column LIKE -> CAST(column AS TEXT) LIKE (PostgreSQL TIMESTAMP/DATE type safety)
+  converted = converted.replace(/\b((?:[a-z_]+\.)?(?:date|due_at|reminder_at|created_at|updated_at))\s+LIKE\b/gi, "CAST($1 AS TEXT) LIKE");
 
   // 4. Convert parameter placeholders '?' to '$1, $2, ...'
   let index = 1;

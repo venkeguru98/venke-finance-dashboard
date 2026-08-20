@@ -19,7 +19,7 @@ router.get('/summary', async (req: Request, res: Response) => {
       [userId, nowIso]
     );
     const todayRows = await query(
-      `SELECT COUNT(*) as cnt FROM planner_tasks WHERE user_id = ? AND status != 'completed' AND (due_at LIKE ? OR due_at >= ?)`,
+      `SELECT COUNT(*) as cnt FROM planner_tasks WHERE user_id = ? AND status != 'completed' AND (CAST(due_at AS TEXT) LIKE ? OR due_at >= ?)`,
       [userId, `${todayStr}%`, `${todayStr}T00:00:00`]
     );
     const reminderRows = await query(
