@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AreaChart, Area, BarChart, Bar, Legend, ReferenceLine, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
+import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 import { Plus, Search, RefreshCw, Flame, LayoutGrid, CheckCircle2, Target, TrendingUp, Info, X, ChevronLeft, ChevronRight, ArrowRightLeft, Sparkles, Wallet, Calendar, ShieldCheck } from 'lucide-react';
 import axios from 'axios';
 import Button from '../components/ui/Button';
@@ -2184,7 +2184,7 @@ export default function Dashboard() {
                               isAnimationActive={true}
                               animationDuration={800}
                             >
-                              {sortedCategories.map((entry, index) => (
+                              {sortedCategories.map((_, index) => (
                                 <Cell key={`cell-planned-${index}`} fill="#38BDF8" fillOpacity={0.65} />
                               ))}
                             </Bar>
