@@ -221,6 +221,7 @@ export default function Dashboard() {
   const carouselRef = useRef<HTMLDivElement>(null);
   const [varianceFilter, setVarianceFilter] = useState<'all' | 'over' | 'saved'>('all');
   const [hoveredCardId, setHoveredCardId] = useState<string | number | null>(null);
+  const [scrubInfo, setScrubInfo] = useState<{ cardId: string | number; x: number; label: string; amount: number } | null>(null);
 
   // Drawer resets & defaults
   useEffect(() => {
@@ -2057,7 +2058,7 @@ export default function Dashboard() {
                           <Sparkles className="w-3.5 h-3.5 text-[#00F0FF]" /> CATEGORY PERFORMANCE (4K FINTECH TERMINAL)
                         </h4>
                         <p className="text-[9px] font-medium text-slate-400">
-                          Data-driven Bézier trajectory curves with coordinate pulse dots
+                          Multi-knot Bézier trajectories, interactive scrubbing tooltips & radar pulse dots
                         </p>
                       </div>
 
@@ -2067,30 +2068,30 @@ export default function Dashboard() {
                         <div className="flex items-center space-x-1 p-1 bg-[#0D1424] rounded-xl border border-white/10 text-[10px] font-extrabold select-none">
                           <button
                             onClick={() => setVarianceFilter('all')}
-                            className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                            className={`px-2.5 py-1 rounded-lg transition-all active:scale-95 cursor-pointer ${
                               varianceFilter === 'all'
-                                ? 'bg-[#1E293B] text-white shadow-[0_2px_8px_rgba(0,0,0,0.5)]'
-                                : 'text-slate-400 hover:text-slate-200'
+                                ? 'bg-[#1E293B] text-white shadow-[0_2px_8px_rgba(0,0,0,0.5)] border border-slate-700'
+                                : 'text-slate-400 hover:text-slate-200 border border-transparent'
                             }`}
                           >
                             All ({monthBudgets.length})
                           </button>
                           <button
                             onClick={() => setVarianceFilter('over')}
-                            className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                            className={`px-2.5 py-1 rounded-lg transition-all active:scale-95 cursor-pointer ${
                               varianceFilter === 'over'
                                 ? 'bg-[#2D0D18] text-[#FF4D79] border border-[#FF1E56] shadow-[0_0_10px_rgba(255,30,86,0.3)]'
-                                : 'text-slate-400 hover:text-rose-300'
+                                : 'text-slate-400 hover:text-rose-300 border border-transparent'
                             }`}
                           >
                             Over Budget ({overCount})
                           </button>
                           <button
                             onClick={() => setVarianceFilter('saved')}
-                            className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                            className={`px-2.5 py-1 rounded-lg transition-all active:scale-95 cursor-pointer ${
                               varianceFilter === 'saved'
                                 ? 'bg-[#06231A] text-[#00FFA3] border border-[#00FFA3] shadow-[0_0_10px_rgba(0,255,163,0.3)]'
-                                : 'text-slate-400 hover:text-emerald-300'
+                                : 'text-slate-400 hover:text-emerald-300 border border-transparent'
                             }`}
                           >
                             Saved ({healthyCount + warningCount + criticalCount})
@@ -2176,34 +2177,81 @@ export default function Dashboard() {
                               badgeStyle = 'bg-[#06231A] border border-[#00FFA3] text-[#00FFA3] font-bold shadow-[0_0_10px_rgba(0,255,163,0.3)]';
                             }
 
-                            // Dynamic Bézier Trajectory SVG Curve based on actual spending velocity & pctUsed
+                            // Generate Multi-Knot Spline Path from Category Transactions
                             const pctNorm = Math.min(1.6, Math.max(0.1, pctUsed / 100));
                             const endY = Math.max(6, Math.min(38, Math.round(40 - pctNorm * 22)));
-                            const midY1 = Math.max(12, Math.min(38, Math.round(36 - (pctNorm / 2) * 16)));
-                            const midY2 = Math.max(8, Math.min(38, Math.round(38 - pctNorm * 20)));
                             const endX = 270;
+
+                            // 5 knots along x (0, 65, 135, 205, 270)
+                            let knots = [
+                              { x: 0, y: 38, label: '1st', amount: 0 },
+                              { x: 65, y: Math.round(38 - (38 - endY) * 0.25), label: '10th', amount: Math.round(actual * 0.25) },
+                              { x: 135, y: Math.round(38 - (38 - endY) * 0.55), label: '18th', amount: Math.round(actual * 0.55) },
+                              { x: 205, y: Math.round(38 - (38 - endY) * 0.85), label: '25th', amount: Math.round(actual * 0.85) },
+                              { x: 270, y: endY, label: 'Today', amount: actual }
+                            ];
+
+                            if (catTxList.length >= 2) {
+                              const sortedTx = [...catTxList].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                              let cumSum = 0;
+                              const totalTx = sortedTx.length;
+                              knots = [0, 1, 2, 3, 4].map(idx => {
+                                const tIndex = Math.min(totalTx - 1, Math.floor((idx / 4) * (totalTx - 1)));
+                                cumSum = sortedTx.slice(0, tIndex + 1).reduce((s, t) => s + t.amount, 0);
+                                const ratio = actual > 0 ? cumSum / actual : (idx / 4);
+                                const yPos = Math.max(6, Math.min(38, Math.round(38 - ratio * (38 - endY))));
+                                const dateTag = new Date(sortedTx[tIndex].date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+                                return { x: Math.round((idx / 4) * 270), y: yPos, label: dateTag, amount: cumSum };
+                              });
+                            }
+
+                            // Cubic Bézier spline construction
+                            let splineLineD = `M ${knots[0].x},${knots[0].y}`;
+                            for (let i = 0; i < knots.length - 1; i++) {
+                              const p0 = knots[i];
+                              const p1 = knots[i + 1];
+                              const c1x = p0.x + (p1.x - p0.x) / 2;
+                              const c1y = p0.y;
+                              const c2x = p0.x + (p1.x - p0.x) / 2;
+                              const c2y = p1.y;
+                              splineLineD += ` C ${c1x},${c1y} ${c2x},${c2y} ${p1.x},${p1.y}`;
+                            }
+                            const splineAreaD = `${splineLineD} L 270,45 L 0,45 Z`;
 
                             const sparkGradId = `spark4K-${cat.id}`;
                             const strokeColorStart = isOver ? '#FF1E56' : '#00FFA3';
                             const strokeColorEnd = isOver ? '#FF5376' : '#00D26A';
-                            const linePath = `M 0,38 C 70,${midY1} 140,${midY2} 270,${endY}`;
-                            const areaPath = `M 0,38 C 70,${midY1} 140,${midY2} 270,${endY} L 270,45 L 0,45 Z`;
 
                             const isHovered = hoveredCardId === cat.id;
+                            const isScrubbingThisCard = scrubInfo && scrubInfo.cardId === cat.id;
 
                             return (
                               <div
                                 key={cat.id}
                                 onMouseEnter={() => setHoveredCardId(cat.id)}
-                                onMouseLeave={() => setHoveredCardId(null)}
+                                onMouseLeave={() => {
+                                  setHoveredCardId(null);
+                                  setScrubInfo(null);
+                                }}
+                                onMouseMove={(e) => {
+                                  // 60fps cursor spotlight projection
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  const mouseX = e.clientX - rect.left;
+                                  const mouseY = e.clientY - rect.top;
+                                  e.currentTarget.style.setProperty('--mouse-x', `${mouseX}px`);
+                                  e.currentTarget.style.setProperty('--mouse-y', `${mouseY}px`);
+                                }}
                                 onClick={() => navigate('/budgets', { state: { month: selectedMonthNum, year: selectedYearNum } })}
-                                className={`group flex-none w-[300px] snap-start min-h-[240px] p-5 bg-[#090D16] border rounded-[20px] shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_10px_30px_-5px_rgba(0,0,0,0.8)] flex flex-col justify-between cursor-pointer transition-all duration-300 ease-out hover:-translate-y-2 hover:scale-[1.02] ${
+                                className={`group flex-none w-[300px] snap-start min-h-[240px] p-5 border rounded-[20px] shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_10px_30px_-5px_rgba(0,0,0,0.8)] flex flex-col justify-between cursor-pointer transition-all duration-300 ease-out hover:-translate-y-2 hover:[perspective:1000px] hover:[rotateX:1deg] relative overflow-hidden ${
                                   isAnyHovered && !isHovered ? 'opacity-45 scale-95' : 'opacity-100'
                                 } ${
                                   isOver
                                     ? 'border-white/12 hover:border-[#FF1E56]/60 hover:shadow-[0_20px_40px_-10px_rgba(0,0,0,0.9),0_0_20px_rgba(255,30,86,0.25)]'
                                     : 'border-white/12 hover:border-[#00FFA3]/60 hover:shadow-[0_20px_40px_-10px_rgba(0,0,0,0.9),0_0_20px_rgba(0,255,163,0.25)]'
                                 }`}
+                                style={{
+                                  background: `radial-gradient(400px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(255, 255, 255, 0.07), transparent 40%), #090D16`
+                                }}
                               >
                                 {/* 1. Header: Icon + Sharp High-Contrast Status Pill */}
                                 <div className="flex justify-between items-center gap-2">
@@ -2225,7 +2273,7 @@ export default function Dashboard() {
                                   </div>
                                 </div>
 
-                                {/* 3. Dual-Tone Micro Progress Bar */}
+                                {/* 3. Dual-Tone Micro Progress Bar with Exceeded Shimmer */}
                                 <div className="space-y-1.5 pt-2">
                                   <div className="flex justify-between items-center text-[10px] font-semibold text-slate-400">
                                     <span>Planned: <strong className="text-slate-200 font-mono">{formatIndianRupee(planned)}</strong></span>
@@ -2233,11 +2281,11 @@ export default function Dashboard() {
                                       {pctUsed.toFixed(0)}% used
                                     </span>
                                   </div>
-                                  <div className="w-full h-1.5 bg-[#131B2E] rounded-full overflow-hidden border border-white/10">
+                                  <div className="w-full h-1.5 bg-[#131B2E] rounded-full overflow-hidden border border-white/10 relative">
                                     <div
                                       className={`h-full rounded-full transition-all duration-500 ${
                                         isOver
-                                          ? 'bg-gradient-to-r from-[#FF1E56] to-[#FF5376]'
+                                          ? 'bg-gradient-to-r from-[#FF1E56] to-[#FF5376] bg-[linear-gradient(45deg,rgba(255,255,255,0.2)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.2)_50%,rgba(255,255,255,0.2)_75%,transparent_75%,transparent)] bg-[length:1rem_1rem] animate-[shimmer_1.5s_linear_infinite]'
                                           : 'bg-gradient-to-r from-[#00FFA3] to-[#00D26A]'
                                       }`}
                                       style={{ width: `${Math.min(100, Math.max(4, pctUsed))}%` }}
@@ -2249,12 +2297,50 @@ export default function Dashboard() {
                                   </div>
                                 </div>
 
-                                {/* 4. Dynamic Bézier Sparkline with Interactive Pulse Dot */}
-                                <div className="pt-2 -mx-5 -mb-5 overflow-hidden rounded-b-[20px] h-11 relative">
+                                {/* 4. Multi-Knot Bézier Sparkline with Scrubbing Crosshair & Multi-Ring Radar Dot */}
+                                <div
+                                  className="pt-2 -mx-5 -mb-5 overflow-hidden rounded-b-[20px] h-12 relative cursor-crosshair"
+                                  onMouseMove={(e) => {
+                                    e.stopPropagation();
+                                    const svgRect = e.currentTarget.getBoundingClientRect();
+                                    const relX = Math.max(0, Math.min(270, (e.clientX - svgRect.left) * (270 / svgRect.width)));
+
+                                    // Find closest knot
+                                    let closest = knots[0];
+                                    let minDist = Math.abs(knots[0].x - relX);
+                                    knots.forEach(k => {
+                                      const dist = Math.abs(k.x - relX);
+                                      if (dist < minDist) {
+                                        minDist = dist;
+                                        closest = k;
+                                      }
+                                    });
+
+                                    setScrubInfo({
+                                      cardId: cat.id,
+                                      x: relX,
+                                      label: closest.label,
+                                      amount: closest.amount
+                                    });
+                                  }}
+                                  onMouseLeave={() => setScrubInfo(null)}
+                                >
+                                  {/* Interactive Floating Scrub Data Pill */}
+                                  {isScrubbingThisCard && scrubInfo && (
+                                    <div
+                                      className="absolute top-0 z-30 px-2 py-0.5 bg-[#0F172A]/90 backdrop-blur-md border border-white/20 rounded-md text-[9px] font-mono text-white shadow-lg pointer-events-none transform -translate-x-1/2 -translate-y-full"
+                                      style={{ left: `${(scrubInfo.x / 270) * 100}%` }}
+                                    >
+                                      <span className="text-slate-400">{scrubInfo.label}: </span>
+                                      <span className="font-bold text-[#00F0FF]">{formatIndianRupee(scrubInfo.amount)}</span>
+                                    </div>
+                                  )}
+
                                   <svg className="w-full h-full" viewBox="0 0 280 45" preserveAspectRatio="none">
                                     <defs>
                                       <linearGradient id={sparkGradId} x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="0%" stopColor={strokeColorStart} stopOpacity={0.35} />
+                                        <stop offset="0%" stopColor={strokeColorStart} stopOpacity={0.28} />
+                                        <stop offset="80%" stopColor={strokeColorEnd} stopOpacity={0.02} />
                                         <stop offset="100%" stopColor={strokeColorEnd} stopOpacity={0.0} />
                                       </linearGradient>
                                       <linearGradient id={`${sparkGradId}-line`} x1="0" y1="0" x2="1" y2="0">
@@ -2262,17 +2348,36 @@ export default function Dashboard() {
                                         <stop offset="100%" stopColor={strokeColorEnd} />
                                       </linearGradient>
                                     </defs>
-                                    <path d={areaPath} fill={`url(#${sparkGradId})`} />
+
+                                    {/* Gradient Area Fill */}
+                                    <path d={splineAreaD} fill={`url(#${sparkGradId})`} />
+
+                                    {/* Multi-Point Stroke Line */}
                                     <path
-                                      d={linePath}
+                                      d={splineLineD}
                                       fill="none"
                                       stroke={`url(#${sparkGradId}-line)`}
                                       strokeWidth="2.5"
                                       strokeLinecap="round"
                                       className="group-hover:drop-shadow-[0_0_8px_currentColor] transition-all duration-300"
                                     />
-                                    {/* Data Coordinate Pulse Point */}
-                                    <circle cx={endX} cy={endY} r="7" fill={strokeColorStart} opacity="0.5" className="animate-ping" />
+
+                                    {/* Scrubbing Vertical Dashed Crosshair Line */}
+                                    {isScrubbingThisCard && scrubInfo && (
+                                      <line
+                                        x1={scrubInfo.x}
+                                        y1="0"
+                                        x2={scrubInfo.x}
+                                        y2="45"
+                                        stroke="rgba(255, 255, 255, 0.45)"
+                                        strokeWidth="1"
+                                        strokeDasharray="2 2"
+                                      />
+                                    )}
+
+                                    {/* Terminal Multi-Ring Radar Pulse Dot */}
+                                    <circle cx={endX} cy={endY} r="9" fill={strokeColorStart} opacity="0.3" className="animate-ping" />
+                                    <circle cx={endX} cy={endY} r="5" fill={strokeColorStart} opacity="0.6" className="animate-ping" />
                                     <circle cx={endX} cy={endY} r="3.5" fill={strokeColorStart} className="shadow-[0_0_8px_currentColor]" />
                                   </svg>
                                 </div>
