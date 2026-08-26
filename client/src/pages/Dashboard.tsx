@@ -2101,14 +2101,14 @@ export default function Dashboard() {
                         {/* Glass Floating Chevron Buttons */}
                         <div className="flex items-center space-x-1">
                           <button
-                            onClick={() => carouselRef.current?.scrollBy({ left: -320, behavior: 'smooth' })}
+                            onClick={() => carouselRef.current?.scrollBy({ left: -326, behavior: 'smooth' })}
                             className="p-1.5 bg-[#0D1424] hover:bg-[#1E293B] border border-white/10 rounded-xl text-slate-300 hover:text-white transition active:scale-95 cursor-pointer shadow-md"
                             title="Scroll Left"
                           >
                             <ChevronLeft className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => carouselRef.current?.scrollBy({ left: 320, behavior: 'smooth' })}
+                            onClick={() => carouselRef.current?.scrollBy({ left: 326, behavior: 'smooth' })}
                             className="p-1.5 bg-[#0D1424] hover:bg-[#1E293B] border border-white/10 rounded-xl text-slate-300 hover:text-white transition active:scale-95 cursor-pointer shadow-md"
                             title="Scroll Right"
                           >
@@ -2118,7 +2118,7 @@ export default function Dashboard() {
                       </div>
                     </div>
 
-                    {/* Horizontal 4K High-Contrast Carousel Track */}
+                    {/* Horizontal 4K High-Contrast Hardware-Accelerated Carousel Track */}
                     {(() => {
                       const filteredList = sortedCategories.filter(cat => {
                         const diff = cat.actualSpent - cat.planned;
@@ -2140,15 +2140,15 @@ export default function Dashboard() {
                       return (
                         <div
                           ref={carouselRef}
-                          onWheel={(e) => {
-                            if (carouselRef.current && (e.deltaX !== 0 || e.deltaY !== 0)) {
-                              carouselRef.current.scrollLeft += e.deltaY || e.deltaX;
-                            }
-                          }}
-                          className="flex gap-4.5 overflow-x-auto snap-x snap-mandatory py-4 px-1.5 scroll-smooth no-scrollbar sm:custom-scrollbar"
+                          className="flex gap-4 overflow-x-auto overflow-y-hidden snap-x snap-mandatory py-4 px-4 scroll-smooth no-scrollbar sm:custom-scrollbar overscroll-x-contain"
                           style={{
                             scrollbarWidth: 'thin',
-                            scrollbarColor: 'rgba(0, 240, 255, 0.4) rgba(255, 255, 255, 0.02)'
+                            scrollbarColor: 'rgba(0, 240, 255, 0.4) rgba(255, 255, 255, 0.02)',
+                            scrollPadding: '0 16px',
+                            willChange: 'transform, scroll-position',
+                            transform: 'translateZ(0)',
+                            WebkitMaskImage: 'linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent)',
+                            maskImage: 'linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent)'
                           }}
                         >
                           {filteredList.map(cat => {
@@ -2248,7 +2248,7 @@ export default function Dashboard() {
                                   e.currentTarget.style.setProperty('--mouse-y', `${mouseY}px`);
                                 }}
                                 onClick={() => navigate('/budgets', { state: { month: selectedMonthNum, year: selectedYearNum } })}
-                                className={`group flex-none w-[290px] shrink-0 snap-start min-h-[240px] p-5 border rounded-[20px] shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_10px_30px_-5px_rgba(0,0,0,0.8)] flex flex-col justify-between cursor-pointer transition-all duration-300 ease-out hover:-translate-y-2 hover:[perspective:1000px] hover:[rotateX:1deg] relative overflow-hidden ${
+                                className={`group flex-none w-[310px] min-w-[310px] max-w-[310px] shrink-0 snap-start snap-always min-h-[240px] p-5 border rounded-[20px] shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_10px_30px_-5px_rgba(0,0,0,0.8)] flex flex-col justify-between cursor-pointer transition-all duration-300 ease-out hover:-translate-y-2 hover:[perspective:1000px] hover:[rotateX:1deg] relative overflow-hidden box-border ${
                                   isAnyHovered && !isHovered ? 'opacity-45 scale-95' : 'opacity-100'
                                 } ${
                                   isOver
@@ -2256,6 +2256,8 @@ export default function Dashboard() {
                                     : 'border-white/12 hover:border-[#00FFA3]/60 hover:shadow-[0_0_0_1px_rgba(0,255,163,0.6),0_12px_32px_-4px_rgba(0,255,163,0.3)]'
                                 }`}
                                 style={{
+                                  contain: 'content',
+                                  transform: 'translateZ(0)',
                                   background: `radial-gradient(400px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(255, 255, 255, 0.07), transparent 40%), #090D16`
                                 }}
                               >
