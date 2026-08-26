@@ -818,7 +818,6 @@ export class EnterpriseRecoveryService {
     } catch (_) {}
 
     const health = await EnterpriseRecoveryService.calculateBackupHealthScore();
-    const extDir = EnterpriseRecoveryService.getExternalBackupDir();
 
     const now = new Date();
     const lastBackupEpoch = EnterpriseRecoveryService.lastBackupEpoch || (cert?.generated_at ? new Date(cert.generated_at).getTime() : now.getTime() - (15 * 60 * 1000));
