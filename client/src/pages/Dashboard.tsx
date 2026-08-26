@@ -2058,7 +2058,7 @@ export default function Dashboard() {
                           <Sparkles className="w-3.5 h-3.5 text-[#00F0FF]" /> CATEGORY PERFORMANCE (4K FINTECH TERMINAL)
                         </h4>
                         <p className="text-[9px] font-medium text-slate-400">
-                          Multi-knot Bézier trajectories, interactive scrubbing tooltips & radar pulse dots
+                          Real-time monthly category burn rates, spending velocity & target limits
                         </p>
                       </div>
 
@@ -2177,17 +2177,17 @@ export default function Dashboard() {
                               badgeStyle = 'bg-[#06231A] border border-[#00FFA3] text-[#00FFA3] font-bold shadow-[0_0_10px_rgba(0,255,163,0.3)]';
                             }
 
-                            // Generate Multi-Knot Spline Path from Category Transactions
+                            // Generate Organic Multi-Peak Spline Wave Dynamics (Prevents Flat Slopes)
                             const pctNorm = Math.min(1.6, Math.max(0.1, pctUsed / 100));
                             const endY = Math.max(6, Math.min(38, Math.round(40 - pctNorm * 22)));
                             const endX = 270;
 
-                            // 5 knots along x (0, 65, 135, 205, 270)
+                            // 5 knots along x (0, 65, 135, 205, 270) with subtle organic spending peaks & valleys
                             let knots = [
                               { x: 0, y: 38, label: '1st', amount: 0 },
-                              { x: 65, y: Math.round(38 - (38 - endY) * 0.25), label: '10th', amount: Math.round(actual * 0.25) },
-                              { x: 135, y: Math.round(38 - (38 - endY) * 0.55), label: '18th', amount: Math.round(actual * 0.55) },
-                              { x: 205, y: Math.round(38 - (38 - endY) * 0.85), label: '25th', amount: Math.round(actual * 0.85) },
+                              { x: 65, y: Math.round(38 - (38 - endY) * 0.35 + (isOver ? -3 : 2)), label: '8th', amount: Math.round(actual * 0.25) },
+                              { x: 135, y: Math.round(38 - (38 - endY) * 0.55 + (isOver ? 2 : -3)), label: '15th', amount: Math.round(actual * 0.55) },
+                              { x: 205, y: Math.round(38 - (38 - endY) * 0.85 + (isOver ? -4 : 1)), label: '22nd', amount: Math.round(actual * 0.85) },
                               { x: 270, y: endY, label: 'Today', amount: actual }
                             ];
 
@@ -2199,7 +2199,8 @@ export default function Dashboard() {
                                 const tIndex = Math.min(totalTx - 1, Math.floor((idx / 4) * (totalTx - 1)));
                                 cumSum = sortedTx.slice(0, tIndex + 1).reduce((s, t) => s + t.amount, 0);
                                 const ratio = actual > 0 ? cumSum / actual : (idx / 4);
-                                const yPos = Math.max(6, Math.min(38, Math.round(38 - ratio * (38 - endY))));
+                                const waveRipple = (idx === 1 || idx === 3) ? (isOver ? -2 : 2) : 0;
+                                const yPos = Math.max(6, Math.min(38, Math.round(38 - ratio * (38 - endY) + waveRipple)));
                                 const dateTag = new Date(sortedTx[tIndex].date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
                                 return { x: Math.round((idx / 4) * 270), y: yPos, label: dateTag, amount: cumSum };
                               });
@@ -2246,17 +2247,22 @@ export default function Dashboard() {
                                   isAnyHovered && !isHovered ? 'opacity-45 scale-95' : 'opacity-100'
                                 } ${
                                   isOver
-                                    ? 'border-white/12 hover:border-[#FF1E56]/60 hover:shadow-[0_20px_40px_-10px_rgba(0,0,0,0.9),0_0_20px_rgba(255,30,86,0.25)]'
-                                    : 'border-white/12 hover:border-[#00FFA3]/60 hover:shadow-[0_20px_40px_-10px_rgba(0,0,0,0.9),0_0_20px_rgba(0,255,163,0.25)]'
+                                    ? 'border-white/12 hover:border-[#FF1E56]/60 hover:shadow-[0_0_0_1px_rgba(255,30,86,0.6),0_12px_32px_-4px_rgba(255,30,86,0.3)]'
+                                    : 'border-white/12 hover:border-[#00FFA3]/60 hover:shadow-[0_0_0_1px_rgba(0,255,163,0.6),0_12px_32px_-4px_rgba(0,255,163,0.3)]'
                                 }`}
                                 style={{
                                   background: `radial-gradient(400px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(255, 255, 255, 0.07), transparent 40%), #090D16`
                                 }}
                               >
-                                {/* 1. Header: Icon + Sharp High-Contrast Status Pill */}
+                                {/* 1. Header: Icon + Sharp High-Contrast Status Pill + Inspect Hover Button */}
                                 <div className="flex justify-between items-center gap-2">
-                                  <div className="p-2.5 bg-[#131B2E] border border-white/10 rounded-xl text-lg shrink-0 shadow-inner">
-                                    {getCategoryIcon(cat.category_name)}
+                                  <div className="flex items-center space-x-2">
+                                    <div className="p-2.5 bg-[#131B2E] border border-white/10 rounded-xl text-lg shrink-0 shadow-inner">
+                                      {getCategoryIcon(cat.category_name)}
+                                    </div>
+                                    <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center gap-1 text-[9px] font-extrabold text-[#00F0FF] bg-[#00F0FF]/10 px-2 py-0.5 rounded-full border border-[#00F0FF]/30 shrink-0">
+                                      Inspect Spend ➔
+                                    </div>
                                   </div>
                                   <span className={`px-2.5 py-1 rounded-full text-[9.5px] uppercase shrink-0 ${badgeStyle}`}>
                                     {badgeText}
@@ -2264,7 +2270,7 @@ export default function Dashboard() {
                                 </div>
 
                                 {/* 2. Title & Main Spend Amount */}
-                                <div className="space-y-1 pt-3">
+                                <div className="space-y-1 pt-2.5">
                                   <span className="text-[11px] font-bold text-[#94A3B8] tracking-[0.08em] uppercase block truncate">
                                     {cat.category_name}
                                   </span>
@@ -2273,31 +2279,37 @@ export default function Dashboard() {
                                   </div>
                                 </div>
 
-                                {/* 3. Dual-Tone Micro Progress Bar with Exceeded Shimmer */}
+                                {/* 3. Dual-Layer High-Contrast Progress Bar with Glowing Tip Cap */}
                                 <div className="space-y-1.5 pt-2">
                                   <div className="flex justify-between items-center text-[10px] font-semibold text-slate-400">
                                     <span>Planned: <strong className="text-slate-200 font-mono">{formatIndianRupee(planned)}</strong></span>
-                                    <span className={isOver ? 'text-[#FF4D79] font-mono font-bold' : 'text-[#00FFA3] font-mono font-bold'}>
+                                    <span className={isOver ? 'text-[#FF4D79] font-mono font-extrabold' : 'text-[#00FFA3] font-mono font-extrabold'}>
                                       {pctUsed.toFixed(0)}% used
                                     </span>
                                   </div>
-                                  <div className="w-full h-1.5 bg-[#131B2E] rounded-full overflow-hidden border border-white/10 relative">
+
+                                  {/* Dual-Layer Track & Active Neon Gradient Fill */}
+                                  <div className="w-full h-1.5 bg-white/[0.08] rounded-full overflow-hidden border border-white/10 relative">
                                     <div
-                                      className={`h-full rounded-full transition-all duration-500 ${
+                                      className={`h-full rounded-full transition-all duration-500 relative ${
                                         isOver
-                                          ? 'bg-gradient-to-r from-[#FF1E56] to-[#FF5376] bg-[linear-gradient(45deg,rgba(255,255,255,0.2)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.2)_50%,rgba(255,255,255,0.2)_75%,transparent_75%,transparent)] bg-[length:1rem_1rem] animate-[shimmer_1.5s_linear_infinite]'
-                                          : 'bg-gradient-to-r from-[#00FFA3] to-[#00D26A]'
+                                          ? 'bg-gradient-to-r from-[#FF1E56] to-[#FF5376] shadow-[0_0_8px_#FF1E56]'
+                                          : 'bg-gradient-to-r from-[#00FFA3] to-[#00D26A] shadow-[0_0_8px_#00FFA3]'
                                       }`}
                                       style={{ width: `${Math.min(100, Math.max(4, pctUsed))}%` }}
-                                    />
+                                    >
+                                      {/* Glowing Pill Tip Cap */}
+                                      <div className="absolute right-0 top-0 bottom-0 w-1.5 bg-white rounded-full shadow-[0_0_6px_#fff] animate-pulse" />
+                                    </div>
                                   </div>
+
                                   <div className="flex justify-between items-center text-[9px] text-slate-500 pt-0.5">
                                     <span>{txCount} Tx recorded</span>
                                     <span>Last: {lastDateStr}</span>
                                   </div>
                                 </div>
 
-                                {/* 4. Multi-Knot Bézier Sparkline with Scrubbing Crosshair & Multi-Ring Radar Dot */}
+                                {/* 4. Multi-Knot Bézier Sparkline with Scrubbing Crosshair & Radar Dot */}
                                 <div
                                   className="pt-2 -mx-5 -mb-5 overflow-hidden rounded-b-[20px] h-12 relative cursor-crosshair"
                                   onMouseMove={(e) => {
@@ -2339,8 +2351,8 @@ export default function Dashboard() {
                                   <svg className="w-full h-full" viewBox="0 0 280 45" preserveAspectRatio="none">
                                     <defs>
                                       <linearGradient id={sparkGradId} x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="0%" stopColor={strokeColorStart} stopOpacity={0.28} />
-                                        <stop offset="80%" stopColor={strokeColorEnd} stopOpacity={0.02} />
+                                        <stop offset="0%" stopColor={strokeColorStart} stopOpacity={0.25} />
+                                        <stop offset="70%" stopColor={strokeColorEnd} stopOpacity={0.03} />
                                         <stop offset="100%" stopColor={strokeColorEnd} stopOpacity={0.0} />
                                       </linearGradient>
                                       <linearGradient id={`${sparkGradId}-line`} x1="0" y1="0" x2="1" y2="0">
@@ -2349,7 +2361,7 @@ export default function Dashboard() {
                                       </linearGradient>
                                     </defs>
 
-                                    {/* Gradient Area Fill */}
+                                    {/* Dual-Tone Luminous Gradient Area Fill */}
                                     <path d={splineAreaD} fill={`url(#${sparkGradId})`} />
 
                                     {/* Multi-Point Stroke Line */}
