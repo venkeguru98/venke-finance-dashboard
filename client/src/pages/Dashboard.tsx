@@ -118,23 +118,27 @@ const DEFAULT_WIDGETS = {
 };
 
 const CustomCategoryXAxisTick = (props: any) => {
-  const { x, y, payload } = props;
+  const { x, y, payload, activeIndex } = props;
   const data = props.chartData ? props.chartData[payload.index] : null;
   const isOver = data?.isOver;
   const pct = data?.pctUsed;
   const icon = data?.icon || '';
 
+  const isAnyActive = activeIndex !== undefined && activeIndex !== null;
+  const isActive = activeIndex === payload.index;
+  const opacity = isAnyActive ? (isActive ? 1 : 0.4) : 1;
+
   return (
-    <g transform={`translate(${x},${y})`}>
-      <text x={0} y={14} textAnchor="middle" fill="#F8FAFC" fontSize={11} fontWeight={800} className="select-none">
+    <g transform={`translate(${x},${y})`} opacity={opacity} className="transition-opacity duration-200">
+      <text x={0} y={14} textAnchor="middle" fill="#F8FAFC" fontSize={11} fontWeight={isActive ? 900 : 800} className="select-none">
         {icon} {payload.value}
       </text>
       {data && (
         <>
           <text x={0} y={28} textAnchor="middle" fill="rgba(148, 163, 184, 0.9)" fontSize={9} fontWeight={700} className="select-none">
-            {formatIndianRupee(data.planned)} | <tspan fill={isOver ? '#FF416C' : '#00FF87'}>{formatIndianRupee(data.actual)}</tspan>
+            {formatIndianRupee(data.planned)} | <tspan fill={isOver ? '#FF2E93' : '#00FFA3'}>{formatIndianRupee(data.actual)}</tspan>
           </text>
-          <text x={0} y={40} textAnchor="middle" fill={isOver ? '#FF416C' : pct >= 90 ? '#F9D423' : '#00FF87'} fontSize={9} fontWeight={900} className="select-none">
+          <text x={0} y={40} textAnchor="middle" fill={isOver ? '#FF2E93' : pct >= 90 ? '#F9D423' : '#00FFA3'} fontSize={9} fontWeight={900} className="select-none">
             {isOver ? `⚠️ ${pct.toFixed(0)}%` : `${pct.toFixed(0)}%`}
           </text>
         </>
@@ -173,26 +177,26 @@ const CustomBudgetChartTooltip = ({ active, payload }: any) => {
       <div className="space-y-1.5 font-semibold pt-0.5">
         <div className="flex justify-between items-center space-x-4">
           <span className="text-slate-400 text-[11px]">Planned Budget:</span>
-          <span className="font-mono font-bold text-[#00F2FE]">{formatIndianRupee(data.planned)}</span>
+          <span className="font-mono font-bold text-[#00F0FF]">{formatIndianRupee(data.planned)}</span>
         </div>
 
         <div className="flex justify-between items-center space-x-4">
           <span className="text-slate-400 text-[11px]">Actual Spent:</span>
-          <span className={`font-mono font-extrabold ${data.isOver ? 'text-[#FF416C]' : 'text-[#00FF87]'}`}>
+          <span className={`font-mono font-extrabold ${data.isOver ? 'text-[#FF2E93]' : 'text-[#00FFA3]'}`}>
             {formatIndianRupee(data.actual)}
           </span>
         </div>
 
         <div className="border-t border-white/10 pt-2 flex justify-between items-center space-x-4">
           <span className="text-slate-400 text-[11px]">{data.isOver ? 'Over Plan Excess:' : 'Remaining Limit:'}</span>
-          <span className={`font-mono font-black ${data.isOver ? 'text-[#FF416C]' : 'text-emerald-400'}`}>
+          <span className={`font-mono font-black ${data.isOver ? 'text-[#FF2E93]' : 'text-emerald-400'}`}>
             {data.isOver ? `+${formatIndianRupee(data.overAmount)}` : formatIndianRupee(data.remaining)}
           </span>
         </div>
 
         <div className="flex justify-between items-center space-x-4 pt-0.5">
           <span className="text-slate-400 text-[11px]">Budget Utilization:</span>
-          <span className={`font-mono font-black ${data.isOver ? 'text-[#FF416C]' : 'text-emerald-400'}`}>
+          <span className={`font-mono font-black ${data.isOver ? 'text-[#FF2E93]' : 'text-emerald-400'}`}>
             {data.pctUsed.toFixed(1)}%
           </span>
         </div>
@@ -214,6 +218,9 @@ export default function Dashboard() {
     return new Date();
   });
   const navigate = useNavigate();
+
+  // Hover state for Budget Bar Chart Focus Dimming
+  const [hoveredBudgetCategoryIndex, setHoveredBudgetCategoryIndex] = useState<number | null>(null);
   
   // Data States
   const [transactions, setTransactions] = useState<any[]>([]);
@@ -2139,19 +2146,19 @@ export default function Dashboard() {
                         </span>
                       </div>
 
-                      {/* Chart Series Legend with Multi-Stop Gradients */}
+                      {/* Chart Series Legend with Multi-Stop Neon Gradients */}
                       <div className="flex items-center space-x-3.5 text-[10px] font-bold">
                         <div className="flex items-center space-x-1.5">
-                          <span className="w-3 h-3 rounded-md bg-gradient-to-r from-[#00F2FE] to-[#4FACFE] shadow-[0_0_8px_rgba(0,242,254,0.4)]" />
+                          <span className="w-3 h-3 rounded-md bg-gradient-to-r from-[#00F0FF] to-[#0072FF] shadow-[0_0_10px_rgba(0,240,255,0.45)]" />
                           <span className="text-slate-200 font-extrabold">Planned</span>
                         </div>
                         <div className="flex items-center space-x-1.5">
-                          <span className="w-3 h-3 rounded-md bg-gradient-to-r from-[#00FF87] to-[#60EFA0] shadow-[0_0_8px_rgba(0,255,135,0.4)]" />
+                          <span className="w-3 h-3 rounded-md bg-gradient-to-r from-[#00FFA3] to-[#00B074] shadow-[0_0_10px_rgba(0,255,163,0.45)]" />
                           <span className="text-slate-200 font-extrabold">Actual</span>
                         </div>
                         <div className="flex items-center space-x-1.5">
-                          <span className="w-3 h-3 rounded-md bg-gradient-to-r from-[#FF416C] to-[#FF4B2B] shadow-[0_0_8px_rgba(255,65,108,0.4)]" />
-                          <span className="text-[#FF416C] font-black">Over Budget</span>
+                          <span className="w-3 h-3 rounded-md bg-gradient-to-r from-[#FF2E93] to-[#FF5E62] shadow-[0_0_10px_rgba(255,46,147,0.5)]" />
+                          <span className="text-[#FF2E93] font-black">Over Budget</span>
                         </div>
                       </div>
                     </div>
@@ -2177,37 +2184,45 @@ export default function Dashboard() {
                             margin={{ top: 25, right: 15, left: -15, bottom: 40 }}
                             barGap={5}
                             barCategoryGap="20%"
+                            onMouseMove={(state: any) => {
+                              if (state && state.activeTooltipIndex !== undefined && state.activeTooltipIndex !== null) {
+                                setHoveredBudgetCategoryIndex(state.activeTooltipIndex);
+                              } else {
+                                setHoveredBudgetCategoryIndex(null);
+                              }
+                            }}
+                            onMouseLeave={() => setHoveredBudgetCategoryIndex(null)}
                           >
                             <defs>
-                              {/* Planned Budget: Electric Cyan Gradient */}
+                              {/* Planned Budget Bar: Electric Cyan to Royal Blue gradient */}
                               <linearGradient id="budgetGradPlanned" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stopColor="#00F2FE" stopOpacity={0.95} />
-                                <stop offset="100%" stopColor="#4FACFE" stopOpacity={0.75} />
+                                <stop offset="0%" stopColor="#00F0FF" stopOpacity={1} />
+                                <stop offset="100%" stopColor="#0072FF" stopOpacity={0.85} />
                               </linearGradient>
 
-                              {/* Actual Spent (Healthy): Neon Mint/Emerald Gradient */}
+                              {/* Actual Spent (Healthy / Under Budget) Bar: Radiant Neon Mint to Emerald gradient */}
                               <linearGradient id="budgetGradHealthy" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stopColor="#00FF87" stopOpacity={1} />
-                                <stop offset="100%" stopColor="#60EFA0" stopOpacity={0.8} />
+                                <stop offset="0%" stopColor="#00FFA3" stopOpacity={1} />
+                                <stop offset="100%" stopColor="#00B074" stopOpacity={0.85} />
                               </linearGradient>
 
-                              {/* Actual Spent (Warning/Critical): Radiant Amber/Gold Gradient */}
+                              {/* Actual Spent (Warning/Critical): Radiant Amber/Gold gradient */}
                               <linearGradient id="budgetGradWarning" x1="0" y1="0" x2="0" y2="1">
                                 <stop offset="0%" stopColor="#F9D423" stopOpacity={1} />
                                 <stop offset="100%" stopColor="#FF4E50" stopOpacity={0.85} />
                               </linearGradient>
 
-                              {/* Actual Spent (Over Budget): Vivid Hot Coral / Sunset Pink Gradient */}
+                              {/* Over Budget Bar: Vivid Fluorescent Hot Coral to Magenta gradient */}
                               <linearGradient id="budgetGradOver" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stopColor="#FF416C" stopOpacity={1} />
-                                <stop offset="100%" stopColor="#FF4B2B" stopOpacity={0.9} />
+                                <stop offset="0%" stopColor="#FF2E93" stopOpacity={1} />
+                                <stop offset="100%" stopColor="#FF5E62" stopOpacity={0.9} />
                               </linearGradient>
                             </defs>
 
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255, 255, 255, 0.05)" />
+                            <CartesianGrid strokeDasharray="4 4" vertical={false} stroke="rgba(255, 255, 255, 0.05)" />
                             <XAxis
                               dataKey="shortName"
-                              tick={<CustomCategoryXAxisTick />}
+                              tick={<CustomCategoryXAxisTick activeIndex={hoveredBudgetCategoryIndex} />}
                               axisLine={{ stroke: 'rgba(255, 255, 255, 0.1)' }}
                               tickLine={false}
                               interval={0}
@@ -2215,7 +2230,7 @@ export default function Dashboard() {
                             <YAxis
                               axisLine={false}
                               tickLine={false}
-                              tick={{ fill: 'rgba(148, 163, 184, 0.7)', fontSize: 10 }}
+                              tick={{ fill: '#64748B', fontSize: 10, fontFamily: 'monospace' }}
                               tickFormatter={v => (v >= 1000 ? `₹${(v / 1000).toFixed(0)}k` : `₹${v}`)}
                             />
                             <Tooltip cursor={{ fill: 'transparent' }} content={<CustomBudgetChartTooltip />} />
@@ -2228,9 +2243,23 @@ export default function Dashboard() {
                               animationDuration={800}
                               animationEasing="ease-out"
                             >
-                              {sortedCategories.map((_, index) => (
-                                <Cell key={`cell-planned-${index}`} fill="url(#budgetGradPlanned)" />
-                              ))}
+                              {sortedCategories.map((_, index) => {
+                                const isHovered = hoveredBudgetCategoryIndex === index;
+                                const isAnyHovered = hoveredBudgetCategoryIndex !== null;
+                                const cellOpacity = isAnyHovered ? (isHovered ? 1 : 0.35) : 1;
+
+                                return (
+                                  <Cell
+                                    key={`cell-planned-${index}`}
+                                    fill="url(#budgetGradPlanned)"
+                                    fillOpacity={cellOpacity}
+                                    style={{
+                                      transition: 'all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                                      filter: isHovered ? 'drop-shadow(0 0 12px rgba(0, 240, 255, 0.85))' : 'none'
+                                    }}
+                                  />
+                                );
+                              })}
                             </Bar>
                             <Bar
                               dataKey="actual"
@@ -2241,18 +2270,34 @@ export default function Dashboard() {
                               animationDuration={800}
                               animationEasing="ease-out"
                             >
-                              {sortedCategories.map((entry, index) => (
-                                <Cell
-                                  key={`cell-actual-${index}`}
-                                  fill={
-                                    entry.isOver
-                                      ? 'url(#budgetGradOver)'
-                                      : entry.status === 'critical' || entry.status === 'warning'
-                                      ? 'url(#budgetGradWarning)'
-                                      : 'url(#budgetGradHealthy)'
-                                  }
-                                />
-                              ))}
+                              {sortedCategories.map((entry, index) => {
+                                const isHovered = hoveredBudgetCategoryIndex === index;
+                                const isAnyHovered = hoveredBudgetCategoryIndex !== null;
+                                const cellOpacity = isAnyHovered ? (isHovered ? 1 : 0.35) : 1;
+                                const glowColor = entry.isOver
+                                  ? 'rgba(255, 46, 147, 0.85)'
+                                  : entry.status === 'critical' || entry.status === 'warning'
+                                  ? 'rgba(249, 212, 35, 0.85)'
+                                  : 'rgba(0, 255, 163, 0.85)';
+
+                                return (
+                                  <Cell
+                                    key={`cell-actual-${index}`}
+                                    fill={
+                                      entry.isOver
+                                        ? 'url(#budgetGradOver)'
+                                        : entry.status === 'critical' || entry.status === 'warning'
+                                        ? 'url(#budgetGradWarning)'
+                                        : 'url(#budgetGradHealthy)'
+                                    }
+                                    fillOpacity={cellOpacity}
+                                    style={{
+                                      transition: 'all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                                      filter: isHovered ? `drop-shadow(0 0 12px ${glowColor})` : 'none'
+                                    }}
+                                  />
+                                );
+                              })}
                             </Bar>
                           </BarChart>
                         </ResponsiveContainer>
