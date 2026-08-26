@@ -220,6 +220,7 @@ export default function Dashboard() {
   // Carousel & Filter States for Category Performance Carousel
   const carouselRef = useRef<HTMLDivElement>(null);
   const [varianceFilter, setVarianceFilter] = useState<'all' | 'over' | 'saved'>('all');
+  const [hoveredCardId, setHoveredCardId] = useState<string | number | null>(null);
 
   // Drawer resets & defaults
   useEffect(() => {
@@ -2047,28 +2048,28 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  {/* 5. ULTRA-PREMIUM HORIZONTAL-SCROLLING CATEGORY CARD CAROUSEL (FINTECH METRIC CARD STYLE) */}
-                  <div className="p-5 bg-[#050D1E]/95 backdrop-blur-xl rounded-2xl border border-[#1E2A4A] space-y-4 shadow-2xl relative overflow-hidden">
-                    {/* Header & Controls */}
+                  {/* 5. ULTRA-HIGH-DEFINITION 4K HIGH-CONTRAST DARK FINTECH CATEGORY CAROUSEL (APPLE PRO / LINEAR / STRIPE AESTHETIC) */}
+                  <div className="p-5 bg-[#060A12]/95 backdrop-blur-2xl rounded-3xl border border-white/[0.12] space-y-4 shadow-[0_20px_50px_rgba(0,0,0,0.9)] relative overflow-hidden">
+                    {/* Header & Navigation Controls */}
                     <div className="flex justify-between items-center flex-wrap gap-2 text-xs">
                       <div>
-                        <h4 className="text-[10px] font-black uppercase tracking-wider text-white flex items-center gap-1.5">
-                          <Sparkles className="w-3.5 h-3.5 text-sky-400" /> CATEGORY PERFORMANCE CAROUSEL
+                        <h4 className="text-[10px] font-black uppercase tracking-[0.1em] text-white flex items-center gap-1.5">
+                          <Sparkles className="w-3.5 h-3.5 text-[#00F0FF]" /> CATEGORY PERFORMANCE (4K FINTECH TERMINAL)
                         </h4>
                         <p className="text-[9px] font-medium text-slate-400">
-                          Fintech metric cards with mini spline wave trends & status indicators
+                          Data-driven Bézier trajectory curves with coordinate pulse dots
                         </p>
                       </div>
 
                       {/* Filter Pills & Scroll Navigation Controls */}
                       <div className="flex items-center space-x-2">
                         {/* Filter Tabs */}
-                        <div className="flex items-center space-x-1 p-1 bg-slate-900/80 rounded-xl border border-slate-800 text-[10px] font-extrabold select-none">
+                        <div className="flex items-center space-x-1 p-1 bg-[#0D1424] rounded-xl border border-white/10 text-[10px] font-extrabold select-none">
                           <button
                             onClick={() => setVarianceFilter('all')}
                             className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
                               varianceFilter === 'all'
-                                ? 'bg-slate-800 text-white shadow'
+                                ? 'bg-[#1E293B] text-white shadow-[0_2px_8px_rgba(0,0,0,0.5)]'
                                 : 'text-slate-400 hover:text-slate-200'
                             }`}
                           >
@@ -2078,7 +2079,7 @@ export default function Dashboard() {
                             onClick={() => setVarianceFilter('over')}
                             className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
                               varianceFilter === 'over'
-                                ? 'bg-rose-500/20 text-[#FF2E93] border border-[#FF2E93]/40 shadow'
+                                ? 'bg-[#2D0D18] text-[#FF4D79] border border-[#FF1E56] shadow-[0_0_10px_rgba(255,30,86,0.3)]'
                                 : 'text-slate-400 hover:text-rose-300'
                             }`}
                           >
@@ -2088,7 +2089,7 @@ export default function Dashboard() {
                             onClick={() => setVarianceFilter('saved')}
                             className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
                               varianceFilter === 'saved'
-                                ? 'bg-emerald-500/20 text-[#00FFA3] border border-[#00FFA3]/40 shadow'
+                                ? 'bg-[#06231A] text-[#00FFA3] border border-[#00FFA3] shadow-[0_0_10px_rgba(0,255,163,0.3)]'
                                 : 'text-slate-400 hover:text-emerald-300'
                             }`}
                           >
@@ -2099,15 +2100,15 @@ export default function Dashboard() {
                         {/* Glass Floating Chevron Buttons */}
                         <div className="flex items-center space-x-1">
                           <button
-                            onClick={() => carouselRef.current?.scrollBy({ left: -300, behavior: 'smooth' })}
-                            className="p-1.5 bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 rounded-xl text-slate-300 hover:text-white transition active:scale-95 cursor-pointer shadow-md"
+                            onClick={() => carouselRef.current?.scrollBy({ left: -320, behavior: 'smooth' })}
+                            className="p-1.5 bg-[#0D1424] hover:bg-[#1E293B] border border-white/10 rounded-xl text-slate-300 hover:text-white transition active:scale-95 cursor-pointer shadow-md"
                             title="Scroll Left"
                           >
                             <ChevronLeft className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => carouselRef.current?.scrollBy({ left: 300, behavior: 'smooth' })}
-                            className="p-1.5 bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 rounded-xl text-slate-300 hover:text-white transition active:scale-95 cursor-pointer shadow-md"
+                            onClick={() => carouselRef.current?.scrollBy({ left: 320, behavior: 'smooth' })}
+                            className="p-1.5 bg-[#0D1424] hover:bg-[#1E293B] border border-white/10 rounded-xl text-slate-300 hover:text-white transition active:scale-95 cursor-pointer shadow-md"
                             title="Scroll Right"
                           >
                             <ChevronRight className="w-4 h-4" />
@@ -2116,7 +2117,7 @@ export default function Dashboard() {
                       </div>
                     </div>
 
-                    {/* Horizontal Carousel Track */}
+                    {/* Horizontal 4K High-Contrast Carousel Track */}
                     {(() => {
                       const filteredList = sortedCategories.filter(cat => {
                         const diff = cat.actualSpent - cat.planned;
@@ -2127,19 +2128,21 @@ export default function Dashboard() {
 
                       if (filteredList.length === 0) {
                         return (
-                          <div className="py-8 text-center text-slate-400 text-xs bg-slate-900/40 rounded-2xl border border-dashed border-slate-800">
+                          <div className="py-8 text-center text-slate-400 text-xs bg-[#090D16] rounded-2xl border border-dashed border-slate-800">
                             No categories found for this filter.
                           </div>
                         );
                       }
 
+                      const isAnyHovered = hoveredCardId !== null;
+
                       return (
                         <div
                           ref={carouselRef}
-                          className="flex gap-4 overflow-x-auto snap-x snap-mandatory py-2 px-1 scroll-smooth no-scrollbar sm:custom-scrollbar"
+                          className="flex gap-4 overflow-x-auto snap-x snap-mandatory py-4 px-1.5 scroll-smooth no-scrollbar sm:custom-scrollbar"
                           style={{
                             scrollbarWidth: 'thin',
-                            scrollbarColor: 'rgba(0, 240, 255, 0.25) rgba(255, 255, 255, 0.02)'
+                            scrollbarColor: 'rgba(0, 240, 255, 0.4) rgba(255, 255, 255, 0.02)'
                           }}
                         >
                           {filteredList.map(cat => {
@@ -2161,90 +2164,116 @@ export default function Dashboard() {
                               ? new Date(lastTx.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
                               : 'No tx';
 
-                            // Status Badge Pill
+                            // Sharp High-Contrast Status Pill Styling
                             let badgeText = 'ON PLAN';
-                            let badgeStyle = 'bg-cyan-500/15 text-cyan-300 border-cyan-500/40';
+                            let badgeStyle = 'bg-[#0D1E2D] border border-[#00F0FF] text-[#00F0FF] font-bold';
 
                             if (isOver) {
                               badgeText = `▲ +${formatIndianRupee(diff)} OVER`;
-                              badgeStyle = 'bg-[#FF2E93]/12 text-[#FF2E93] border-[#FF2E93]/40 font-extrabold shadow-[0_0_8px_rgba(255,46,147,0.2)]';
+                              badgeStyle = 'bg-[#2D0D18] border border-[#FF1E56] text-[#FF4D79] font-bold shadow-[0_0_10px_rgba(255,30,86,0.3)]';
                             } else if (diff < 0) {
                               badgeText = `▼ -${formatIndianRupee(absDiff)} SAVED`;
-                              badgeStyle = 'bg-[#00FFA3]/12 text-[#00FFA3] border-[#00FFA3]/40 font-extrabold shadow-[0_0_8px_rgba(0,255,163,0.2)]';
+                              badgeStyle = 'bg-[#06231A] border border-[#00FFA3] text-[#00FFA3] font-bold shadow-[0_0_10px_rgba(0,255,163,0.3)]';
                             }
 
-                            // SVG Mini Sparkline Path & Gradient
-                            const sparkGradientId = `sparkGrad-${cat.id}`;
-                            const strokeColor = isOver ? '#FF2E93' : '#00FFA3';
-                            const areaPath = isOver
-                              ? 'M 0,35 C 50,38 100,20 150,28 C 200,32 240,8 260,8 L 260,45 L 0,45 Z'
-                              : 'M 0,12 C 50,8 100,28 150,20 C 200,14 240,32 260,35 L 260,45 L 0,45 Z';
-                            const linePath = isOver
-                              ? 'M 0,35 C 50,38 100,20 150,28 C 200,32 240,8 260,8'
-                              : 'M 0,12 C 50,8 100,28 150,20 C 200,14 240,32 260,35';
+                            // Dynamic Bézier Trajectory SVG Curve based on actual spending velocity & pctUsed
+                            const pctNorm = Math.min(1.6, Math.max(0.1, pctUsed / 100));
+                            const endY = Math.max(6, Math.min(38, Math.round(40 - pctNorm * 22)));
+                            const midY1 = Math.max(12, Math.min(38, Math.round(36 - (pctNorm / 2) * 16)));
+                            const midY2 = Math.max(8, Math.min(38, Math.round(38 - pctNorm * 20)));
+                            const endX = 270;
+
+                            const sparkGradId = `spark4K-${cat.id}`;
+                            const strokeColorStart = isOver ? '#FF1E56' : '#00FFA3';
+                            const strokeColorEnd = isOver ? '#FF5376' : '#00D26A';
+                            const linePath = `M 0,38 C 70,${midY1} 140,${midY2} 270,${endY}`;
+                            const areaPath = `M 0,38 C 70,${midY1} 140,${midY2} 270,${endY} L 270,45 L 0,45 Z`;
+
+                            const isHovered = hoveredCardId === cat.id;
 
                             return (
                               <div
                                 key={cat.id}
+                                onMouseEnter={() => setHoveredCardId(cat.id)}
+                                onMouseLeave={() => setHoveredCardId(null)}
                                 onClick={() => navigate('/budgets', { state: { month: selectedMonthNum, year: selectedYearNum } })}
-                                className={`group flex-none w-[280px] snap-start min-h-[220px] p-4 bg-[#0F172A]/65 backdrop-blur-xl border border-white/[0.08] rounded-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] flex flex-col justify-between cursor-pointer transition-all duration-300 ease-out hover:-translate-y-1.5 hover:scale-[1.01] ${
+                                className={`group flex-none w-[300px] snap-start min-h-[240px] p-5 bg-[#090D16] border rounded-[20px] shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_10px_30px_-5px_rgba(0,0,0,0.8)] flex flex-col justify-between cursor-pointer transition-all duration-300 ease-out hover:-translate-y-2 hover:scale-[1.02] ${
+                                  isAnyHovered && !isHovered ? 'opacity-45 scale-95' : 'opacity-100'
+                                } ${
                                   isOver
-                                    ? 'hover:border-[#FF2E93]/40 hover:shadow-[0_12px_28px_rgba(255,46,147,0.18)]'
-                                    : 'hover:border-[#00FFA3]/40 hover:shadow-[0_12px_28px_rgba(0,255,163,0.18)]'
+                                    ? 'border-white/12 hover:border-[#FF1E56]/60 hover:shadow-[0_20px_40px_-10px_rgba(0,0,0,0.9),0_0_20px_rgba(255,30,86,0.25)]'
+                                    : 'border-white/12 hover:border-[#00FFA3]/60 hover:shadow-[0_20px_40px_-10px_rgba(0,0,0,0.9),0_0_20px_rgba(0,255,163,0.25)]'
                                 }`}
                               >
-                                {/* Top Header: Badge + Status Pill */}
+                                {/* 1. Header: Icon + Sharp High-Contrast Status Pill */}
                                 <div className="flex justify-between items-center gap-2">
-                                  <div className="p-2 bg-white/[0.06] rounded-xl border border-white/10 text-lg shrink-0">
+                                  <div className="p-2.5 bg-[#131B2E] border border-white/10 rounded-xl text-lg shrink-0 shadow-inner">
                                     {getCategoryIcon(cat.category_name)}
                                   </div>
-                                  <span className={`px-2.5 py-1 rounded-full text-[9.5px] font-black uppercase border shrink-0 ${badgeStyle}`}>
+                                  <span className={`px-2.5 py-1 rounded-full text-[9.5px] uppercase shrink-0 ${badgeStyle}`}>
                                     {badgeText}
                                   </span>
                                 </div>
 
-                                {/* Title & Actual Amount */}
-                                <div className="space-y-1 pt-2">
-                                  <span className="text-[11px] font-extrabold text-slate-400 tracking-wider uppercase block truncate">
+                                {/* 2. Title & Main Spend Amount */}
+                                <div className="space-y-1 pt-3">
+                                  <span className="text-[11px] font-bold text-[#94A3B8] tracking-[0.08em] uppercase block truncate">
                                     {cat.category_name}
                                   </span>
-                                  <div className="text-2xl font-black text-white font-mono tracking-tight">
+                                  <div className="text-3xl font-black text-white font-mono tracking-tight">
                                     {formatIndianRupee(actual)}
                                   </div>
                                 </div>
 
-                                {/* Sub-Metrics Row */}
-                                <div className="space-y-1 pt-2 border-t border-white/[0.06] text-[10px] font-semibold text-slate-400">
-                                  <div className="flex justify-between items-center">
+                                {/* 3. Dual-Tone Micro Progress Bar */}
+                                <div className="space-y-1.5 pt-2">
+                                  <div className="flex justify-between items-center text-[10px] font-semibold text-slate-400">
                                     <span>Planned: <strong className="text-slate-200 font-mono">{formatIndianRupee(planned)}</strong></span>
-                                    <span className={isOver ? 'text-[#FF2E93] font-mono font-bold' : 'text-[#00FFA3] font-mono font-bold'}>
+                                    <span className={isOver ? 'text-[#FF4D79] font-mono font-bold' : 'text-[#00FFA3] font-mono font-bold'}>
                                       {pctUsed.toFixed(0)}% used
                                     </span>
                                   </div>
-                                  <div className="flex justify-between items-center text-[9px] text-slate-500">
+                                  <div className="w-full h-1.5 bg-[#131B2E] rounded-full overflow-hidden border border-white/10">
+                                    <div
+                                      className={`h-full rounded-full transition-all duration-500 ${
+                                        isOver
+                                          ? 'bg-gradient-to-r from-[#FF1E56] to-[#FF5376]'
+                                          : 'bg-gradient-to-r from-[#00FFA3] to-[#00D26A]'
+                                      }`}
+                                      style={{ width: `${Math.min(100, Math.max(4, pctUsed))}%` }}
+                                    />
+                                  </div>
+                                  <div className="flex justify-between items-center text-[9px] text-slate-500 pt-0.5">
                                     <span>{txCount} Tx recorded</span>
                                     <span>Last: {lastDateStr}</span>
                                   </div>
                                 </div>
 
-                                {/* Bottom Mini Sparkline Spline Wave */}
-                                <div className="pt-2 -mx-4 -mb-4 overflow-hidden rounded-b-2xl h-10 relative">
-                                  <svg className="w-full h-full" viewBox="0 0 260 45" preserveAspectRatio="none">
+                                {/* 4. Dynamic Bézier Sparkline with Interactive Pulse Dot */}
+                                <div className="pt-2 -mx-5 -mb-5 overflow-hidden rounded-b-[20px] h-11 relative">
+                                  <svg className="w-full h-full" viewBox="0 0 280 45" preserveAspectRatio="none">
                                     <defs>
-                                      <linearGradient id={sparkGradientId} x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="0%" stopColor={strokeColor} stopOpacity={0.35} />
-                                        <stop offset="100%" stopColor={strokeColor} stopOpacity={0.0} />
+                                      <linearGradient id={sparkGradId} x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stopColor={strokeColorStart} stopOpacity={0.35} />
+                                        <stop offset="100%" stopColor={strokeColorEnd} stopOpacity={0.0} />
+                                      </linearGradient>
+                                      <linearGradient id={`${sparkGradId}-line`} x1="0" y1="0" x2="1" y2="0">
+                                        <stop offset="0%" stopColor={strokeColorStart} />
+                                        <stop offset="100%" stopColor={strokeColorEnd} />
                                       </linearGradient>
                                     </defs>
-                                    <path d={areaPath} fill={`url(#${sparkGradientId})`} />
+                                    <path d={areaPath} fill={`url(#${sparkGradId})`} />
                                     <path
                                       d={linePath}
                                       fill="none"
-                                      stroke={strokeColor}
+                                      stroke={`url(#${sparkGradId}-line)`}
                                       strokeWidth="2.5"
                                       strokeLinecap="round"
-                                      className="group-hover:drop-shadow-[0_0_6px_currentColor] transition-all duration-300"
+                                      className="group-hover:drop-shadow-[0_0_8px_currentColor] transition-all duration-300"
                                     />
+                                    {/* Data Coordinate Pulse Point */}
+                                    <circle cx={endX} cy={endY} r="7" fill={strokeColorStart} opacity="0.5" className="animate-ping" />
+                                    <circle cx={endX} cy={endY} r="3.5" fill={strokeColorStart} className="shadow-[0_0_8px_currentColor]" />
                                   </svg>
                                 </div>
                               </div>
