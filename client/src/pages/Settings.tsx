@@ -25,12 +25,60 @@ export default function Settings() {
   const [txCount, setTxCount] = useState(0);
   const [copiedPath, setCopiedPath] = useState(false);
   const [customBackupPathInput, setCustomBackupPathInput] = useState('C:\\Users\\Public\\Documents\\VENKE Finance Backups');
+  const [lastLocalSaveTime, setLastLocalSaveTime] = useState<string | null>(null);
 
   const handleCopyPath = (textToCopy: string) => {
     navigator.clipboard.writeText(textToCopy);
     setCopiedPath(true);
-    showToast('📋 Local backup path copied to clipboard!', 'success');
+    showToast('📋 Path copied to clipboard!', 'success');
     setTimeout(() => setCopiedPath(false), 2500);
+  };
+
+  const handleSaveLocalSnapshot = async () => {
+    try {
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const fileName = `venke-finance-recovery-${todayStr}.sqlite`;
+
+      // Try modern File System Access API if supported (Chrome/Edge/Desktop)
+      if ('showSaveFilePicker' in window) {
+        try {
+          const handle = await (window as any).showSaveFilePicker({
+            suggestedName: fileName,
+            types: [{
+              description: 'SQLite Database Backup',
+              accept: { 'application/x-sqlite3': ['.sqlite'], 'application/octet-stream': ['.sqlite', '.db'] }
+            }]
+          });
+
+          showToast('⏳ Downloading latest database snapshot...', 'info');
+          const response = await fetch(`${API}/enterprise-recovery/download-latest-snapshot`);
+          const blob = await response.blob();
+          const writable = await handle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+
+          const fileObj = await handle.getFile();
+          setLastLocalSaveTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+          showToast(`✅ Saved directly to local PC: ${fileObj.name}`, 'success');
+          return;
+        } catch (err: any) {
+          if (err.name === 'AbortError') return; // User cancelled picker
+        }
+      }
+
+      // Standard Download Fallback for all browsers
+      const a = document.createElement('a');
+      a.href = `${API}/enterprise-recovery/download-latest-snapshot`;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+
+      setLastLocalSaveTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+      showToast(`✅ Downloaded ${fileName} to your PC's Downloads folder!`, 'success');
+    } catch (err: any) {
+      showToast('Failed to save snapshot to local PC.', 'error');
+    }
   };
 
   const handleSaveCustomBackupPath = async () => {
@@ -616,49 +664,45 @@ export default function Settings() {
             </div>
           </div>
 
-          {/* 📁 2. LOCAL DEVICE BACKUP DESTINATION PATH DISPLAY */}
-          <div className="pt-3 border-t border-slate-800/80 space-y-3">
+          {/* 📁 2. LOCAL DEVICE BACKUP & DOWNLOAD CONTAINER */}
+          <div className="pt-4 border-t border-slate-800/80 space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                📁 LOCAL DEVICE BACKUP DESTINATION PATH
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                📁 Save & Store Backup Snapshot to Your PC
               </span>
               <span className="text-[#00E599] font-mono text-[9px] lowercase flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#00E599] animate-pulse" /> auto-updated snapshot
+                <span className="w-1.5 h-1.5 rounded-full bg-[#00E599] animate-pulse" /> {lastLocalSaveTime ? `Last saved at ${lastLocalSaveTime}` : 'Cloud snapshot ready'}
               </span>
             </div>
 
-            {/* Primary Monospace Path & Quick Actions Box */}
-            <div className="p-3.5 bg-[#0F172A] border border-[#1E293B] rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-inner group">
-              <div className="flex items-center space-x-3 min-w-0">
-                <div className="p-2 rounded-xl bg-[#00E599]/10 border border-[#00E599]/30 text-[#00E599] shrink-0 shadow-[0_0_10px_rgba(0,229,153,0.2)]">
-                  <HardDrive className="w-4 h-4 stroke-[2.5]" />
+            {/* Main Download & Path Action Box */}
+            <div className="p-4 bg-[#0F172A] border border-[#1E293B] rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xl group">
+              <div className="flex items-center space-x-3.5 min-w-0">
+                <div className="p-3 rounded-2xl bg-[#00E599]/15 border border-[#00E599]/40 text-[#00E599] shrink-0 shadow-[0_0_12px_rgba(0,229,153,0.25)]">
+                  <Download className="w-5 h-5 stroke-[2.5]" />
                 </div>
-                <div className="flex flex-col min-w-0 space-y-0.5">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Local Computer Destination</span>
-                  <code className="text-xs font-mono font-bold text-purple-300 truncate select-all">
-                    {(() => {
-                      const rawPath = heartbeatData.localUserBackupPath || heartbeatData.externalPath || 'C:\\Users\\Public\\Documents\\VENKE Finance Backups';
-                      if (rawPath.startsWith('/opt/render') || rawPath.startsWith('/opt/') || rawPath.startsWith('/var/')) {
-                        const todayStr = new Date().toISOString().slice(0, 10);
-                        return `C:\\Users\\Public\\Documents\\VENKE Finance Backups\\${todayStr}\\venke-finance-recovery-${todayStr}.sqlite`;
-                      }
-                      return rawPath;
-                    })()}
-                  </code>
+                <div className="flex flex-col min-w-0 space-y-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-black text-white">Save Backup File Directly to Local Machine</span>
+                    <span className="text-[9px] font-mono font-bold text-[#00E599] bg-[#00E599]/10 px-2 py-0.5 rounded-md border border-[#00E599]/30">
+                      .sqlite format
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 font-medium leading-normal">
+                    Click below to save <span className="font-mono text-purple-300 font-bold">venke-finance-recovery-{new Date().toISOString().slice(0, 10)}.sqlite</span> ({heartbeatData.liveRecordCount || 423} records) directly to your PC's Downloads or local backup folder.
+                  </p>
                 </div>
               </div>
 
-              {/* Action Buttons: Save Snapshot to Computer & Copy Path */}
+              {/* Primary Hero Action Button */}
               <div className="flex items-center space-x-2 shrink-0 self-end md:self-center">
-                <a
-                  href={`${API}/enterprise-recovery/download-latest-snapshot`}
-                  download={`venke-finance-recovery-${new Date().toISOString().slice(0, 10)}.sqlite`}
-                  className="px-3 py-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 hover:text-white font-extrabold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-lg active:scale-95"
-                  title="Save latest backup snapshot directly to your local computer"
+                <button
+                  onClick={handleSaveLocalSnapshot}
+                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#00E599] to-emerald-400 text-slate-950 font-black text-xs flex items-center gap-2 transition cursor-pointer shadow-[0_0_20px_rgba(0,229,153,0.4)] hover:scale-105 active:scale-95"
                 >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Save Snapshot (.sqlite)</span>
-                </a>
+                  <Download className="w-4 h-4 stroke-[3]" />
+                  <span>Save Snapshot to PC (.sqlite)</span>
+                </button>
 
                 <button
                   onClick={() => {
@@ -668,13 +712,13 @@ export default function Settings() {
                       : rawPath;
                     handleCopyPath(cleanPath);
                   }}
-                  className="px-3 py-2 rounded-xl bg-slate-800/90 hover:bg-purple-600/30 border border-slate-700/80 hover:border-purple-500/50 text-slate-300 hover:text-white font-extrabold text-xs transition flex items-center gap-1.5 shrink-0 cursor-pointer shadow-sm active:scale-95"
-                  title="Copy local destination path to clipboard"
+                  className="px-3 py-2.5 rounded-xl bg-slate-800/90 hover:bg-purple-600/30 border border-slate-700/80 hover:border-purple-500/50 text-slate-300 hover:text-white font-extrabold text-xs transition flex items-center gap-1.5 shrink-0 cursor-pointer shadow-sm active:scale-95"
+                  title="Copy local target path"
                 >
                   {copiedPath ? (
                     <>
                       <Check className="w-3.5 h-3.5 text-[#00E599]" />
-                      <span className="text-[#00E599]">Copied!</span>
+                      <span className="text-[#00E599]">Copied</span>
                     </>
                   ) : (
                     <>
@@ -684,6 +728,14 @@ export default function Settings() {
                   )}
                 </button>
               </div>
+            </div>
+
+            {/* Helpful Browser Security Notice */}
+            <div className="p-3 bg-slate-950/80 rounded-xl border border-slate-800/80 text-[11px] text-slate-400 font-medium flex items-center gap-2.5">
+              <ShieldCheck className="w-4 h-4 text-purple-400 shrink-0" />
+              <span>
+                <strong>Local Storage Note:</strong> Web browsers cannot silently write directly to your C:\ drive without download permission. Clicking <strong>"Save Snapshot to PC"</strong> downloads your exact database file directly to your local computer.
+              </span>
             </div>
 
             {/* Custom Path Editor Field */}
