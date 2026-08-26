@@ -126,15 +126,15 @@ const CustomCategoryXAxisTick = (props: any) => {
 
   return (
     <g transform={`translate(${x},${y})`}>
-      <text x={0} y={14} textAnchor="middle" fill="#F8FAFC" fontSize={11} fontWeight={800}>
+      <text x={0} y={14} textAnchor="middle" fill="#F8FAFC" fontSize={11} fontWeight={800} className="select-none">
         {icon} {payload.value}
       </text>
       {data && (
         <>
-          <text x={0} y={28} textAnchor="middle" fill="#94A3B8" fontSize={9} fontWeight={700}>
-            {formatIndianRupee(data.planned)} | <tspan fill={isOver ? '#F43F5E' : '#34D399'}>{formatIndianRupee(data.actual)}</tspan>
+          <text x={0} y={28} textAnchor="middle" fill="rgba(148, 163, 184, 0.9)" fontSize={9} fontWeight={700} className="select-none">
+            {formatIndianRupee(data.planned)} | <tspan fill={isOver ? '#FF416C' : '#00FF87'}>{formatIndianRupee(data.actual)}</tspan>
           </text>
-          <text x={0} y={40} textAnchor="middle" fill={isOver ? '#F43F5E' : pct >= 90 ? '#FB923C' : '#10B981'} fontSize={9} fontWeight={900}>
+          <text x={0} y={40} textAnchor="middle" fill={isOver ? '#FF416C' : pct >= 90 ? '#F9D423' : '#00FF87'} fontSize={9} fontWeight={900} className="select-none">
             {isOver ? `⚠️ ${pct.toFixed(0)}%` : `${pct.toFixed(0)}%`}
           </text>
         </>
@@ -147,35 +147,52 @@ const CustomBudgetChartTooltip = ({ active, payload }: any) => {
   if (!active || !payload || !payload.length) return null;
   const data = payload[0].payload;
 
+  let statusPillText = `${data.pctUsed.toFixed(0)}% USED`;
+  let statusPillStyle = 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40';
+
+  if (data.isOver) {
+    statusPillText = `+${formatIndianRupee(data.overAmount)} OVER`;
+    statusPillStyle = 'bg-rose-500/20 text-rose-400 border-rose-500/40 font-extrabold';
+  } else if (data.status === 'critical' || data.status === 'warning') {
+    statusPillText = `${data.pctUsed.toFixed(0)}% USED`;
+    statusPillStyle = 'bg-amber-500/20 text-amber-300 border-amber-500/40';
+  }
+
   return (
-    <div className="p-3.5 bg-[#0B1730] border border-[#1E2A4A] rounded-2xl shadow-2xl space-y-2 backdrop-blur-xl text-xs min-w-[210px] z-50">
-      <div className="flex items-center space-x-2 border-b border-slate-800 pb-1.5">
-        <span className="text-lg">{data.icon}</span>
-        <span className="font-black text-white text-sm">{data.name}</span>
+    <div className="p-4 bg-[#0F172A]/85 backdrop-blur-xl border border-white/10 rounded-2xl shadow-[0_10px_30px_rgba(0,0,0,0.5)] space-y-2.5 text-xs min-w-[220px] z-50">
+      <div className="flex items-center justify-between border-b border-white/10 pb-2">
+        <div className="flex items-center space-x-2">
+          <span className="text-xl p-1 bg-white/5 rounded-lg border border-white/10">{data.icon}</span>
+          <span className="font-extrabold text-white text-sm tracking-wide">{data.name}</span>
+        </div>
+        <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border shrink-0 ${statusPillStyle}`}>
+          {statusPillText}
+        </span>
       </div>
 
-      <div className="space-y-1.5 font-semibold">
-        <div className="flex justify-between space-x-4">
-          <span className="text-slate-400">Planned Budget:</span>
-          <span className="font-mono font-bold text-sky-300">{formatIndianRupee(data.planned)}</span>
+      <div className="space-y-1.5 font-semibold pt-0.5">
+        <div className="flex justify-between items-center space-x-4">
+          <span className="text-slate-400 text-[11px]">Planned Budget:</span>
+          <span className="font-mono font-bold text-[#00F2FE]">{formatIndianRupee(data.planned)}</span>
         </div>
-        <div className="flex justify-between space-x-4">
-          <span className="text-slate-400">Actual Spent:</span>
-          <span className={`font-mono font-extrabold ${data.isOver ? 'text-rose-400' : 'text-slate-200'}`}>
+
+        <div className="flex justify-between items-center space-x-4">
+          <span className="text-slate-400 text-[11px]">Actual Spent:</span>
+          <span className={`font-mono font-extrabold ${data.isOver ? 'text-[#FF416C]' : 'text-[#00FF87]'}`}>
             {formatIndianRupee(data.actual)}
           </span>
         </div>
 
-        <div className="border-t border-slate-800/80 pt-1.5 flex justify-between space-x-4">
-          <span className="text-slate-400">{data.isOver ? 'Over Budget Plan:' : 'Remaining:'}</span>
-          <span className={`font-mono font-black ${data.isOver ? 'text-rose-400' : 'text-emerald-400'}`}>
-            {data.isOver ? `+${formatIndianRupee(data.overAmount)} over` : formatIndianRupee(data.remaining)}
+        <div className="border-t border-white/10 pt-2 flex justify-between items-center space-x-4">
+          <span className="text-slate-400 text-[11px]">{data.isOver ? 'Over Plan Excess:' : 'Remaining Limit:'}</span>
+          <span className={`font-mono font-black ${data.isOver ? 'text-[#FF416C]' : 'text-emerald-400'}`}>
+            {data.isOver ? `+${formatIndianRupee(data.overAmount)}` : formatIndianRupee(data.remaining)}
           </span>
         </div>
 
-        <div className="flex justify-between space-x-4 pt-0.5">
-          <span className="text-slate-400">Utilization:</span>
-          <span className={`font-mono font-black ${data.isOver ? 'text-rose-400' : 'text-emerald-400'}`}>
+        <div className="flex justify-between items-center space-x-4 pt-0.5">
+          <span className="text-slate-400 text-[11px]">Budget Utilization:</span>
+          <span className={`font-mono font-black ${data.isOver ? 'text-[#FF416C]' : 'text-emerald-400'}`}>
             {data.pctUsed.toFixed(1)}%
           </span>
         </div>
@@ -2111,7 +2128,7 @@ export default function Dashboard() {
                   </div>
 
                   {/* 5. SINGLE PREMIUM HORIZONTAL PLANNED VS ACTUAL GRAPH WIDGET */}
-                  <div className="p-4 bg-[#050D1E]/80 rounded-2xl border border-[#1E2A4A] space-y-3">
+                  <div className="p-4 bg-[#050D1E]/90 backdrop-blur-xl rounded-2xl border border-[#1E2A4A] space-y-3 shadow-2xl">
                     <div className="flex justify-between items-center flex-wrap gap-2 text-xs">
                       <div className="flex items-center space-x-2">
                         <span className="text-[10px] font-black uppercase tracking-wider text-slate-300">
@@ -2122,19 +2139,19 @@ export default function Dashboard() {
                         </span>
                       </div>
 
-                      {/* Chart Series Legend */}
-                      <div className="flex items-center space-x-3 text-[10px] font-bold">
-                        <div className="flex items-center space-x-1">
-                          <span className="w-2.5 h-2.5 rounded-sm bg-sky-400 opacity-80" />
-                          <span className="text-slate-300">Planned Budget</span>
+                      {/* Chart Series Legend with Multi-Stop Gradients */}
+                      <div className="flex items-center space-x-3.5 text-[10px] font-bold">
+                        <div className="flex items-center space-x-1.5">
+                          <span className="w-3 h-3 rounded-md bg-gradient-to-r from-[#00F2FE] to-[#4FACFE] shadow-[0_0_8px_rgba(0,242,254,0.4)]" />
+                          <span className="text-slate-200 font-extrabold">Planned</span>
                         </div>
-                        <div className="flex items-center space-x-1">
-                          <span className="w-2.5 h-2.5 rounded-sm bg-emerald-400" />
-                          <span className="text-slate-300">Actual Spent</span>
+                        <div className="flex items-center space-x-1.5">
+                          <span className="w-3 h-3 rounded-md bg-gradient-to-r from-[#00FF87] to-[#60EFA0] shadow-[0_0_8px_rgba(0,255,135,0.4)]" />
+                          <span className="text-slate-200 font-extrabold">Actual</span>
                         </div>
-                        <div className="flex items-center space-x-1">
-                          <span className="w-2.5 h-2.5 rounded-sm bg-rose-500" />
-                          <span className="text-rose-400 font-bold">Over Budget</span>
+                        <div className="flex items-center space-x-1.5">
+                          <span className="w-3 h-3 rounded-md bg-gradient-to-r from-[#FF416C] to-[#FF4B2B] shadow-[0_0_8px_rgba(255,65,108,0.4)]" />
+                          <span className="text-[#FF416C] font-black">Over Budget</span>
                         </div>
                       </div>
                     </div>
@@ -2158,55 +2175,81 @@ export default function Dashboard() {
                               status: c.status
                             }))}
                             margin={{ top: 25, right: 15, left: -15, bottom: 40 }}
-                            barGap={4}
+                            barGap={5}
                             barCategoryGap="20%"
                           >
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.15} />
+                            <defs>
+                              {/* Planned Budget: Electric Cyan Gradient */}
+                              <linearGradient id="budgetGradPlanned" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="#00F2FE" stopOpacity={0.95} />
+                                <stop offset="100%" stopColor="#4FACFE" stopOpacity={0.75} />
+                              </linearGradient>
+
+                              {/* Actual Spent (Healthy): Neon Mint/Emerald Gradient */}
+                              <linearGradient id="budgetGradHealthy" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="#00FF87" stopOpacity={1} />
+                                <stop offset="100%" stopColor="#60EFA0" stopOpacity={0.8} />
+                              </linearGradient>
+
+                              {/* Actual Spent (Warning/Critical): Radiant Amber/Gold Gradient */}
+                              <linearGradient id="budgetGradWarning" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="#F9D423" stopOpacity={1} />
+                                <stop offset="100%" stopColor="#FF4E50" stopOpacity={0.85} />
+                              </linearGradient>
+
+                              {/* Actual Spent (Over Budget): Vivid Hot Coral / Sunset Pink Gradient */}
+                              <linearGradient id="budgetGradOver" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="#FF416C" stopOpacity={1} />
+                                <stop offset="100%" stopColor="#FF4B2B" stopOpacity={0.9} />
+                              </linearGradient>
+                            </defs>
+
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255, 255, 255, 0.05)" />
                             <XAxis
                               dataKey="shortName"
                               tick={<CustomCategoryXAxisTick />}
-                              axisLine={{ stroke: '#1E2A4A' }}
+                              axisLine={{ stroke: 'rgba(255, 255, 255, 0.1)' }}
                               tickLine={false}
                               interval={0}
                             />
                             <YAxis
                               axisLine={false}
                               tickLine={false}
-                              tick={{ fill: '#64748b', fontSize: 10 }}
+                              tick={{ fill: 'rgba(148, 163, 184, 0.7)', fontSize: 10 }}
                               tickFormatter={v => (v >= 1000 ? `₹${(v / 1000).toFixed(0)}k` : `₹${v}`)}
                             />
-                            <Tooltip content={<CustomBudgetChartTooltip />} />
+                            <Tooltip cursor={{ fill: 'transparent' }} content={<CustomBudgetChartTooltip />} />
                             <Bar
                               dataKey="planned"
                               name="Planned Budget"
-                              radius={[6, 6, 0, 0]}
+                              radius={[8, 8, 0, 0]}
                               barSize={16}
                               isAnimationActive={true}
                               animationDuration={800}
+                              animationEasing="ease-out"
                             >
                               {sortedCategories.map((_, index) => (
-                                <Cell key={`cell-planned-${index}`} fill="#38BDF8" fillOpacity={0.65} />
+                                <Cell key={`cell-planned-${index}`} fill="url(#budgetGradPlanned)" />
                               ))}
                             </Bar>
                             <Bar
                               dataKey="actual"
                               name="Actual Spent"
-                              radius={[6, 6, 0, 0]}
+                              radius={[8, 8, 0, 0]}
                               barSize={16}
                               isAnimationActive={true}
                               animationDuration={800}
+                              animationEasing="ease-out"
                             >
                               {sortedCategories.map((entry, index) => (
                                 <Cell
                                   key={`cell-actual-${index}`}
                                   fill={
                                     entry.isOver
-                                      ? '#F43F5E'
-                                      : entry.status === 'critical'
-                                      ? '#FB923C'
-                                      : entry.status === 'warning'
-                                      ? '#FACC15'
-                                      : '#10B981'
+                                      ? 'url(#budgetGradOver)'
+                                      : entry.status === 'critical' || entry.status === 'warning'
+                                      ? 'url(#budgetGradWarning)'
+                                      : 'url(#budgetGradHealthy)'
                                   }
                                 />
                               ))}
