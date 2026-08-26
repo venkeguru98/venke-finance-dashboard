@@ -16,6 +16,9 @@ export function getBackupRootDir(): string {
 
 export function getDefaultExternalBackupDir(): string {
   const userHome = process.env.USERPROFILE || process.env.HOME || 'C:\\Users\\Public';
+  if (process.env.RENDER || userHome.startsWith('/opt/') || userHome.startsWith('/var/')) {
+    return 'C:\\Users\\Public\\Documents\\VENKE Finance Backups';
+  }
   return path.join(userHome, 'Documents', 'VENKE Finance Backups');
 }
 
@@ -829,18 +832,23 @@ export class EnterpriseRecoveryService {
 
     // 1. Determine absolute paths for server container backup and local user destination path
     const dateStr = cert?.backup_date || now.toISOString().slice(0, 10);
-    const dateSpecificBackupPath = path.join(BACKUP_ROOT, dateStr, `venke-finance-recovery-${dateStr}.sqlite`);
+    const sqliteFileName = `venke-finance-recovery-${dateStr}.sqlite`;
+    const dateSpecificBackupPath = path.join(BACKUP_ROOT, dateStr, sqliteFileName);
     const serverBackupPath = fs.existsSync(dateSpecificBackupPath)
       ? dateSpecificBackupPath
       : path.resolve(latestSqlite);
 
-    const localUserBackupPath = path.join(extDir, dateStr, `venke-finance-recovery-${dateStr}.sqlite`);
+    let extDir = EnterpriseRecoveryService.getExternalBackupDir();
+    if (extDir.startsWith('/opt/') || extDir.startsWith('/var/')) {
+      extDir = 'C:\\Users\\Public\\Documents\\VENKE Finance Backups';
+    }
 
-    // Prefer local user destination path if configured or if running in local Windows environment
+    const isWin = extDir.includes('\\') || extDir.startsWith('C:');
+    const sep = isWin ? '\\' : '/';
+    const localUserBackupPath = `${extDir}${sep}${dateStr}${sep}${sqliteFileName}`;
+
     const isCloudContainer = !!process.env.RENDER || serverBackupPath.startsWith('/opt/') || serverBackupPath.startsWith('/var/');
-    const latestBackupPath = isCloudContainer && extDir 
-      ? localUserBackupPath 
-      : (fs.existsSync(serverBackupPath) ? serverBackupPath : localUserBackupPath);
+    const latestBackupPath = isCloudContainer ? localUserBackupPath : serverBackupPath;
 
     // 2. Compute dynamic database storage & usage metrics (Quota limit: 50 MB)
     let usedSizeBytes = 0;

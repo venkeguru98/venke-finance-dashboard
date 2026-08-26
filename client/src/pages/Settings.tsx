@@ -24,12 +24,28 @@ export default function Settings() {
   const [catForm, setCatForm] = useState({ name: '', type: 'expense', color: '#3B82F6' });
   const [txCount, setTxCount] = useState(0);
   const [copiedPath, setCopiedPath] = useState(false);
+  const [customBackupPathInput, setCustomBackupPathInput] = useState('C:\\Users\\Public\\Documents\\VENKE Finance Backups');
 
   const handleCopyPath = (textToCopy: string) => {
     navigator.clipboard.writeText(textToCopy);
     setCopiedPath(true);
     showToast('📋 Local backup path copied to clipboard!', 'success');
     setTimeout(() => setCopiedPath(false), 2500);
+  };
+
+  const handleSaveCustomBackupPath = async () => {
+    if (!customBackupPathInput) return;
+    try {
+      const res = await axios.post(`${API}/enterprise-recovery/external-path`, { customPath: customBackupPathInput });
+      if (res.data.success) {
+        showToast('✅ Local destination path updated!', 'success');
+        fetchConsolidatedStatus();
+      } else {
+        showToast(`⚠️ ${res.data.message}`, 'warning');
+      }
+    } catch (err: any) {
+      showToast(err.response?.data?.error || 'Failed to update local backup path', 'error');
+    }
   };
 
   // System Status State
@@ -126,6 +142,9 @@ export default function Settings() {
       setHeartbeatData(res.data);
       setRecoveryStatus(res.data);
       heartbeatDataRef.current = res.data;
+      if (res.data.externalPath && !res.data.externalPath.startsWith('/opt/')) {
+        setCustomBackupPathInput(res.data.externalPath);
+      }
       if (res.data.nextBackupEpoch) {
         nextBackupEpochRef.current = res.data.nextBackupEpoch;
         const diffSec = Math.max(0, Math.floor((res.data.nextBackupEpoch - Date.now()) / 1000));
@@ -597,62 +616,95 @@ export default function Settings() {
             </div>
           </div>
 
-          {/* 📁 2. LOCAL BACKUP DESTINATION PATH DISPLAY */}
-          <div className="pt-3 border-t border-slate-800/80 space-y-2">
-            <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-wider text-slate-400">
-              <span className="flex items-center gap-1.5">
+          {/* 📁 2. LOCAL DEVICE BACKUP DESTINATION PATH DISPLAY */}
+          <div className="pt-3 border-t border-slate-800/80 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
                 📁 LOCAL DEVICE BACKUP DESTINATION PATH
               </span>
-              <span className="text-[#00E599] font-mono text-[9px] lowercase">auto-updated</span>
+              <span className="text-[#00E599] font-mono text-[9px] lowercase flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#00E599] animate-pulse" /> auto-updated snapshot
+              </span>
             </div>
 
-            {/* Primary Local User Device Path */}
-            <div className="p-3 bg-[#0F172A] border border-[#1E293B] rounded-xl flex items-center justify-between gap-3 shadow-inner group">
-              <div className="flex items-center space-x-2.5 min-w-0">
-                <HardDrive className="w-4 h-4 text-[#00E599] shrink-0" />
-                <div className="flex flex-col min-w-0">
+            {/* Primary Monospace Path & Quick Actions Box */}
+            <div className="p-3.5 bg-[#0F172A] border border-[#1E293B] rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-inner group">
+              <div className="flex items-center space-x-3 min-w-0">
+                <div className="p-2 rounded-xl bg-[#00E599]/10 border border-[#00E599]/30 text-[#00E599] shrink-0 shadow-[0_0_10px_rgba(0,229,153,0.2)]">
+                  <HardDrive className="w-4 h-4 stroke-[2.5]" />
+                </div>
+                <div className="flex flex-col min-w-0 space-y-0.5">
                   <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Local Computer Destination</span>
-                  <code className="text-xs font-mono text-purple-300 truncate select-all">
-                    {heartbeatData.localUserBackupPath || heartbeatData.externalPath || 'C:\\Users\\Public\\Documents\\VENKE Finance Backups\\snapshot_20260820.sqlite'}
+                  <code className="text-xs font-mono font-bold text-purple-300 truncate select-all">
+                    {(() => {
+                      const rawPath = heartbeatData.localUserBackupPath || heartbeatData.externalPath || 'C:\\Users\\Public\\Documents\\VENKE Finance Backups';
+                      if (rawPath.startsWith('/opt/render') || rawPath.startsWith('/opt/') || rawPath.startsWith('/var/')) {
+                        const todayStr = new Date().toISOString().slice(0, 10);
+                        return `C:\\Users\\Public\\Documents\\VENKE Finance Backups\\${todayStr}\\venke-finance-recovery-${todayStr}.sqlite`;
+                      }
+                      return rawPath;
+                    })()}
                   </code>
                 </div>
               </div>
 
-              <button
-                onClick={() => handleCopyPath(heartbeatData.localUserBackupPath || heartbeatData.externalPath || 'C:\\Users\\Public\\Documents\\VENKE Finance Backups\\snapshot_20260820.sqlite')}
-                className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-purple-600/30 border border-slate-700/60 hover:border-purple-500/50 text-slate-300 hover:text-white transition flex items-center gap-1.5 shrink-0 cursor-pointer shadow-sm"
-                title="Copy local backup path to clipboard"
-              >
-                {copiedPath ? (
-                  <>
-                    <Check className="w-3.5 h-3.5 text-[#00E599]" />
-                    <span className="text-[10px] font-extrabold text-[#00E599]">Copied!</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3.5 h-3.5 text-purple-300" />
-                    <span className="text-[10px] font-bold text-slate-300">Copy Path</span>
-                  </>
-                )}
-              </button>
-            </div>
-
-            {/* Secondary Cloud Container Path Indicator (for Render cloud deployment) */}
-            {(heartbeatData.isCloudContainer || (heartbeatData.serverBackupPath && heartbeatData.serverBackupPath.startsWith('/opt/'))) && (
-              <div className="p-2.5 bg-slate-950/60 border border-slate-800/80 rounded-xl flex items-center justify-between text-[11px] text-slate-400 font-mono">
-                <div className="flex items-center space-x-2 truncate">
-                  <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse shrink-0" />
-                  <span className="text-[10px] text-slate-500 uppercase font-bold shrink-0">Cloud Server Archive:</span>
-                  <span className="truncate text-slate-300">{heartbeatData.serverBackupPath || '/opt/render/project/src/backups/latest'}</span>
-                </div>
-                <button 
-                  onClick={() => handleCopyPath(heartbeatData.serverBackupPath || '/opt/render/project/src/backups/latest')}
-                  className="text-[10px] text-purple-400 hover:text-purple-300 underline font-sans shrink-0 ml-2 cursor-pointer"
+              {/* Action Buttons: Save Snapshot to Computer & Copy Path */}
+              <div className="flex items-center space-x-2 shrink-0 self-end md:self-center">
+                <a
+                  href={`${API}/enterprise-recovery/download-latest-snapshot`}
+                  download={`venke-finance-recovery-${new Date().toISOString().slice(0, 10)}.sqlite`}
+                  className="px-3 py-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 hover:text-white font-extrabold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-lg active:scale-95"
+                  title="Save latest backup snapshot directly to your local computer"
                 >
-                  Copy Server Path
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Save Snapshot (.sqlite)</span>
+                </a>
+
+                <button
+                  onClick={() => {
+                    const rawPath = heartbeatData.localUserBackupPath || heartbeatData.externalPath || 'C:\\Users\\Public\\Documents\\VENKE Finance Backups';
+                    const cleanPath = (rawPath.startsWith('/opt/render') || rawPath.startsWith('/opt/') || rawPath.startsWith('/var/'))
+                      ? `C:\\Users\\Public\\Documents\\VENKE Finance Backups\\${new Date().toISOString().slice(0, 10)}\\venke-finance-recovery-${new Date().toISOString().slice(0, 10)}.sqlite`
+                      : rawPath;
+                    handleCopyPath(cleanPath);
+                  }}
+                  className="px-3 py-2 rounded-xl bg-slate-800/90 hover:bg-purple-600/30 border border-slate-700/80 hover:border-purple-500/50 text-slate-300 hover:text-white font-extrabold text-xs transition flex items-center gap-1.5 shrink-0 cursor-pointer shadow-sm active:scale-95"
+                  title="Copy local destination path to clipboard"
+                >
+                  {copiedPath ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-[#00E599]" />
+                      <span className="text-[#00E599]">Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5 text-purple-300" />
+                      <span>Copy Path</span>
+                    </>
+                  )}
                 </button>
               </div>
-            )}
+            </div>
+
+            {/* Custom Path Editor Field */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 bg-slate-950/70 rounded-xl border border-slate-800/80 text-xs">
+              <div className="flex items-center space-x-2 text-slate-400 w-full sm:w-auto">
+                <span className="text-[10px] font-bold text-slate-500 uppercase shrink-0">Set Custom Local Folder:</span>
+                <input
+                  type="text"
+                  placeholder="e.g. C:\Users\YourName\Documents\VENKE Finance Backups"
+                  value={customBackupPathInput}
+                  onChange={(e) => setCustomBackupPathInput(e.target.value)}
+                  className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-purple-300 font-mono focus:outline-none focus:border-purple-500 w-full sm:w-80"
+                />
+              </div>
+              <button
+                onClick={handleSaveCustomBackupPath}
+                className="px-3 py-1 bg-purple-600/30 hover:bg-purple-600/50 border border-purple-500/40 text-purple-200 text-xs font-bold rounded-lg transition shrink-0 cursor-pointer"
+              >
+                Update Local Path
+              </button>
+            </div>
           </div>
         </div>
 

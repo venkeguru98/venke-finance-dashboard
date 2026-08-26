@@ -94,4 +94,37 @@ router.get('/download-golden-bundle', (_req, res) => {
   }
 });
 
+// GET /api/enterprise-recovery/download-latest-snapshot
+router.get('/download-latest-snapshot', async (_req, res) => {
+  try {
+    const backupRoot = getBackupRootDir();
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const dateSpecificSqlite = path.join(backupRoot, todayStr, `venke-finance-recovery-${todayStr}.sqlite`);
+    const latestSqlite = path.join(backupRoot, 'latest', 'venke_finance_latest.sqlite');
+
+    let downloadPath = '';
+    let downloadFileName = `venke-finance-recovery-${todayStr}.sqlite`;
+
+    if (fs.existsSync(dateSpecificSqlite)) {
+      downloadPath = dateSpecificSqlite;
+    } else if (fs.existsSync(latestSqlite)) {
+      downloadPath = latestSqlite;
+    } else {
+      const result = await EnterpriseRecoveryService.createDailyImmutableSnapshot('automatic');
+      if (result.success && result.folderPath) {
+        const createdPath = path.join(result.folderPath, `venke-finance-recovery-${todayStr}.sqlite`);
+        if (fs.existsSync(createdPath)) downloadPath = createdPath;
+      }
+    }
+
+    if (!downloadPath || !fs.existsSync(downloadPath)) {
+      return res.status(404).json({ error: 'No recovery snapshot available to download' });
+    }
+
+    res.download(downloadPath, downloadFileName);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Error downloading backup snapshot' });
+  }
+});
+
 export default router;
