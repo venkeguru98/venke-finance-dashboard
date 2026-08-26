@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
+import { AreaChart, Area, BarChart, Bar, Legend, ReferenceLine, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 import { Plus, Search, RefreshCw, Flame, LayoutGrid, CheckCircle2, Target, TrendingUp, Info, X, ChevronLeft, ChevronRight, ArrowRightLeft, Sparkles, Wallet, Calendar, ShieldCheck } from 'lucide-react';
 import axios from 'axios';
 import Button from '../components/ui/Button';
@@ -115,6 +115,73 @@ const DEFAULT_WIDGETS = {
   kpiWidget: true,
   momWidget: true,
   weeklyExpenseWidget: true
+};
+
+const CustomCategoryXAxisTick = (props: any) => {
+  const { x, y, payload } = props;
+  const data = props.chartData ? props.chartData[payload.index] : null;
+  const isOver = data?.isOver;
+  const pct = data?.pctUsed;
+  const icon = data?.icon || '';
+
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <text x={0} y={14} textAnchor="middle" fill="#F8FAFC" fontSize={11} fontWeight={800}>
+        {icon} {payload.value}
+      </text>
+      {data && (
+        <>
+          <text x={0} y={28} textAnchor="middle" fill="#94A3B8" fontSize={9} fontWeight={700}>
+            {formatIndianRupee(data.planned)} | <tspan fill={isOver ? '#F43F5E' : '#34D399'}>{formatIndianRupee(data.actual)}</tspan>
+          </text>
+          <text x={0} y={40} textAnchor="middle" fill={isOver ? '#F43F5E' : pct >= 90 ? '#FB923C' : '#10B981'} fontSize={9} fontWeight={900}>
+            {isOver ? `⚠️ ${pct.toFixed(0)}%` : `${pct.toFixed(0)}%`}
+          </text>
+        </>
+      )}
+    </g>
+  );
+};
+
+const CustomBudgetChartTooltip = ({ active, payload }: any) => {
+  if (!active || !payload || !payload.length) return null;
+  const data = payload[0].payload;
+
+  return (
+    <div className="p-3.5 bg-[#0B1730] border border-[#1E2A4A] rounded-2xl shadow-2xl space-y-2 backdrop-blur-xl text-xs min-w-[210px] z-50">
+      <div className="flex items-center space-x-2 border-b border-slate-800 pb-1.5">
+        <span className="text-lg">{data.icon}</span>
+        <span className="font-black text-white text-sm">{data.name}</span>
+      </div>
+
+      <div className="space-y-1.5 font-semibold">
+        <div className="flex justify-between space-x-4">
+          <span className="text-slate-400">Planned Budget:</span>
+          <span className="font-mono font-bold text-sky-300">{formatIndianRupee(data.planned)}</span>
+        </div>
+        <div className="flex justify-between space-x-4">
+          <span className="text-slate-400">Actual Spent:</span>
+          <span className={`font-mono font-extrabold ${data.isOver ? 'text-rose-400' : 'text-slate-200'}`}>
+            {formatIndianRupee(data.actual)}
+          </span>
+        </div>
+
+        <div className="border-t border-slate-800/80 pt-1.5 flex justify-between space-x-4">
+          <span className="text-slate-400">{data.isOver ? 'Over Budget Plan:' : 'Remaining:'}</span>
+          <span className={`font-mono font-black ${data.isOver ? 'text-rose-400' : 'text-emerald-400'}`}>
+            {data.isOver ? `+${formatIndianRupee(data.overAmount)} over` : formatIndianRupee(data.remaining)}
+          </span>
+        </div>
+
+        <div className="flex justify-between space-x-4 pt-0.5">
+          <span className="text-slate-400">Utilization:</span>
+          <span className={`font-mono font-black ${data.isOver ? 'text-rose-400' : 'text-emerald-400'}`}>
+            {data.pctUsed.toFixed(1)}%
+          </span>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default function Dashboard() {
@@ -2043,95 +2110,111 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  {/* 5. PLANNED VS ACTUAL CATEGORY LIST (DUAL COMPARISON BARS) */}
-                  <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1 custom-scrollbar">
-                    {sortedCategories.map(cat => {
-                      let statusBadgeText = 'Healthy';
-                      let statusBadgeStyle = 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
-                      let progressGrad = 'from-emerald-500 via-teal-400 to-cyan-400';
+                  {/* 5. SINGLE PREMIUM HORIZONTAL PLANNED VS ACTUAL GRAPH WIDGET */}
+                  <div className="p-4 bg-[#050D1E]/80 rounded-2xl border border-[#1E2A4A] space-y-3">
+                    <div className="flex justify-between items-center flex-wrap gap-2 text-xs">
+                      <div className="flex items-center space-x-2">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-300">
+                          PLANNED VS ACTUAL SPENDING BY CATEGORY
+                        </span>
+                        <span className="text-[9px] font-mono text-slate-500">
+                          (Scroll horizontally →)
+                        </span>
+                      </div>
 
-                      if (cat.status === 'over') {
-                        statusBadgeText = `${formatIndianRupee(cat.overAmount)} over plan`;
-                        statusBadgeStyle = 'bg-rose-500/20 text-rose-400 border-rose-500/40 font-extrabold';
-                        progressGrad = 'from-rose-600 to-red-500';
-                      } else if (cat.status === 'critical') {
-                        statusBadgeText = `${cat.pctUsed.toFixed(0)}% used (Critical)`;
-                        statusBadgeStyle = 'bg-orange-500/20 text-orange-400 border-orange-500/40';
-                        progressGrad = 'from-orange-500 to-amber-500';
-                      } else if (cat.status === 'warning') {
-                        statusBadgeText = `${cat.pctUsed.toFixed(0)}% used (Warning)`;
-                        statusBadgeStyle = 'bg-amber-500/15 text-amber-300 border-amber-500/30';
-                        progressGrad = 'from-amber-400 to-yellow-400';
-                      } else {
-                        statusBadgeText = `${cat.pctUsed.toFixed(0)}% used`;
-                        statusBadgeStyle = 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
-                        progressGrad = 'from-emerald-500 to-teal-400';
-                      }
-
-                      return (
-                        <div
-                          key={cat.id}
-                          onClick={() => navigate('/budgets', { state: { month: selectedMonthNum, year: selectedYearNum } })}
-                          className="group p-3.5 bg-[#060D1E]/70 hover:bg-[#0B1730] border border-slate-800 hover:border-emerald-500/40 rounded-2xl transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg cursor-pointer space-y-2.5"
-                        >
-                          {/* Row Header: Icon + Name vs Status Badge */}
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center space-x-2.5 min-w-0">
-                              <span className="text-base p-1.5 bg-[#081226] rounded-xl border border-slate-800 shrink-0">
-                                {getCategoryIcon(cat.category_name)}
-                              </span>
-                              <span className="text-xs font-black text-white truncate">
-                                {cat.category_name}
-                              </span>
-                            </div>
-
-                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase border shrink-0 ${statusBadgeStyle}`}>
-                              {statusBadgeText}
-                            </span>
-                          </div>
-
-                          {/* Planned vs Actual Metrics Dual Line */}
-                          <div className="grid grid-cols-2 gap-2 text-xs font-semibold pt-0.5">
-                            <div className="flex items-center space-x-1.5 text-slate-400">
-                              <span className="text-[10px] font-bold uppercase text-slate-500">Planned:</span>
-                              <span className="font-mono font-bold text-slate-200">{formatIndianRupee(cat.planned)}</span>
-                            </div>
-                            <div className="flex items-center justify-end space-x-1.5">
-                              <span className="text-[10px] font-bold uppercase text-slate-500">Actual:</span>
-                              <span className={`font-mono font-extrabold ${cat.isOver ? 'text-rose-400' : 'text-slate-200'}`}>
-                                {formatIndianRupee(cat.actualSpent)}
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* Dual Visual Planned vs Actual Bar */}
-                          <div className="space-y-1">
-                            <div className="h-2.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800/80 p-0.5 relative">
-                              <div
-                                className={`h-full rounded-full bg-gradient-to-r ${progressGrad} transition-all duration-700 ease-out`}
-                                style={{ width: `${Math.min(100, cat.pctUsed)}%` }}
-                              />
-                            </div>
-                          </div>
-
-                          {/* Footer Info Line */}
-                          <div className="flex justify-between items-center text-[10px] font-semibold text-slate-400">
-                            {cat.isOver ? (
-                              <span className="text-rose-400 font-extrabold flex items-center gap-1">
-                                ⚠️ Exceeded planned limit by {formatIndianRupee(cat.overAmount)}
-                              </span>
-                            ) : (
-                              <span>
-                                {formatIndianRupee(cat.remaining)} remaining of {formatIndianRupee(cat.planned)} plan
-                              </span>
-                            )}
-                            <span className="font-mono font-bold text-slate-400">
-                              {cat.pctUsed.toFixed(0)}%
-                            </span>
-                          </div>
+                      {/* Chart Series Legend */}
+                      <div className="flex items-center space-x-3 text-[10px] font-bold">
+                        <div className="flex items-center space-x-1">
+                          <span className="w-2.5 h-2.5 rounded-sm bg-sky-400 opacity-80" />
+                          <span className="text-slate-300">Planned Budget</span>
                         </div>
-                      );
-                    })}
+                        <div className="flex items-center space-x-1">
+                          <span className="w-2.5 h-2.5 rounded-sm bg-emerald-400" />
+                          <span className="text-slate-300">Actual Spent</span>
+                        </div>
+                        <div className="flex items-center space-x-1">
+                          <span className="w-2.5 h-2.5 rounded-sm bg-rose-500" />
+                          <span className="text-rose-400 font-bold">Over Budget</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Horizontally Scrollable Chart Container */}
+                    <div className="overflow-x-auto no-scrollbar sm:custom-scrollbar pb-2 pt-2 w-full">
+                      <div style={{ minWidth: `${Math.max(520, sortedCategories.length * 115)}px` }} className="h-72">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart
+                            data={sortedCategories.map(c => ({
+                              id: c.id,
+                              name: c.category_name,
+                              shortName: c.category_name.length > 12 ? c.category_name.slice(0, 10) + '…' : c.category_name,
+                              icon: getCategoryIcon(c.category_name),
+                              planned: c.planned,
+                              actual: c.actualSpent,
+                              remaining: c.remaining,
+                              isOver: c.isOver,
+                              overAmount: c.overAmount,
+                              pctUsed: c.pctUsed,
+                              status: c.status
+                            }))}
+                            margin={{ top: 25, right: 15, left: -15, bottom: 40 }}
+                            barGap={4}
+                            barCategoryGap="20%"
+                          >
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.15} />
+                            <XAxis
+                              dataKey="shortName"
+                              tick={<CustomCategoryXAxisTick />}
+                              axisLine={{ stroke: '#1E2A4A' }}
+                              tickLine={false}
+                              interval={0}
+                            />
+                            <YAxis
+                              axisLine={false}
+                              tickLine={false}
+                              tick={{ fill: '#64748b', fontSize: 10 }}
+                              tickFormatter={v => (v >= 1000 ? `₹${(v / 1000).toFixed(0)}k` : `₹${v}`)}
+                            />
+                            <Tooltip content={<CustomBudgetChartTooltip />} />
+                            <Bar
+                              dataKey="planned"
+                              name="Planned Budget"
+                              radius={[6, 6, 0, 0]}
+                              barSize={16}
+                              isAnimationActive={true}
+                              animationDuration={800}
+                            >
+                              {sortedCategories.map((entry, index) => (
+                                <Cell key={`cell-planned-${index}`} fill="#38BDF8" fillOpacity={0.65} />
+                              ))}
+                            </Bar>
+                            <Bar
+                              dataKey="actual"
+                              name="Actual Spent"
+                              radius={[6, 6, 0, 0]}
+                              barSize={16}
+                              isAnimationActive={true}
+                              animationDuration={800}
+                            >
+                              {sortedCategories.map((entry, index) => (
+                                <Cell
+                                  key={`cell-actual-${index}`}
+                                  fill={
+                                    entry.isOver
+                                      ? '#F43F5E'
+                                      : entry.status === 'critical'
+                                      ? '#FB923C'
+                                      : entry.status === 'warning'
+                                      ? '#FACC15'
+                                      : '#10B981'
+                                  }
+                                />
+                              ))}
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
                   </div>
                 </div>
               );
