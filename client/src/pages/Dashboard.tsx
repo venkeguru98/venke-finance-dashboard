@@ -220,8 +220,14 @@ export default function Dashboard() {
   // Carousel & Filter States for Category Performance Carousel
   const carouselRef = useRef<HTMLDivElement>(null);
   const [varianceFilter, setVarianceFilter] = useState<'all' | 'over' | 'saved'>('all');
+  const [sortOption, setSortOption] = useState<'excess' | 'spend' | 'name' | 'tx_count'>('excess');
   const [hoveredCardId, setHoveredCardId] = useState<string | number | null>(null);
   const [scrubInfo, setScrubInfo] = useState<{ cardId: string | number; x: number; label: string; amount: number } | null>(null);
+  
+  // Carousel Drag-Scroll State
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStartX, setDragStartX] = useState(0);
+  const [dragScrollLeft, setDragScrollLeft] = useState(0);
 
   // Drawer resets & defaults
   useEffect(() => {
@@ -2062,8 +2068,8 @@ export default function Dashboard() {
                         </p>
                       </div>
 
-                      {/* Filter Pills & Scroll Navigation Controls */}
-                      <div className="flex items-center space-x-2">
+                      {/* Filter Pills, Sort Selector & Scroll Navigation Controls */}
+                      <div className="flex items-center space-x-2 flex-wrap gap-y-1">
                         {/* Filter Tabs */}
                         <div className="flex items-center space-x-1 p-1 bg-[#0D1424] rounded-xl border border-white/10 text-[10px] font-extrabold select-none">
                           <button
@@ -2098,6 +2104,21 @@ export default function Dashboard() {
                           </button>
                         </div>
 
+                        {/* Interactive Minimalist Sort Chip Dropdown */}
+                        <div className="flex items-center space-x-1 p-1 bg-[#0D1424] rounded-xl border border-white/10 text-[10px] font-extrabold select-none">
+                          <span className="px-1.5 text-slate-400 text-[9.5px]">⇅ Sort:</span>
+                          <select
+                            value={sortOption}
+                            onChange={(e) => setSortOption(e.target.value as any)}
+                            className="bg-[#1E293B] text-[#00F0FF] rounded-lg px-2 py-0.5 text-[9.5px] font-extrabold outline-none border border-slate-700 cursor-pointer shadow-inner"
+                          >
+                            <option value="excess">Highest Excess</option>
+                            <option value="spend">Highest Total Spend</option>
+                            <option value="name">Alphabetical</option>
+                            <option value="tx_count">Transaction Count</option>
+                          </select>
+                        </div>
+
                         {/* Glass Floating Chevron Buttons */}
                         <div className="flex items-center space-x-1">
                           <button
@@ -2127,7 +2148,22 @@ export default function Dashboard() {
                         return true;
                       });
 
-                      if (filteredList.length === 0) {
+                      // Apply interactive sorting
+                      const sortedList = [...filteredList].sort((a, b) => {
+                        const diffA = a.actualSpent - a.planned;
+                        const diffB = b.actualSpent - b.planned;
+                        if (sortOption === 'excess') return diffB - diffA;
+                        if (sortOption === 'spend') return b.actualSpent - a.actualSpent;
+                        if (sortOption === 'name') return (a.category_name || '').localeCompare(b.category_name || '');
+                        if (sortOption === 'tx_count') {
+                          const countA = transactions.filter(t => (t.category_id && a.category_id ? t.category_id === a.category_id : (t.category_name || '').toLowerCase() === (a.category_name || '').toLowerCase())).length;
+                          const countB = transactions.filter(t => (t.category_id && b.category_id ? t.category_id === b.category_id : (t.category_name || '').toLowerCase() === (b.category_name || '').toLowerCase())).length;
+                          return countB - countA;
+                        }
+                        return 0;
+                      });
+
+                      if (sortedList.length === 0) {
                         return (
                           <div className="py-8 text-center text-slate-400 text-xs bg-[#090D16] rounded-2xl border border-dashed border-slate-800">
                             No categories found for this filter.
@@ -2136,11 +2172,32 @@ export default function Dashboard() {
                       }
 
                       const isAnyHovered = hoveredCardId !== null;
+                      const daysInMonth = new Date(selectedYearNum, selectedMonthNum, 0).getDate();
+                      const currentDay = (selectedMonthNum === new Date().getMonth() + 1 && selectedYearNum === new Date().getFullYear())
+                        ? new Date().getDate()
+                        : daysInMonth;
 
                       return (
                         <div
                           ref={carouselRef}
-                          className="flex gap-4 overflow-x-auto overflow-y-hidden snap-x snap-mandatory py-4 px-4 scroll-smooth no-scrollbar sm:custom-scrollbar overscroll-x-contain"
+                          onMouseDown={(e) => {
+                            if (!carouselRef.current) return;
+                            setIsDragging(true);
+                            setDragStartX(e.pageX - carouselRef.current.offsetLeft);
+                            setDragScrollLeft(carouselRef.current.scrollLeft);
+                          }}
+                          onMouseLeave={() => setIsDragging(false)}
+                          onMouseUp={() => setIsDragging(false)}
+                          onMouseMove={(e) => {
+                            if (!isDragging || !carouselRef.current) return;
+                            e.preventDefault();
+                            const x = e.pageX - carouselRef.current.offsetLeft;
+                            const walk = (x - dragStartX) * 1.5;
+                            carouselRef.current.scrollLeft = dragScrollLeft - walk;
+                          }}
+                          className={`flex gap-4 overflow-x-auto overflow-y-hidden snap-x snap-mandatory py-4 px-4 scroll-smooth no-scrollbar sm:custom-scrollbar overscroll-x-contain ${
+                            isDragging ? 'cursor-grabbing select-none' : 'cursor-grab'
+                          }`}
                           style={{
                             scrollbarWidth: 'thin',
                             scrollbarColor: 'rgba(0, 240, 255, 0.4) rgba(255, 255, 255, 0.02)',
@@ -2151,7 +2208,7 @@ export default function Dashboard() {
                             maskImage: 'linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent)'
                           }}
                         >
-                          {filteredList.map(cat => {
+                          {sortedList.map(cat => {
                             const planned = cat.planned;
                             const actual = cat.actualSpent;
                             const diff = actual - planned;
@@ -2169,6 +2226,9 @@ export default function Dashboard() {
                             const lastDateStr = lastTx
                               ? new Date(lastTx.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
                               : 'No tx';
+
+                            // Daily burn rate run-rate calculation
+                            const dailyAvg = Math.round(actual / Math.max(1, currentDay));
 
                             // Sharp High-Contrast Symmetric Status Pill Styling
                             let badgeText = 'ON PLAN';
@@ -2248,7 +2308,7 @@ export default function Dashboard() {
                                   e.currentTarget.style.setProperty('--mouse-y', `${mouseY}px`);
                                 }}
                                 onClick={() => navigate('/budgets', { state: { month: selectedMonthNum, year: selectedYearNum } })}
-                                className={`group flex-none w-[310px] min-w-[310px] max-w-[310px] shrink-0 snap-start snap-always min-h-[240px] p-5 border rounded-[20px] shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_10px_30px_-5px_rgba(0,0,0,0.8)] flex flex-col justify-between cursor-pointer transition-all duration-300 ease-out hover:-translate-y-2 hover:[perspective:1000px] hover:[rotateX:1deg] relative overflow-hidden box-border ${
+                                className={`group flex-none w-[310px] min-w-[310px] max-w-[310px] shrink-0 snap-start snap-always min-h-[250px] p-5 border rounded-[20px] shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_10px_30px_-5px_rgba(0,0,0,0.8)] flex flex-col justify-between cursor-pointer transition-all duration-300 ease-out hover:-translate-y-2 hover:[perspective:1000px] hover:[rotateX:1deg] relative overflow-hidden box-border ${
                                   isAnyHovered && !isHovered ? 'opacity-45 scale-95' : 'opacity-100'
                                 } ${
                                   isOver
@@ -2261,15 +2321,21 @@ export default function Dashboard() {
                                   background: `radial-gradient(400px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(255, 255, 255, 0.07), transparent 40%), #090D16`
                                 }}
                               >
-                                {/* 1. Header: Icon + Sharp High-Contrast Status Pill + Inspect Hover Button */}
+                                {/* Sleek Ghost Button: Inspect Spend (Relocated to Card Bottom Right) */}
+                                <div
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigate('/transactions', { state: { category: cat.category_name } });
+                                  }}
+                                  className="absolute right-4 bottom-13 z-20 opacity-0 group-hover:opacity-100 transform translate-y-1 group-hover:translate-y-0 transition-all duration-200 flex items-center gap-1 text-[9px] font-extrabold text-[#00F0FF] bg-[#00F0FF]/15 px-2.5 py-1 rounded-full border border-[#00F0FF]/40 shadow-[0_0_12px_rgba(0,240,255,0.3)] hover:scale-105 active:scale-95 cursor-pointer"
+                                >
+                                  Inspect Spend ➔
+                                </div>
+
+                                {/* 1. Header: Icon + Sharp High-Contrast Status Pill */}
                                 <div className="flex justify-between items-center gap-2">
-                                  <div className="flex items-center space-x-2 min-w-0">
-                                    <div className="p-2.5 bg-[#131B2E] border border-white/10 rounded-xl text-lg shrink-0 shadow-inner">
-                                      {getCategoryIcon(cat.category_name)}
-                                    </div>
-                                    <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center gap-1 text-[9px] font-extrabold text-[#00F0FF] bg-[#00F0FF]/10 px-2 py-0.5 rounded-full border border-[#00F0FF]/30 shrink-0">
-                                      Inspect Spend ➔
-                                    </div>
+                                  <div className="p-2.5 bg-[#131B2E] border border-white/10 rounded-xl text-lg shrink-0 shadow-inner">
+                                    {getCategoryIcon(cat.category_name)}
                                   </div>
                                   <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider shrink-0 ${badgeStyle}`}>
                                     {badgeText}
@@ -2277,7 +2343,7 @@ export default function Dashboard() {
                                 </div>
 
                                 {/* 2. Title & Main Spend Amount */}
-                                <div className="space-y-1 pt-2.5 min-w-0">
+                                <div className="space-y-1 pt-2 min-w-0">
                                   <span className="text-[11px] font-bold text-[#94A3B8] tracking-[0.08em] uppercase block truncate">
                                     {cat.category_name}
                                   </span>
@@ -2286,8 +2352,8 @@ export default function Dashboard() {
                                   </div>
                                 </div>
 
-                                {/* 3. Dual-Layer High-Contrast Progress Bar with 100% Threshold Line & Glowing Cap */}
-                                <div className="space-y-1.5 pt-2">
+                                {/* 3. Dual-Layer High-Contrast Progress Bar & Spending Velocity Indicator */}
+                                <div className="space-y-1.5 pt-1.5">
                                   <div className="flex justify-between items-center text-[10px] font-semibold text-slate-400">
                                     <span>Planned: <strong className="text-slate-200 font-mono">{formatIndianRupee(planned)}</strong></span>
                                     <span className={isOver ? 'text-[#FF4D79] font-mono font-extrabold' : 'text-[#00FFA3] font-mono font-extrabold'}>
@@ -2310,6 +2376,16 @@ export default function Dashboard() {
                                         <div className="absolute right-0 top-0 bottom-0 w-1.5 bg-white rounded-full shadow-[0_0_8px_#FF1E56] animate-pulse" />
                                       )}
                                     </div>
+                                  </div>
+
+                                  {/* Spending Velocity & Daily Burn Rate Run-Rate Metric Row */}
+                                  <div className="flex justify-between items-center text-[9px] font-mono pt-1 text-slate-400">
+                                    <span className="text-[#00F0FF] font-semibold flex items-center gap-1">
+                                      ⚡ ₹{formatIndianRupee(dailyAvg)}/day run-rate
+                                    </span>
+                                    <span className={isOver ? 'text-[#FF4D79] font-bold' : 'text-[#00FFA3] font-bold'}>
+                                      {isOver ? `Paced to overrun by ₹${formatIndianRupee(diff)}` : `Paced to save ₹${formatIndianRupee(absDiff)}`}
+                                    </span>
                                   </div>
 
                                   <div className="flex justify-between items-center text-[9px] text-slate-500 pt-0.5">
