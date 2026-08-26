@@ -131,10 +131,6 @@ export default function Dashboard() {
   });
   const navigate = useNavigate();
 
-  // State for Budget Variance Waterfall chart
-  const [varianceFilter, setVarianceFilter] = useState<'all' | 'over' | 'saved'>('all');
-  const [hoveredRowId, setHoveredRowId] = useState<string | number | null>(null);
-  
   // Data States
   const [transactions, setTransactions] = useState<any[]>([]);
   const [budgets, setBudgets] = useState<any[]>([]);
@@ -220,6 +216,10 @@ export default function Dashboard() {
   const [kpiDateStart, setKpiDateStart] = useState('');
   const [kpiDateEnd, setKpiDateEnd] = useState('');
   const [activeSeries, setActiveSeries] = useState<string | null>(null);
+
+  // Carousel & Filter States for Category Performance Carousel
+  const carouselRef = useRef<HTMLDivElement>(null);
+  const [varianceFilter, setVarianceFilter] = useState<'all' | 'over' | 'saved'>('all');
 
   // Drawer resets & defaults
   useEffect(() => {
@@ -2047,68 +2047,77 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  {/* 5. OVER/UNDER VARIANCE WATERFALL DEVIATION WIDGET (FINTECH / BLOOMBERG TERMINAL STYLE) */}
-                  <div className="p-5 bg-[#050D1E]/95 backdrop-blur-xl rounded-2xl border border-[#1E2A4A] space-y-3.5 shadow-2xl">
-                    {/* Header & Filter Controls */}
-                    <div className="flex justify-between items-center flex-wrap gap-2 text-xs pb-1">
+                  {/* 5. ULTRA-PREMIUM HORIZONTAL-SCROLLING CATEGORY CARD CAROUSEL (FINTECH METRIC CARD STYLE) */}
+                  <div className="p-5 bg-[#050D1E]/95 backdrop-blur-xl rounded-2xl border border-[#1E2A4A] space-y-4 shadow-2xl relative overflow-hidden">
+                    {/* Header & Controls */}
+                    <div className="flex justify-between items-center flex-wrap gap-2 text-xs">
                       <div>
-                        <h4 className="text-[10px] font-black uppercase tracking-wider text-white block">
-                          BUDGET VARIANCE DEVIATION (₹0 Target Baseline)
+                        <h4 className="text-[10px] font-black uppercase tracking-wider text-white flex items-center gap-1.5">
+                          <Sparkles className="w-3.5 h-3.5 text-sky-400" /> CATEGORY PERFORMANCE CAROUSEL
                         </h4>
                         <p className="text-[9px] font-medium text-slate-400">
-                          Centered zero-axis showing exact savings or over-budget variance
+                          Fintech metric cards with mini spline wave trends & status indicators
                         </p>
                       </div>
 
-                      {/* Filter Pills */}
-                      <div className="flex items-center space-x-1 p-1 bg-slate-900/80 rounded-xl border border-slate-800 text-[10px] font-extrabold select-none">
-                        <button
-                          onClick={() => setVarianceFilter('all')}
-                          className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
-                            varianceFilter === 'all'
-                              ? 'bg-slate-800 text-white shadow'
-                              : 'text-slate-400 hover:text-slate-200'
-                          }`}
-                        >
-                          All ({monthBudgets.length})
-                        </button>
-                        <button
-                          onClick={() => setVarianceFilter('over')}
-                          className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
-                            varianceFilter === 'over'
-                              ? 'bg-rose-500/20 text-[#FF2E93] border border-[#FF2E93]/40 shadow'
-                              : 'text-slate-400 hover:text-rose-300'
-                          }`}
-                        >
-                          Over Budget ({overCount})
-                        </button>
-                        <button
-                          onClick={() => setVarianceFilter('saved')}
-                          className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
-                            varianceFilter === 'saved'
-                              ? 'bg-emerald-500/20 text-[#00FFA3] border border-[#00FFA3]/40 shadow'
-                              : 'text-slate-400 hover:text-emerald-300'
-                          }`}
-                        >
-                          Saved ({healthyCount + warningCount + criticalCount})
-                        </button>
+                      {/* Filter Pills & Scroll Navigation Controls */}
+                      <div className="flex items-center space-x-2">
+                        {/* Filter Tabs */}
+                        <div className="flex items-center space-x-1 p-1 bg-slate-900/80 rounded-xl border border-slate-800 text-[10px] font-extrabold select-none">
+                          <button
+                            onClick={() => setVarianceFilter('all')}
+                            className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                              varianceFilter === 'all'
+                                ? 'bg-slate-800 text-white shadow'
+                                : 'text-slate-400 hover:text-slate-200'
+                            }`}
+                          >
+                            All ({monthBudgets.length})
+                          </button>
+                          <button
+                            onClick={() => setVarianceFilter('over')}
+                            className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                              varianceFilter === 'over'
+                                ? 'bg-rose-500/20 text-[#FF2E93] border border-[#FF2E93]/40 shadow'
+                                : 'text-slate-400 hover:text-rose-300'
+                            }`}
+                          >
+                            Over Budget ({overCount})
+                          </button>
+                          <button
+                            onClick={() => setVarianceFilter('saved')}
+                            className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                              varianceFilter === 'saved'
+                                ? 'bg-emerald-500/20 text-[#00FFA3] border border-[#00FFA3]/40 shadow'
+                                : 'text-slate-400 hover:text-emerald-300'
+                            }`}
+                          >
+                            Saved ({healthyCount + warningCount + criticalCount})
+                          </button>
+                        </div>
+
+                        {/* Glass Floating Chevron Buttons */}
+                        <div className="flex items-center space-x-1">
+                          <button
+                            onClick={() => carouselRef.current?.scrollBy({ left: -300, behavior: 'smooth' })}
+                            className="p-1.5 bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 rounded-xl text-slate-300 hover:text-white transition active:scale-95 cursor-pointer shadow-md"
+                            title="Scroll Left"
+                          >
+                            <ChevronLeft className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => carouselRef.current?.scrollBy({ left: 300, behavior: 'smooth' })}
+                            className="p-1.5 bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 rounded-xl text-slate-300 hover:text-white transition active:scale-95 cursor-pointer shadow-md"
+                            title="Scroll Right"
+                          >
+                            <ChevronRight className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
                     </div>
 
-                    {/* Sub-grid Axis Header Labels */}
-                    <div className="grid grid-cols-[180px_1fr_120px] items-center gap-3 px-3 py-1.5 bg-slate-900/60 rounded-lg text-[9px] font-black text-slate-400 uppercase tracking-wider border border-slate-800/60 select-none">
-                      <div>Category Name</div>
-                      <div className="flex justify-between px-2 text-center font-mono">
-                        <span className="text-[#00FFA3]">← Saved (Under Plan)</span>
-                        <span className="text-slate-200 font-extrabold bg-slate-800 px-1.5 py-0.5 rounded">₹0 (Target)</span>
-                        <span className="text-[#FF2E93]">Over Plan (Excess) →</span>
-                      </div>
-                      <div className="text-right">Variance Status</div>
-                    </div>
-
-                    {/* Deviation Rows Scroll Area */}
+                    {/* Horizontal Carousel Track */}
                     {(() => {
-                      // Filter categories according to tab filter
                       const filteredList = sortedCategories.filter(cat => {
                         const diff = cat.actualSpent - cat.planned;
                         if (varianceFilter === 'over') return diff > 0;
@@ -2116,111 +2125,127 @@ export default function Dashboard() {
                         return true;
                       });
 
-                      // Calculate maximum absolute variance in the dataset for relative scaling
-                      const maxVariance = Math.max(
-                        ...monthBudgets.map(b => Math.abs((b.spent || 0) - (b.effectiveLimit || b.limit_amount || 0))),
-                        1
-                      );
+                      if (filteredList.length === 0) {
+                        return (
+                          <div className="py-8 text-center text-slate-400 text-xs bg-slate-900/40 rounded-2xl border border-dashed border-slate-800">
+                            No categories found for this filter.
+                          </div>
+                        );
+                      }
 
                       return (
-                        <div className="space-y-1.5 max-h-[420px] overflow-y-auto pr-1 custom-scrollbar pt-1">
+                        <div
+                          ref={carouselRef}
+                          className="flex gap-4 overflow-x-auto snap-x snap-mandatory py-2 px-1 scroll-smooth no-scrollbar sm:custom-scrollbar"
+                          style={{
+                            scrollbarWidth: 'thin',
+                            scrollbarColor: 'rgba(0, 240, 255, 0.25) rgba(255, 255, 255, 0.02)'
+                          }}
+                        >
                           {filteredList.map(cat => {
                             const planned = cat.planned;
                             const actual = cat.actualSpent;
-                            const diff = actual - planned; // positive = over budget, negative = saved
+                            const diff = actual - planned;
                             const absDiff = Math.abs(diff);
+                            const isOver = diff > 0;
+                            const pctUsed = cat.pctUsed;
 
-                            // Calculate bar width percentage relative to 50% max half width (min 3%, max 95%)
-                            const barWidthPct = Math.min(95, Math.max(3, (absDiff / maxVariance) * 100));
+                            // Transaction details per category
+                            const catTxList = transactions.filter(t => {
+                              if (t.category_id && cat.category_id) return t.category_id === cat.category_id;
+                              return (t.category_name || '').toLowerCase() === (cat.category_name || '').toLowerCase();
+                            });
+                            const txCount = catTxList.length;
+                            const lastTx = catTxList.length > 0 ? catTxList[catTxList.length - 1] : null;
+                            const lastDateStr = lastTx
+                              ? new Date(lastTx.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+                              : 'No tx';
 
-                            const isHovered = hoveredRowId === cat.id;
-                            const isAnyHovered = hoveredRowId !== null;
-
-                            // Badge styling & text
-                            let badgeText = '₹0 ON PLAN';
+                            // Status Badge Pill
+                            let badgeText = 'ON PLAN';
                             let badgeStyle = 'bg-cyan-500/15 text-cyan-300 border-cyan-500/40';
 
-                            if (diff > 0) {
-                              badgeText = `+${formatIndianRupee(diff)} OVER`;
-                              badgeStyle = 'bg-[#FF2E93]/15 text-[#FF2E93] border-[#FF2E93]/40 font-extrabold shadow-[0_0_8px_rgba(255,46,147,0.2)]';
+                            if (isOver) {
+                              badgeText = `▲ +${formatIndianRupee(diff)} OVER`;
+                              badgeStyle = 'bg-[#FF2E93]/12 text-[#FF2E93] border-[#FF2E93]/40 font-extrabold shadow-[0_0_8px_rgba(255,46,147,0.2)]';
                             } else if (diff < 0) {
-                              badgeText = `-${formatIndianRupee(absDiff)} SAVED`;
-                              badgeStyle = 'bg-[#00FFA3]/15 text-[#00FFA3] border-[#00FFA3]/40 font-extrabold shadow-[0_0_8px_rgba(0,255,163,0.2)]';
+                              badgeText = `▼ -${formatIndianRupee(absDiff)} SAVED`;
+                              badgeStyle = 'bg-[#00FFA3]/12 text-[#00FFA3] border-[#00FFA3]/40 font-extrabold shadow-[0_0_8px_rgba(0,255,163,0.2)]';
                             }
+
+                            // SVG Mini Sparkline Path & Gradient
+                            const sparkGradientId = `sparkGrad-${cat.id}`;
+                            const strokeColor = isOver ? '#FF2E93' : '#00FFA3';
+                            const areaPath = isOver
+                              ? 'M 0,35 C 50,38 100,20 150,28 C 200,32 240,8 260,8 L 260,45 L 0,45 Z'
+                              : 'M 0,12 C 50,8 100,28 150,20 C 200,14 240,32 260,35 L 260,45 L 0,45 Z';
+                            const linePath = isOver
+                              ? 'M 0,35 C 50,38 100,20 150,28 C 200,32 240,8 260,8'
+                              : 'M 0,12 C 50,8 100,28 150,20 C 200,14 240,32 260,35';
 
                             return (
                               <div
                                 key={cat.id}
-                                onMouseEnter={() => setHoveredRowId(cat.id)}
-                                onMouseLeave={() => setHoveredRowId(null)}
                                 onClick={() => navigate('/budgets', { state: { month: selectedMonthNum, year: selectedYearNum } })}
-                                className={`group grid grid-cols-[180px_1fr_120px] items-center gap-3 p-2.5 rounded-xl border transition-all duration-200 cursor-pointer ${
-                                  isHovered
-                                    ? 'bg-white/[0.04] border-slate-700 opacity-100 shadow-lg'
-                                    : isAnyHovered
-                                    ? 'border-transparent opacity-40'
-                                    : 'bg-[#060D1E]/60 border-slate-800/60 opacity-100 hover:bg-white/[0.03]'
+                                className={`group flex-none w-[280px] snap-start min-h-[220px] p-4 bg-[#0F172A]/65 backdrop-blur-xl border border-white/[0.08] rounded-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] flex flex-col justify-between cursor-pointer transition-all duration-300 ease-out hover:-translate-y-1.5 hover:scale-[1.01] ${
+                                  isOver
+                                    ? 'hover:border-[#FF2E93]/40 hover:shadow-[0_12px_28px_rgba(255,46,147,0.18)]'
+                                    : 'hover:border-[#00FFA3]/40 hover:shadow-[0_12px_28px_rgba(0,255,163,0.18)]'
                                 }`}
                               >
-                                {/* 1. Left Column: Icon + Category Name */}
-                                <div className="flex items-center space-x-2.5 min-w-0">
-                                  <span className="text-base p-1.5 bg-[#081226] rounded-xl border border-slate-800 shrink-0">
+                                {/* Top Header: Badge + Status Pill */}
+                                <div className="flex justify-between items-center gap-2">
+                                  <div className="p-2 bg-white/[0.06] rounded-xl border border-white/10 text-lg shrink-0">
                                     {getCategoryIcon(cat.category_name)}
+                                  </div>
+                                  <span className={`px-2.5 py-1 rounded-full text-[9.5px] font-black uppercase border shrink-0 ${badgeStyle}`}>
+                                    {badgeText}
                                   </span>
-                                  <div className="min-w-0">
-                                    <span className="text-xs font-black text-white truncate block">
-                                      {cat.category_name}
-                                    </span>
-                                    <span className="text-[9px] text-slate-400 font-semibold block">
-                                      Plan {formatIndianRupee(planned)} • Spent {formatIndianRupee(actual)}
-                                    </span>
+                                </div>
+
+                                {/* Title & Actual Amount */}
+                                <div className="space-y-1 pt-2">
+                                  <span className="text-[11px] font-extrabold text-slate-400 tracking-wider uppercase block truncate">
+                                    {cat.category_name}
+                                  </span>
+                                  <div className="text-2xl font-black text-white font-mono tracking-tight">
+                                    {formatIndianRupee(actual)}
                                   </div>
                                 </div>
 
-                                {/* 2. Center Column: Dual-Direction Deviation Track (Centered Zero Axis) */}
-                                <div className="relative w-full h-6 bg-slate-950/90 rounded-lg overflow-hidden border border-slate-800/80 flex items-center">
-                                  {/* Centered Dashed Reference Line (Target Zero Axis) */}
-                                  <div className="absolute left-1/2 top-0 bottom-0 w-[1px] bg-slate-700 border-r border-dashed border-slate-600 z-10" />
-
-                                  {/* Saved (Left Side) Bar */}
-                                  {diff < 0 && (
-                                    <div
-                                      className="absolute right-1/2 top-1 bottom-1 bg-gradient-to-l from-[#059669] to-[#00FFA3] rounded-l-md transition-all duration-500 ease-out"
-                                      style={{
-                                        width: `${barWidthPct / 2}%`,
-                                        boxShadow: isHovered
-                                          ? '0 0 12px rgba(0, 255, 163, 0.85)'
-                                          : '0 0 8px rgba(0, 255, 163, 0.4)',
-                                        filter: isHovered ? 'drop-shadow(0 0 6px #00FFA3)' : 'none'
-                                      }}
-                                    />
-                                  )}
-
-                                  {/* Over Budget (Right Side) Bar */}
-                                  {diff > 0 && (
-                                    <div
-                                      className="absolute left-1/2 top-1 bottom-1 bg-gradient-to-r from-[#FF5E62] to-[#FF2E93] rounded-r-md transition-all duration-500 ease-out"
-                                      style={{
-                                        width: `${barWidthPct / 2}%`,
-                                        boxShadow: isHovered
-                                          ? '0 0 12px rgba(255, 46, 147, 0.85)'
-                                          : '0 0 8px rgba(255, 46, 147, 0.4)',
-                                        filter: isHovered ? 'drop-shadow(0 0 6px #FF2E93)' : 'none'
-                                      }}
-                                    />
-                                  )}
-
-                                  {/* Exact Target Match (Center Dot) */}
-                                  {diff === 0 && (
-                                    <div className="absolute left-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-cyan-400 shadow-[0_0_8px_#22d3ee] z-20" />
-                                  )}
+                                {/* Sub-Metrics Row */}
+                                <div className="space-y-1 pt-2 border-t border-white/[0.06] text-[10px] font-semibold text-slate-400">
+                                  <div className="flex justify-between items-center">
+                                    <span>Planned: <strong className="text-slate-200 font-mono">{formatIndianRupee(planned)}</strong></span>
+                                    <span className={isOver ? 'text-[#FF2E93] font-mono font-bold' : 'text-[#00FFA3] font-mono font-bold'}>
+                                      {pctUsed.toFixed(0)}% used
+                                    </span>
+                                  </div>
+                                  <div className="flex justify-between items-center text-[9px] text-slate-500">
+                                    <span>{txCount} Tx recorded</span>
+                                    <span>Last: {lastDateStr}</span>
+                                  </div>
                                 </div>
 
-                                {/* 3. Right Column: Status Badges */}
-                                <div className="text-right">
-                                  <span className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-black uppercase border shrink-0 ${badgeStyle}`}>
-                                    {badgeText}
-                                  </span>
+                                {/* Bottom Mini Sparkline Spline Wave */}
+                                <div className="pt-2 -mx-4 -mb-4 overflow-hidden rounded-b-2xl h-10 relative">
+                                  <svg className="w-full h-full" viewBox="0 0 260 45" preserveAspectRatio="none">
+                                    <defs>
+                                      <linearGradient id={sparkGradientId} x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stopColor={strokeColor} stopOpacity={0.35} />
+                                        <stop offset="100%" stopColor={strokeColor} stopOpacity={0.0} />
+                                      </linearGradient>
+                                    </defs>
+                                    <path d={areaPath} fill={`url(#${sparkGradientId})`} />
+                                    <path
+                                      d={linePath}
+                                      fill="none"
+                                      stroke={strokeColor}
+                                      strokeWidth="2.5"
+                                      strokeLinecap="round"
+                                      className="group-hover:drop-shadow-[0_0_6px_currentColor] transition-all duration-300"
+                                    />
+                                  </svg>
                                 </div>
                               </div>
                             );
