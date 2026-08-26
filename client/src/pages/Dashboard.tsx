@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
-import { Plus, Search, RefreshCw, Flame, LayoutGrid, CheckCircle2, Target, TrendingUp, Info, X, ChevronLeft, ChevronRight, ArrowRightLeft, Sparkles, Wallet, Calendar, ShieldCheck } from 'lucide-react';
+import { Plus, Search, RefreshCw, Flame, LayoutGrid, CheckCircle2, Target, TrendingUp, Info, X, ChevronLeft, ChevronRight, ArrowRightLeft, Sparkles, Wallet, Calendar, ShieldCheck, MoreVertical, Edit3, PlusCircle } from 'lucide-react';
 import axios from 'axios';
 import Button from '../components/ui/Button';
 import { useTheme } from '../context/ThemeContext';
@@ -222,6 +222,7 @@ export default function Dashboard() {
   const [varianceFilter, setVarianceFilter] = useState<'all' | 'over' | 'saved'>('all');
   const [sortOption, setSortOption] = useState<'excess' | 'spend' | 'name' | 'tx_count'>('excess');
   const [hoveredCardId, setHoveredCardId] = useState<string | number | null>(null);
+  const [activeMenuCatId, setActiveMenuCatId] = useState<string | number | null>(null);
   const [scrubInfo, setScrubInfo] = useState<{ cardId: string | number; x: number; label: string; amount: number } | null>(null);
   
   // Carousel Drag-Scroll State
@@ -2321,14 +2322,53 @@ export default function Dashboard() {
                                   background: `radial-gradient(400px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(255, 255, 255, 0.07), transparent 40%), #090D16`
                                 }}
                               >
-                                {/* 1. Header: Icon + Sharp High-Contrast Status Pill */}
+                                {/* 1. Header: Icon + Sharp High-Contrast Status Pill + Three-Dot Quick Actions */}
                                 <div className="flex justify-between items-center gap-2">
                                   <div className="p-2.5 bg-[#131B2E] border border-white/10 rounded-xl text-lg shrink-0 shadow-inner">
                                     {getCategoryIcon(cat.category_name)}
                                   </div>
-                                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider shrink-0 ${badgeStyle}`}>
-                                    {badgeText}
-                                  </span>
+                                  <div className="flex items-center space-x-1.5 shrink-0">
+                                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${badgeStyle}`}>
+                                      {badgeText}
+                                    </span>
+                                    {/* Three-Dot Quick Action Menu */}
+                                    <div className="relative">
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setActiveMenuCatId(activeMenuCatId === cat.id ? null : cat.id);
+                                        }}
+                                        className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-white/10 transition cursor-pointer"
+                                        title="Quick Actions"
+                                      >
+                                        <MoreVertical className="w-3.5 h-3.5" />
+                                      </button>
+                                      {activeMenuCatId === cat.id && (
+                                        <div className="absolute right-0 top-6 z-50 w-44 bg-[#0F172A] border border-white/15 rounded-xl shadow-2xl p-1 text-[11px] font-bold text-slate-200 backdrop-blur-xl">
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setActiveMenuCatId(null);
+                                              navigate('/budgets', { state: { editCategory: cat.category_name, month: selectedMonthNum, year: selectedYearNum } });
+                                            }}
+                                            className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-white/10 flex items-center gap-2 text-slate-200 hover:text-white transition cursor-pointer"
+                                          >
+                                            <Edit3 className="w-3 h-3 text-[#00F0FF]" /> Edit Budget Limit
+                                          </button>
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setActiveMenuCatId(null);
+                                              navigate('/transactions', { state: { addExpenseCategory: cat.category_name } });
+                                            }}
+                                            className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-white/10 flex items-center gap-2 text-slate-200 hover:text-white transition cursor-pointer"
+                                          >
+                                            <PlusCircle className="w-3 h-3 text-[#00FFA3]" /> Add Expense
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
                                 </div>
 
                                 {/* 2. Title & Main Spend Amount */}
@@ -2385,7 +2425,14 @@ export default function Dashboard() {
                                     <button
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        navigate('/transactions', { state: { category: cat.category_name } });
+                                        setSelectedInsight({
+                                          id: cat.category_id || cat.id,
+                                          category: cat.category_name,
+                                          actualSpent: actual,
+                                          planned: planned,
+                                          variance: diff,
+                                          pctUsed: pctUsed
+                                        });
                                       }}
                                       className="px-2 py-0.5 text-[9.5px] font-extrabold text-[#00F0FF] bg-[#00F0FF]/15 hover:bg-[#00F0FF]/25 border border-[#00F0FF]/40 rounded-md transition cursor-pointer shadow-[0_0_8px_rgba(0,240,255,0.25)] shrink-0 active:scale-95"
                                     >
