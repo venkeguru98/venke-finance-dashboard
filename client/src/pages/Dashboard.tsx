@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 import { Plus, Search, RefreshCw, Flame, LayoutGrid, CheckCircle2, Target, TrendingUp, Info, X, ChevronLeft, ChevronRight, ArrowRightLeft, Sparkles, Wallet, Calendar, ShieldCheck } from 'lucide-react';
 import axios from 'axios';
 import Button from '../components/ui/Button';
@@ -117,94 +117,6 @@ const DEFAULT_WIDGETS = {
   weeklyExpenseWidget: true
 };
 
-const CustomCategoryXAxisTick = (props: any) => {
-  const { x, y, payload, activeIndex } = props;
-  const data = props.chartData ? props.chartData[payload.index] : null;
-  const isOver = data?.isOver;
-  const pct = data?.pctUsed;
-  const icon = data?.icon || '';
-
-  const isAnyActive = activeIndex !== undefined && activeIndex !== null;
-  const isActive = activeIndex === payload.index;
-  const opacity = isAnyActive ? (isActive ? 1 : 0.4) : 1;
-
-  return (
-    <g transform={`translate(${x},${y})`} opacity={opacity} className="transition-opacity duration-200">
-      <text x={0} y={14} textAnchor="middle" fill="#F8FAFC" fontSize={11} fontWeight={isActive ? 900 : 800} className="select-none">
-        {icon} {payload.value}
-      </text>
-      {data && (
-        <>
-          <text x={0} y={28} textAnchor="middle" fill="rgba(148, 163, 184, 0.9)" fontSize={9} fontWeight={700} className="select-none">
-            {formatIndianRupee(data.planned)} | <tspan fill={isOver ? '#FF2E93' : '#00FFA3'}>{formatIndianRupee(data.actual)}</tspan>
-          </text>
-          <text x={0} y={40} textAnchor="middle" fill={isOver ? '#FF2E93' : pct >= 90 ? '#F9D423' : '#00FFA3'} fontSize={9} fontWeight={900} className="select-none">
-            {isOver ? `⚠️ ${pct.toFixed(0)}%` : `${pct.toFixed(0)}%`}
-          </text>
-        </>
-      )}
-    </g>
-  );
-};
-
-const CustomBudgetChartTooltip = ({ active, payload }: any) => {
-  if (!active || !payload || !payload.length) return null;
-  const data = payload[0].payload;
-
-  let statusPillText = `${data.pctUsed.toFixed(0)}% USED`;
-  let statusPillStyle = 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40';
-
-  if (data.isOver) {
-    statusPillText = `+${formatIndianRupee(data.overAmount)} OVER`;
-    statusPillStyle = 'bg-rose-500/20 text-rose-400 border-rose-500/40 font-extrabold';
-  } else if (data.status === 'critical' || data.status === 'warning') {
-    statusPillText = `${data.pctUsed.toFixed(0)}% USED`;
-    statusPillStyle = 'bg-amber-500/20 text-amber-300 border-amber-500/40';
-  }
-
-  return (
-    <div className="p-4 bg-[#0F172A]/85 backdrop-blur-xl border border-white/10 rounded-2xl shadow-[0_10px_30px_rgba(0,0,0,0.5)] space-y-2.5 text-xs min-w-[220px] z-50">
-      <div className="flex items-center justify-between border-b border-white/10 pb-2">
-        <div className="flex items-center space-x-2">
-          <span className="text-xl p-1 bg-white/5 rounded-lg border border-white/10">{data.icon}</span>
-          <span className="font-extrabold text-white text-sm tracking-wide">{data.name}</span>
-        </div>
-        <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border shrink-0 ${statusPillStyle}`}>
-          {statusPillText}
-        </span>
-      </div>
-
-      <div className="space-y-1.5 font-semibold pt-0.5">
-        <div className="flex justify-between items-center space-x-4">
-          <span className="text-slate-400 text-[11px]">Planned Budget:</span>
-          <span className="font-mono font-bold text-[#00F0FF]">{formatIndianRupee(data.planned)}</span>
-        </div>
-
-        <div className="flex justify-between items-center space-x-4">
-          <span className="text-slate-400 text-[11px]">Actual Spent:</span>
-          <span className={`font-mono font-extrabold ${data.isOver ? 'text-[#FF2E93]' : 'text-[#00FFA3]'}`}>
-            {formatIndianRupee(data.actual)}
-          </span>
-        </div>
-
-        <div className="border-t border-white/10 pt-2 flex justify-between items-center space-x-4">
-          <span className="text-slate-400 text-[11px]">{data.isOver ? 'Over Plan Excess:' : 'Remaining Limit:'}</span>
-          <span className={`font-mono font-black ${data.isOver ? 'text-[#FF2E93]' : 'text-emerald-400'}`}>
-            {data.isOver ? `+${formatIndianRupee(data.overAmount)}` : formatIndianRupee(data.remaining)}
-          </span>
-        </div>
-
-        <div className="flex justify-between items-center space-x-4 pt-0.5">
-          <span className="text-slate-400 text-[11px]">Budget Utilization:</span>
-          <span className={`font-mono font-black ${data.isOver ? 'text-[#FF2E93]' : 'text-emerald-400'}`}>
-            {data.pctUsed.toFixed(1)}%
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-};
-
 export default function Dashboard() {
   const { chartColors } = useTheme();
   const COLORS = chartColors;
@@ -219,8 +131,9 @@ export default function Dashboard() {
   });
   const navigate = useNavigate();
 
-  // Hover state for Budget Bar Chart Focus Dimming
-  const [hoveredBudgetCategoryIndex, setHoveredBudgetCategoryIndex] = useState<number | null>(null);
+  // State for Budget Variance Waterfall chart
+  const [varianceFilter, setVarianceFilter] = useState<'all' | 'over' | 'saved'>('all');
+  const [hoveredRowId, setHoveredRowId] = useState<string | number | null>(null);
   
   // Data States
   const [transactions, setTransactions] = useState<any[]>([]);
@@ -2134,175 +2047,187 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  {/* 5. SINGLE PREMIUM HORIZONTAL PLANNED VS ACTUAL GRAPH WIDGET */}
-                  <div className="p-4 bg-[#050D1E]/90 backdrop-blur-xl rounded-2xl border border-[#1E2A4A] space-y-3 shadow-2xl">
-                    <div className="flex justify-between items-center flex-wrap gap-2 text-xs">
-                      <div className="flex items-center space-x-2">
-                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-300">
-                          PLANNED VS ACTUAL SPENDING BY CATEGORY
-                        </span>
-                        <span className="text-[9px] font-mono text-slate-500">
-                          (Scroll horizontally →)
-                        </span>
+                  {/* 5. OVER/UNDER VARIANCE WATERFALL DEVIATION WIDGET (FINTECH / BLOOMBERG TERMINAL STYLE) */}
+                  <div className="p-5 bg-[#050D1E]/95 backdrop-blur-xl rounded-2xl border border-[#1E2A4A] space-y-3.5 shadow-2xl">
+                    {/* Header & Filter Controls */}
+                    <div className="flex justify-between items-center flex-wrap gap-2 text-xs pb-1">
+                      <div>
+                        <h4 className="text-[10px] font-black uppercase tracking-wider text-white block">
+                          BUDGET VARIANCE DEVIATION (₹0 Target Baseline)
+                        </h4>
+                        <p className="text-[9px] font-medium text-slate-400">
+                          Centered zero-axis showing exact savings or over-budget variance
+                        </p>
                       </div>
 
-                      {/* Chart Series Legend with Multi-Stop Neon Gradients */}
-                      <div className="flex items-center space-x-3.5 text-[10px] font-bold">
-                        <div className="flex items-center space-x-1.5">
-                          <span className="w-3 h-3 rounded-md bg-gradient-to-r from-[#00F0FF] to-[#0072FF] shadow-[0_0_10px_rgba(0,240,255,0.45)]" />
-                          <span className="text-slate-200 font-extrabold">Planned</span>
-                        </div>
-                        <div className="flex items-center space-x-1.5">
-                          <span className="w-3 h-3 rounded-md bg-gradient-to-r from-[#00FFA3] to-[#00B074] shadow-[0_0_10px_rgba(0,255,163,0.45)]" />
-                          <span className="text-slate-200 font-extrabold">Actual</span>
-                        </div>
-                        <div className="flex items-center space-x-1.5">
-                          <span className="w-3 h-3 rounded-md bg-gradient-to-r from-[#FF2E93] to-[#FF5E62] shadow-[0_0_10px_rgba(255,46,147,0.5)]" />
-                          <span className="text-[#FF2E93] font-black">Over Budget</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Horizontally Scrollable Chart Container */}
-                    <div className="overflow-x-auto no-scrollbar sm:custom-scrollbar pb-2 pt-2 w-full">
-                      <div style={{ minWidth: `${Math.max(520, sortedCategories.length * 115)}px` }} className="h-72">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart
-                            data={sortedCategories.map(c => ({
-                              id: c.id,
-                              name: c.category_name,
-                              shortName: c.category_name.length > 12 ? c.category_name.slice(0, 10) + '…' : c.category_name,
-                              icon: getCategoryIcon(c.category_name),
-                              planned: c.planned,
-                              actual: c.actualSpent,
-                              remaining: c.remaining,
-                              isOver: c.isOver,
-                              overAmount: c.overAmount,
-                              pctUsed: c.pctUsed,
-                              status: c.status
-                            }))}
-                            margin={{ top: 25, right: 15, left: -15, bottom: 40 }}
-                            barGap={5}
-                            barCategoryGap="20%"
-                            onMouseMove={(state: any) => {
-                              if (state && state.activeTooltipIndex !== undefined && state.activeTooltipIndex !== null) {
-                                setHoveredBudgetCategoryIndex(state.activeTooltipIndex);
-                              } else {
-                                setHoveredBudgetCategoryIndex(null);
-                              }
-                            }}
-                            onMouseLeave={() => setHoveredBudgetCategoryIndex(null)}
-                          >
-                            <defs>
-                              {/* Planned Budget Bar: Electric Cyan to Royal Blue gradient */}
-                              <linearGradient id="budgetGradPlanned" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stopColor="#00F0FF" stopOpacity={1} />
-                                <stop offset="100%" stopColor="#0072FF" stopOpacity={0.85} />
-                              </linearGradient>
-
-                              {/* Actual Spent (Healthy / Under Budget) Bar: Radiant Neon Mint to Emerald gradient */}
-                              <linearGradient id="budgetGradHealthy" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stopColor="#00FFA3" stopOpacity={1} />
-                                <stop offset="100%" stopColor="#00B074" stopOpacity={0.85} />
-                              </linearGradient>
-
-                              {/* Actual Spent (Warning/Critical): Radiant Amber/Gold gradient */}
-                              <linearGradient id="budgetGradWarning" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stopColor="#F9D423" stopOpacity={1} />
-                                <stop offset="100%" stopColor="#FF4E50" stopOpacity={0.85} />
-                              </linearGradient>
-
-                              {/* Over Budget Bar: Vivid Fluorescent Hot Coral to Magenta gradient */}
-                              <linearGradient id="budgetGradOver" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stopColor="#FF2E93" stopOpacity={1} />
-                                <stop offset="100%" stopColor="#FF5E62" stopOpacity={0.9} />
-                              </linearGradient>
-                            </defs>
-
-                            <CartesianGrid strokeDasharray="4 4" vertical={false} stroke="rgba(255, 255, 255, 0.05)" />
-                            <XAxis
-                              dataKey="shortName"
-                              tick={<CustomCategoryXAxisTick activeIndex={hoveredBudgetCategoryIndex} />}
-                              axisLine={{ stroke: 'rgba(255, 255, 255, 0.1)' }}
-                              tickLine={false}
-                              interval={0}
-                            />
-                            <YAxis
-                              axisLine={false}
-                              tickLine={false}
-                              tick={{ fill: '#64748B', fontSize: 10, fontFamily: 'monospace' }}
-                              tickFormatter={v => (v >= 1000 ? `₹${(v / 1000).toFixed(0)}k` : `₹${v}`)}
-                            />
-                            <Tooltip cursor={{ fill: 'transparent' }} content={<CustomBudgetChartTooltip />} />
-                            <Bar
-                              dataKey="planned"
-                              name="Planned Budget"
-                              radius={[8, 8, 0, 0]}
-                              barSize={16}
-                              isAnimationActive={true}
-                              animationDuration={800}
-                              animationEasing="ease-out"
-                            >
-                              {sortedCategories.map((_, index) => {
-                                const isHovered = hoveredBudgetCategoryIndex === index;
-                                const isAnyHovered = hoveredBudgetCategoryIndex !== null;
-                                const cellOpacity = isAnyHovered ? (isHovered ? 1 : 0.35) : 1;
-
-                                return (
-                                  <Cell
-                                    key={`cell-planned-${index}`}
-                                    fill="url(#budgetGradPlanned)"
-                                    fillOpacity={cellOpacity}
-                                    style={{
-                                      transition: 'all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)',
-                                      filter: isHovered ? 'drop-shadow(0 0 12px rgba(0, 240, 255, 0.85))' : 'none'
-                                    }}
-                                  />
-                                );
-                              })}
-                            </Bar>
-                            <Bar
-                              dataKey="actual"
-                              name="Actual Spent"
-                              radius={[8, 8, 0, 0]}
-                              barSize={16}
-                              isAnimationActive={true}
-                              animationDuration={800}
-                              animationEasing="ease-out"
-                            >
-                              {sortedCategories.map((entry, index) => {
-                                const isHovered = hoveredBudgetCategoryIndex === index;
-                                const isAnyHovered = hoveredBudgetCategoryIndex !== null;
-                                const cellOpacity = isAnyHovered ? (isHovered ? 1 : 0.35) : 1;
-                                const glowColor = entry.isOver
-                                  ? 'rgba(255, 46, 147, 0.85)'
-                                  : entry.status === 'critical' || entry.status === 'warning'
-                                  ? 'rgba(249, 212, 35, 0.85)'
-                                  : 'rgba(0, 255, 163, 0.85)';
-
-                                return (
-                                  <Cell
-                                    key={`cell-actual-${index}`}
-                                    fill={
-                                      entry.isOver
-                                        ? 'url(#budgetGradOver)'
-                                        : entry.status === 'critical' || entry.status === 'warning'
-                                        ? 'url(#budgetGradWarning)'
-                                        : 'url(#budgetGradHealthy)'
-                                    }
-                                    fillOpacity={cellOpacity}
-                                    style={{
-                                      transition: 'all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)',
-                                      filter: isHovered ? `drop-shadow(0 0 12px ${glowColor})` : 'none'
-                                    }}
-                                  />
-                                );
-                              })}
-                            </Bar>
-                          </BarChart>
-                        </ResponsiveContainer>
+                      {/* Filter Pills */}
+                      <div className="flex items-center space-x-1 p-1 bg-slate-900/80 rounded-xl border border-slate-800 text-[10px] font-extrabold select-none">
+                        <button
+                          onClick={() => setVarianceFilter('all')}
+                          className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                            varianceFilter === 'all'
+                              ? 'bg-slate-800 text-white shadow'
+                              : 'text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          All ({monthBudgets.length})
+                        </button>
+                        <button
+                          onClick={() => setVarianceFilter('over')}
+                          className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                            varianceFilter === 'over'
+                              ? 'bg-rose-500/20 text-[#FF2E93] border border-[#FF2E93]/40 shadow'
+                              : 'text-slate-400 hover:text-rose-300'
+                          }`}
+                        >
+                          Over Budget ({overCount})
+                        </button>
+                        <button
+                          onClick={() => setVarianceFilter('saved')}
+                          className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                            varianceFilter === 'saved'
+                              ? 'bg-emerald-500/20 text-[#00FFA3] border border-[#00FFA3]/40 shadow'
+                              : 'text-slate-400 hover:text-emerald-300'
+                          }`}
+                        >
+                          Saved ({healthyCount + warningCount + criticalCount})
+                        </button>
                       </div>
                     </div>
+
+                    {/* Sub-grid Axis Header Labels */}
+                    <div className="grid grid-cols-[180px_1fr_120px] items-center gap-3 px-3 py-1.5 bg-slate-900/60 rounded-lg text-[9px] font-black text-slate-400 uppercase tracking-wider border border-slate-800/60 select-none">
+                      <div>Category Name</div>
+                      <div className="flex justify-between px-2 text-center font-mono">
+                        <span className="text-[#00FFA3]">← Saved (Under Plan)</span>
+                        <span className="text-slate-200 font-extrabold bg-slate-800 px-1.5 py-0.5 rounded">₹0 (Target)</span>
+                        <span className="text-[#FF2E93]">Over Plan (Excess) →</span>
+                      </div>
+                      <div className="text-right">Variance Status</div>
+                    </div>
+
+                    {/* Deviation Rows Scroll Area */}
+                    {(() => {
+                      // Filter categories according to tab filter
+                      const filteredList = sortedCategories.filter(cat => {
+                        const diff = cat.actualSpent - cat.planned;
+                        if (varianceFilter === 'over') return diff > 0;
+                        if (varianceFilter === 'saved') return diff < 0;
+                        return true;
+                      });
+
+                      // Calculate maximum absolute variance in the dataset for relative scaling
+                      const maxVariance = Math.max(
+                        ...monthBudgets.map(b => Math.abs((b.spent || 0) - (b.effectiveLimit || b.limit_amount || 0))),
+                        1
+                      );
+
+                      return (
+                        <div className="space-y-1.5 max-h-[420px] overflow-y-auto pr-1 custom-scrollbar pt-1">
+                          {filteredList.map(cat => {
+                            const planned = cat.planned;
+                            const actual = cat.actualSpent;
+                            const diff = actual - planned; // positive = over budget, negative = saved
+                            const absDiff = Math.abs(diff);
+
+                            // Calculate bar width percentage relative to 50% max half width (min 3%, max 95%)
+                            const barWidthPct = Math.min(95, Math.max(3, (absDiff / maxVariance) * 100));
+
+                            const isHovered = hoveredRowId === cat.id;
+                            const isAnyHovered = hoveredRowId !== null;
+
+                            // Badge styling & text
+                            let badgeText = '₹0 ON PLAN';
+                            let badgeStyle = 'bg-cyan-500/15 text-cyan-300 border-cyan-500/40';
+
+                            if (diff > 0) {
+                              badgeText = `+${formatIndianRupee(diff)} OVER`;
+                              badgeStyle = 'bg-[#FF2E93]/15 text-[#FF2E93] border-[#FF2E93]/40 font-extrabold shadow-[0_0_8px_rgba(255,46,147,0.2)]';
+                            } else if (diff < 0) {
+                              badgeText = `-${formatIndianRupee(absDiff)} SAVED`;
+                              badgeStyle = 'bg-[#00FFA3]/15 text-[#00FFA3] border-[#00FFA3]/40 font-extrabold shadow-[0_0_8px_rgba(0,255,163,0.2)]';
+                            }
+
+                            return (
+                              <div
+                                key={cat.id}
+                                onMouseEnter={() => setHoveredRowId(cat.id)}
+                                onMouseLeave={() => setHoveredRowId(null)}
+                                onClick={() => navigate('/budgets', { state: { month: selectedMonthNum, year: selectedYearNum } })}
+                                className={`group grid grid-cols-[180px_1fr_120px] items-center gap-3 p-2.5 rounded-xl border transition-all duration-200 cursor-pointer ${
+                                  isHovered
+                                    ? 'bg-white/[0.04] border-slate-700 opacity-100 shadow-lg'
+                                    : isAnyHovered
+                                    ? 'border-transparent opacity-40'
+                                    : 'bg-[#060D1E]/60 border-slate-800/60 opacity-100 hover:bg-white/[0.03]'
+                                }`}
+                              >
+                                {/* 1. Left Column: Icon + Category Name */}
+                                <div className="flex items-center space-x-2.5 min-w-0">
+                                  <span className="text-base p-1.5 bg-[#081226] rounded-xl border border-slate-800 shrink-0">
+                                    {getCategoryIcon(cat.category_name)}
+                                  </span>
+                                  <div className="min-w-0">
+                                    <span className="text-xs font-black text-white truncate block">
+                                      {cat.category_name}
+                                    </span>
+                                    <span className="text-[9px] text-slate-400 font-semibold block">
+                                      Plan {formatIndianRupee(planned)} • Spent {formatIndianRupee(actual)}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* 2. Center Column: Dual-Direction Deviation Track (Centered Zero Axis) */}
+                                <div className="relative w-full h-6 bg-slate-950/90 rounded-lg overflow-hidden border border-slate-800/80 flex items-center">
+                                  {/* Centered Dashed Reference Line (Target Zero Axis) */}
+                                  <div className="absolute left-1/2 top-0 bottom-0 w-[1px] bg-slate-700 border-r border-dashed border-slate-600 z-10" />
+
+                                  {/* Saved (Left Side) Bar */}
+                                  {diff < 0 && (
+                                    <div
+                                      className="absolute right-1/2 top-1 bottom-1 bg-gradient-to-l from-[#059669] to-[#00FFA3] rounded-l-md transition-all duration-500 ease-out"
+                                      style={{
+                                        width: `${barWidthPct / 2}%`,
+                                        boxShadow: isHovered
+                                          ? '0 0 12px rgba(0, 255, 163, 0.85)'
+                                          : '0 0 8px rgba(0, 255, 163, 0.4)',
+                                        filter: isHovered ? 'drop-shadow(0 0 6px #00FFA3)' : 'none'
+                                      }}
+                                    />
+                                  )}
+
+                                  {/* Over Budget (Right Side) Bar */}
+                                  {diff > 0 && (
+                                    <div
+                                      className="absolute left-1/2 top-1 bottom-1 bg-gradient-to-r from-[#FF5E62] to-[#FF2E93] rounded-r-md transition-all duration-500 ease-out"
+                                      style={{
+                                        width: `${barWidthPct / 2}%`,
+                                        boxShadow: isHovered
+                                          ? '0 0 12px rgba(255, 46, 147, 0.85)'
+                                          : '0 0 8px rgba(255, 46, 147, 0.4)',
+                                        filter: isHovered ? 'drop-shadow(0 0 6px #FF2E93)' : 'none'
+                                      }}
+                                    />
+                                  )}
+
+                                  {/* Exact Target Match (Center Dot) */}
+                                  {diff === 0 && (
+                                    <div className="absolute left-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-cyan-400 shadow-[0_0_8px_#22d3ee] z-20" />
+                                  )}
+                                </div>
+
+                                {/* 3. Right Column: Status Badges */}
+                                <div className="text-right">
+                                  <span className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-black uppercase border shrink-0 ${badgeStyle}`}>
+                                    {badgeText}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               );
