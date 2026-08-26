@@ -2308,7 +2308,7 @@ export default function Dashboard() {
                                   e.currentTarget.style.setProperty('--mouse-y', `${mouseY}px`);
                                 }}
                                 onClick={() => navigate('/budgets', { state: { month: selectedMonthNum, year: selectedYearNum } })}
-                                className={`group flex-none w-[310px] min-w-[310px] max-w-[310px] shrink-0 snap-start snap-always min-h-[250px] p-5 border rounded-[20px] shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_10px_30px_-5px_rgba(0,0,0,0.8)] flex flex-col justify-between cursor-pointer transition-all duration-300 ease-out hover:-translate-y-2 hover:[perspective:1000px] hover:[rotateX:1deg] relative overflow-hidden box-border ${
+                                className={`group flex-none w-[310px] min-w-[310px] max-w-[310px] shrink-0 snap-start snap-always min-h-[255px] p-5 border rounded-[20px] shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_10px_30px_-5px_rgba(0,0,0,0.8)] flex flex-col justify-between cursor-pointer transition-all duration-300 ease-out hover:-translate-y-2 hover:[perspective:1000px] hover:[rotateX:1deg] relative overflow-hidden box-border ${
                                   isAnyHovered && !isHovered ? 'opacity-45 scale-95' : 'opacity-100'
                                 } ${
                                   isOver
@@ -2321,17 +2321,6 @@ export default function Dashboard() {
                                   background: `radial-gradient(400px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(255, 255, 255, 0.07), transparent 40%), #090D16`
                                 }}
                               >
-                                {/* Sleek Ghost Button: Inspect Spend (Relocated to Card Bottom Right) */}
-                                <div
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    navigate('/transactions', { state: { category: cat.category_name } });
-                                  }}
-                                  className="absolute right-4 bottom-13 z-20 opacity-0 group-hover:opacity-100 transform translate-y-1 group-hover:translate-y-0 transition-all duration-200 flex items-center gap-1 text-[9px] font-extrabold text-[#00F0FF] bg-[#00F0FF]/15 px-2.5 py-1 rounded-full border border-[#00F0FF]/40 shadow-[0_0_12px_rgba(0,240,255,0.3)] hover:scale-105 active:scale-95 cursor-pointer"
-                                >
-                                  Inspect Spend ➔
-                                </div>
-
                                 {/* 1. Header: Icon + Sharp High-Contrast Status Pill */}
                                 <div className="flex justify-between items-center gap-2">
                                   <div className="p-2.5 bg-[#131B2E] border border-white/10 rounded-xl text-lg shrink-0 shadow-inner">
@@ -2352,7 +2341,7 @@ export default function Dashboard() {
                                   </div>
                                 </div>
 
-                                {/* 3. Dual-Layer High-Contrast Progress Bar & Spending Velocity Indicator */}
+                                {/* 3. Dual-Layer High-Contrast Progress Bar & Two-Tier Velocity + Footer Controls */}
                                 <div className="space-y-1.5 pt-1.5">
                                   <div className="flex justify-between items-center text-[10px] font-semibold text-slate-400">
                                     <span>Planned: <strong className="text-slate-200 font-mono">{formatIndianRupee(planned)}</strong></span>
@@ -2378,19 +2367,30 @@ export default function Dashboard() {
                                     </div>
                                   </div>
 
-                                  {/* Spending Velocity & Daily Burn Rate Run-Rate Metric Row */}
+                                  {/* Row 1 (Velocity & Overrun/Save Status) */}
                                   <div className="flex justify-between items-center text-[9px] font-mono pt-1 text-slate-400">
                                     <span className="text-[#00F0FF] font-semibold flex items-center gap-1">
-                                      ⚡ ₹{formatIndianRupee(dailyAvg)}/day run-rate
+                                      ⚡ {formatIndianRupee(dailyAvg)}/day run-rate
                                     </span>
                                     <span className={isOver ? 'text-[#FF4D79] font-bold' : 'text-[#00FFA3] font-bold'}>
-                                      {isOver ? `Paced to overrun by ₹${formatIndianRupee(diff)}` : `Paced to save ₹${formatIndianRupee(absDiff)}`}
+                                      {isOver ? `Paced to overrun by ${formatIndianRupee(diff)}` : `Paced to save ${formatIndianRupee(absDiff)}`}
                                     </span>
                                   </div>
 
-                                  <div className="flex justify-between items-center text-[9px] text-slate-500 pt-0.5">
-                                    <span>{txCount} Tx recorded</span>
-                                    <span>Last: {lastDateStr}</span>
+                                  {/* Row 2 (Timestamp Footer & Embedded Inspect Spend Button) */}
+                                  <div className="flex justify-between items-center text-[9.5px] text-slate-400 pt-1 pb-2">
+                                    <span className="text-slate-500 font-medium">
+                                      {txCount} Tx recorded · Last: {lastDateStr}
+                                    </span>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        navigate('/transactions', { state: { category: cat.category_name } });
+                                      }}
+                                      className="px-2 py-0.5 text-[9.5px] font-extrabold text-[#00F0FF] bg-[#00F0FF]/15 hover:bg-[#00F0FF]/25 border border-[#00F0FF]/40 rounded-md transition cursor-pointer shadow-[0_0_8px_rgba(0,240,255,0.25)] shrink-0 active:scale-95"
+                                    >
+                                      Inspect Spend ➔
+                                    </button>
                                   </div>
                                 </div>
 
