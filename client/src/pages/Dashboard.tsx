@@ -2140,7 +2140,12 @@ export default function Dashboard() {
                       return (
                         <div
                           ref={carouselRef}
-                          className="flex gap-4 overflow-x-auto snap-x snap-mandatory py-4 px-1.5 scroll-smooth no-scrollbar sm:custom-scrollbar"
+                          onWheel={(e) => {
+                            if (carouselRef.current && (e.deltaX !== 0 || e.deltaY !== 0)) {
+                              carouselRef.current.scrollLeft += e.deltaY || e.deltaX;
+                            }
+                          }}
+                          className="flex gap-4.5 overflow-x-auto snap-x snap-mandatory py-4 px-1.5 scroll-smooth no-scrollbar sm:custom-scrollbar"
                           style={{
                             scrollbarWidth: 'thin',
                             scrollbarColor: 'rgba(0, 240, 255, 0.4) rgba(255, 255, 255, 0.02)'
@@ -2165,16 +2170,16 @@ export default function Dashboard() {
                               ? new Date(lastTx.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
                               : 'No tx';
 
-                            // Sharp High-Contrast Status Pill Styling
+                            // Sharp High-Contrast Symmetric Status Pill Styling
                             let badgeText = 'ON PLAN';
-                            let badgeStyle = 'bg-[#0D1E2D] border border-[#00F0FF] text-[#00F0FF] font-bold';
+                            let badgeStyle = 'bg-[rgba(0,240,255,0.1)] border border-[rgba(0,240,255,0.4)] text-[#00F0FF] shadow-[0_0_10px_rgba(0,240,255,0.25)]';
 
                             if (isOver) {
                               badgeText = `▲ +${formatIndianRupee(diff)} OVER`;
-                              badgeStyle = 'bg-[#2D0D18] border border-[#FF1E56] text-[#FF4D79] font-bold shadow-[0_0_10px_rgba(255,30,86,0.3)]';
+                              badgeStyle = 'bg-[#2D0D18] border border-[#FF1E56] text-[#FF4D79] shadow-[0_0_10px_rgba(255,30,86,0.3)]';
                             } else if (diff < 0) {
                               badgeText = `▼ -${formatIndianRupee(absDiff)} SAVED`;
-                              badgeStyle = 'bg-[#06231A] border border-[#00FFA3] text-[#00FFA3] font-bold shadow-[0_0_10px_rgba(0,255,163,0.3)]';
+                              badgeStyle = 'bg-[#06231A] border border-[#00FFA3] text-[#00FFA3] shadow-[0_0_10px_rgba(0,255,163,0.3)]';
                             }
 
                             // Generate Organic Multi-Peak Spline Wave Dynamics (Prevents Flat Slopes)
@@ -2243,7 +2248,7 @@ export default function Dashboard() {
                                   e.currentTarget.style.setProperty('--mouse-y', `${mouseY}px`);
                                 }}
                                 onClick={() => navigate('/budgets', { state: { month: selectedMonthNum, year: selectedYearNum } })}
-                                className={`group flex-none w-[300px] snap-start min-h-[240px] p-5 border rounded-[20px] shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_10px_30px_-5px_rgba(0,0,0,0.8)] flex flex-col justify-between cursor-pointer transition-all duration-300 ease-out hover:-translate-y-2 hover:[perspective:1000px] hover:[rotateX:1deg] relative overflow-hidden ${
+                                className={`group flex-none w-[290px] shrink-0 snap-start min-h-[240px] p-5 border rounded-[20px] shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_10px_30px_-5px_rgba(0,0,0,0.8)] flex flex-col justify-between cursor-pointer transition-all duration-300 ease-out hover:-translate-y-2 hover:[perspective:1000px] hover:[rotateX:1deg] relative overflow-hidden ${
                                   isAnyHovered && !isHovered ? 'opacity-45 scale-95' : 'opacity-100'
                                 } ${
                                   isOver
@@ -2256,7 +2261,7 @@ export default function Dashboard() {
                               >
                                 {/* 1. Header: Icon + Sharp High-Contrast Status Pill + Inspect Hover Button */}
                                 <div className="flex justify-between items-center gap-2">
-                                  <div className="flex items-center space-x-2">
+                                  <div className="flex items-center space-x-2 min-w-0">
                                     <div className="p-2.5 bg-[#131B2E] border border-white/10 rounded-xl text-lg shrink-0 shadow-inner">
                                       {getCategoryIcon(cat.category_name)}
                                     </div>
@@ -2264,22 +2269,22 @@ export default function Dashboard() {
                                       Inspect Spend ➔
                                     </div>
                                   </div>
-                                  <span className={`px-2.5 py-1 rounded-full text-[9.5px] uppercase shrink-0 ${badgeStyle}`}>
+                                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider shrink-0 ${badgeStyle}`}>
                                     {badgeText}
                                   </span>
                                 </div>
 
                                 {/* 2. Title & Main Spend Amount */}
-                                <div className="space-y-1 pt-2.5">
+                                <div className="space-y-1 pt-2.5 min-w-0">
                                   <span className="text-[11px] font-bold text-[#94A3B8] tracking-[0.08em] uppercase block truncate">
                                     {cat.category_name}
                                   </span>
-                                  <div className="text-3xl font-black text-white font-mono tracking-tight">
+                                  <div className="text-3xl font-extrabold text-white font-mono tracking-[-0.03em] tabular-nums truncate">
                                     {formatIndianRupee(actual)}
                                   </div>
                                 </div>
 
-                                {/* 3. Dual-Layer High-Contrast Progress Bar with Glowing Tip Cap */}
+                                {/* 3. Dual-Layer High-Contrast Progress Bar with 100% Threshold Line & Glowing Cap */}
                                 <div className="space-y-1.5 pt-2">
                                   <div className="flex justify-between items-center text-[10px] font-semibold text-slate-400">
                                     <span>Planned: <strong className="text-slate-200 font-mono">{formatIndianRupee(planned)}</strong></span>
@@ -2288,8 +2293,8 @@ export default function Dashboard() {
                                     </span>
                                   </div>
 
-                                  {/* Dual-Layer Track & Active Neon Gradient Fill */}
-                                  <div className="w-full h-1.5 bg-white/[0.08] rounded-full overflow-hidden border border-white/10 relative">
+                                  {/* Segmented Track Channel */}
+                                  <div className="w-full h-[5px] bg-white/[0.08] rounded-full overflow-hidden border border-white/10 relative">
                                     <div
                                       className={`h-full rounded-full transition-all duration-500 relative ${
                                         isOver
@@ -2298,8 +2303,10 @@ export default function Dashboard() {
                                       }`}
                                       style={{ width: `${Math.min(100, Math.max(4, pctUsed))}%` }}
                                     >
-                                      {/* Glowing Pill Tip Cap */}
-                                      <div className="absolute right-0 top-0 bottom-0 w-1.5 bg-white rounded-full shadow-[0_0_6px_#fff] animate-pulse" />
+                                      {/* Over-Budget Glowing Pill Tip Cap */}
+                                      {isOver && (
+                                        <div className="absolute right-0 top-0 bottom-0 w-1.5 bg-white rounded-full shadow-[0_0_8px_#FF1E56] animate-pulse" />
+                                      )}
                                     </div>
                                   </div>
 
@@ -2309,7 +2316,7 @@ export default function Dashboard() {
                                   </div>
                                 </div>
 
-                                {/* 4. Multi-Knot Bézier Sparkline with Scrubbing Crosshair & Radar Dot */}
+                                {/* 4. Multi-Knot Bézier Sparkline with Laser Neon Bloom & Radar Pulse Rings */}
                                 <div
                                   className="pt-2 -mx-5 -mb-5 overflow-hidden rounded-b-[20px] h-12 relative cursor-crosshair"
                                   onMouseMove={(e) => {
@@ -2364,14 +2371,14 @@ export default function Dashboard() {
                                     {/* Dual-Tone Luminous Gradient Area Fill */}
                                     <path d={splineAreaD} fill={`url(#${sparkGradId})`} />
 
-                                    {/* Multi-Point Stroke Line */}
+                                    {/* Laser Neon Bloom Stroke Line */}
                                     <path
                                       d={splineLineD}
                                       fill="none"
                                       stroke={`url(#${sparkGradId}-line)`}
                                       strokeWidth="2.5"
                                       strokeLinecap="round"
-                                      className="group-hover:drop-shadow-[0_0_8px_currentColor] transition-all duration-300"
+                                      className="drop-shadow-[0_0_6px_currentColor] group-hover:drop-shadow-[0_0_10px_currentColor] transition-all duration-300"
                                     />
 
                                     {/* Scrubbing Vertical Dashed Crosshair Line */}
@@ -2387,9 +2394,9 @@ export default function Dashboard() {
                                       />
                                     )}
 
-                                    {/* Terminal Multi-Ring Radar Pulse Dot */}
-                                    <circle cx={endX} cy={endY} r="9" fill={strokeColorStart} opacity="0.3" className="animate-ping" />
-                                    <circle cx={endX} cy={endY} r="5" fill={strokeColorStart} opacity="0.6" className="animate-ping" />
+                                    {/* Terminal Dual-Ring Radar Pulse Dot */}
+                                    <circle cx={endX} cy={endY} r="8" fill="none" stroke={strokeColorStart} strokeWidth="1.5" className="animate-ping opacity-75" />
+                                    <circle cx={endX} cy={endY} r="5" fill={strokeColorStart} className="animate-ping opacity-50" />
                                     <circle cx={endX} cy={endY} r="3.5" fill={strokeColorStart} className="shadow-[0_0_8px_currentColor]" />
                                   </svg>
                                 </div>
