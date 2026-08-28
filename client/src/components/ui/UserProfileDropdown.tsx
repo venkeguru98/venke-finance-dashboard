@@ -314,8 +314,11 @@ export const UserProfileDropdown = memo(({ onLogout, onOpenCmdK }: UserProfileDr
               V
             </div>
           </div>
-          {/* Online Indicator Badge */}
-          <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 shadow-sm animate-pulse" style={{ borderColor: themeData.bgCard }} />
+          {/* Online Indicator Badge with Continuous Pulsing Radar Ring */}
+          <div className="absolute bottom-0 right-0 w-2.5 h-2.5 flex items-center justify-center">
+            <span className="absolute inset-0 rounded-full bg-emerald-400/80 animate-ping pointer-events-none" />
+            <span className="relative w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-slate-900 shadow-sm" />
+          </div>
         </div>
 
         <div className="hidden sm:flex flex-col text-left">

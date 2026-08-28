@@ -30,14 +30,14 @@ const NavTab = memo(({
       onClick={handleClick}
       onMouseDown={() => setIsPressed(true)}
       onMouseUp={() => setIsPressed(false)}
-      className={`relative flex items-center justify-center rounded-full font-bold text-xs transition-all duration-180 ease-[cubic-bezier(0.16,1,0.3,1)] shrink-0 group ${
-        showLabel ? 'px-3.5 py-2 space-x-2' : 'w-11 h-11'
+      className={`relative flex items-center justify-center rounded-full font-bold text-xs transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] shrink-0 group ${
+        showLabel ? 'px-3.5 py-2 space-x-2' : 'w-10 h-10'
       } ${
-        isPressed ? 'scale-[0.96]' : 'scale-100'
+        isPressed ? 'scale-[0.95]' : 'scale-100'
       } ${
         isActive
-          ? 'bg-gradient-to-r from-[#8B5CF6] via-[#4F7CFF] to-[#A855F7] text-white shadow-lg shadow-[#8B5CF6]/35'
-          : 'text-slate-400 hover:text-white hover:bg-white/10 hover:-translate-y-0.5'
+          ? 'bg-gradient-to-br from-[#A855F7]/25 to-[#3B82F6]/25 border border-[#A855F7]/50 text-white shadow-[0_0_14px_rgba(168,85,247,0.35)]'
+          : 'text-[#94A3B8] hover:text-white hover:bg-white/10 hover:-translate-y-0.5'
       }`}
     >
       {/* Radial Gradient Ripple Feedback on Click */}
@@ -45,35 +45,38 @@ const NavTab = memo(({
         <span className="absolute inset-0 rounded-full bg-white/20 animate-ping pointer-events-none" />
       )}
 
-      {/* Active Indicator Accent Glow */}
-      {isActive && !showLabel && (
-        <span className="absolute bottom-1.5 w-1.5 h-1.5 rounded-full bg-white shadow-sm" />
-      )}
-
-      {/* Icon with Rotate & Scale Animation */}
-      <span className="transition-transform duration-180 group-hover:scale-110 group-hover:rotate-2 shrink-0">
+      {/* Icon with Smooth Hover Lift */}
+      <span className="transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:scale-110 shrink-0">
         {icon}
       </span>
 
       {/* Label Revealing on Hover Expansion */}
       {showLabel && (
-        <span className="whitespace-nowrap font-semibold text-xs tracking-tight animate-in fade-in slide-in-from-left-1 duration-200">
+        <span className="whitespace-nowrap font-bold text-xs tracking-tight animate-in fade-in slide-in-from-left-1 duration-200">
           {label}
         </span>
       )}
 
       {/* Notification Badge */}
       {badge && (
-        <span className={`text-[9px] font-black rounded-full px-1.5 py-0.5 shrink-0 animate-pulse ${
-          isActive ? 'bg-white/20 text-white' : 'bg-[#8B5CF6]/30 text-[#8B5CF6]'
-        } ${showLabel ? 'ml-1' : 'absolute -top-1 -right-1 border border-[#081226]'}`}>
+        <span
+          style={{
+            background: '#2E1065',
+            border: '1px solid #C084FC',
+            color: '#F3E8FF',
+            boxShadow: '0 0 8px rgba(192, 132, 252, 0.4)'
+          }}
+          className={`text-[10px] font-extrabold rounded-full px-1.5 py-0.5 shrink-0 animate-pulse ${
+            showLabel ? 'ml-1' : 'absolute -top-1 -right-1.5'
+          }`}
+        >
           {badge}
         </span>
       )}
 
       {/* Floating Glass Tooltip when Collapsed */}
       {!showLabel && (
-        <div className="absolute top-14 px-3 py-1.5 rounded-xl bg-[#081226] border border-[#1E2A44] text-white text-xs font-bold shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-180 pointer-events-none whitespace-nowrap z-50">
+        <div className="absolute top-14 px-3 py-1.5 rounded-xl bg-[#090D16] border border-white/15 text-white text-xs font-bold shadow-[0_10px_30px_rgba(0,0,0,0.8)] opacity-0 group-hover:opacity-100 transition-all duration-200 pointer-events-none whitespace-nowrap z-50">
           {label}
         </div>
       )}
@@ -332,19 +335,21 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
           </div>
         </div>
 
-        {/* ── CENTER ZONE (Flex-1: Floating Adaptive Command Dock) ──────────── */}
+        {/* ── CENTER ZONE (Flex-1: Floating Glass Nav Dock) ──────────── */}
         <div className="flex-1 hidden md:flex items-center justify-center px-4 max-w-[860px] overflow-hidden">
           <nav
             onMouseEnter={handleDockMouseEnter}
             onMouseLeave={handleDockMouseLeave}
             style={{
-              backgroundColor: themeData.bgCard + 'F2',
-              borderColor: themeData.borderColor
+              background: 'rgba(15, 23, 42, 0.75)',
+              backdropFilter: 'blur(18px)',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
+              borderRadius: '999px',
+              padding: showLabels ? '6px 16px' : '6px 12px',
+              boxShadow: '0 10px 30px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.15)'
             }}
-            className={`flex items-center space-x-1.5 px-3 rounded-[24px] backdrop-blur-2xl border shadow-[0_16px_50px_rgba(0,0,0,0.5)] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] max-w-full overflow-x-auto no-scrollbar will-change-transform ${
-              isAtTop ? 'h-[64px]' : 'h-[48px]'
-            } ${
-              showLabels ? 'px-4' : 'px-2.5'
+            className={`flex items-center space-x-1.5 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] max-w-full overflow-x-auto no-scrollbar will-change-transform ${
+              isAtTop ? 'h-[58px]' : 'h-[46px]'
             }`}
           >
             {financeNavItems.map((item) => {
@@ -370,17 +375,20 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
           <div 
             onClick={() => setIsCmdKOpen(true)}
             style={{
-              backgroundColor: themeData.bgCard,
-              borderColor: themeData.borderColor,
-              color: themeData.textSecondary
+              backgroundColor: 'rgba(15, 23, 42, 0.75)',
+              borderColor: 'rgba(255, 255, 255, 0.12)',
+              color: '#94A3B8'
             }}
-            className="flex items-center rounded-full px-3 py-1.5 text-xs border cursor-pointer transition shadow-sm"
+            className="flex items-center rounded-full px-3 py-1.5 text-xs border cursor-pointer transition-all duration-200 hover:border-white/20 hover:text-white shadow-sm group"
           >
-            <Search className="w-3.5 h-3.5 mr-1.5 shrink-0" style={{ color: themeData.textMuted }} />
-            <span className="hidden lg:inline font-medium" style={{ color: themeData.textSecondary }}>Search...</span>
+            <Search className="w-3.5 h-3.5 mr-1.5 shrink-0 text-[#94A3B8] group-hover:text-white transition-colors" />
+            <span className="hidden lg:inline font-medium text-slate-300">Search...</span>
             <span 
-              style={{ color: themeData.accentPrimary, borderColor: themeData.accentPrimary + '40' }}
-              className="text-[10px] font-mono border px-1.5 py-0.5 rounded font-bold ml-1"
+              style={{
+                background: '#1E293B',
+                border: '1px solid rgba(255, 255, 255, 0.12)'
+              }}
+              className="text-[11px] font-mono text-slate-300 border px-1.5 py-0.5 rounded-md font-bold ml-2 shadow-inner"
             >
               ⌘K
             </span>
@@ -389,10 +397,10 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
           {/* 🎨 Theme Selector Dropdown */}
           <ThemeSelectorDropdown />
 
-          {/* Notification Bell */}
-          <button className="p-2 rounded-full relative transition-transform hover:rotate-6 hover:bg-white/10">
-            <Bell className="w-4.5 h-4.5" style={{ color: themeData.textSecondary }} />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: themeData.accentPrimary }} />
+          {/* Notification Bell with Beacon Pulse */}
+          <button className="p-2 rounded-full relative transition-transform duration-200 hover:scale-105 hover:bg-white/10 group">
+            <Bell className="w-4.5 h-4.5 text-[#94A3B8] group-hover:text-white transition-colors" />
+            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[#C084FC] border border-[#2E1065] shadow-[0_0_8px_#C084FC] animate-pulse" />
           </button>
 
           {/* Focus Mode Toggle */}
