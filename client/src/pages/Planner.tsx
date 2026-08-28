@@ -63,8 +63,6 @@ export interface PlannerGoal {
 }
 
 export default function Planner() {
-  const { themeData } = useTheme();
-
   // Data states
   const [tasks, setTasks] = useState<PlannerTask[]>([]);
   const [notes, setNotes] = useState<PlannerNote[]>([]);
