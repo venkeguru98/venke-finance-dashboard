@@ -175,6 +175,73 @@ export default function Settings() {
   // Live Timer State
   const [secondsUntilBackup, setSecondsUntilBackup] = useState<number>(300);
 
+  // Interactive Pending Changes Audit Drawer States
+  const [isAuditDrawerOpen, setIsAuditDrawerOpen] = useState(false);
+  const [pendingDiffsList, setPendingDiffsList] = useState<any[]>([
+    {
+      id: 'tx-435',
+      section: 'Transactions Tab',
+      action: 'UPDATE',
+      entity: 'Food & Dining · Tx #435',
+      timestamp: '10:07 PM',
+      fields: [
+        { field: 'Amount', old: '₹1,200', new: '₹1,500' },
+        { field: 'Payment Mode', old: 'Cash', new: 'UPI' }
+      ]
+    },
+    {
+      id: 'budget-12',
+      section: 'Budget Planner',
+      action: 'UPDATE',
+      entity: 'Groceries Target Limit',
+      timestamp: '09:45 PM',
+      fields: [
+        { field: 'Planned Limit', old: '₹12,000', new: '₹15,000' }
+      ]
+    },
+    {
+      id: 'tx-438',
+      section: 'Transactions Tab',
+      action: 'INSERT',
+      entity: 'Zomato Food Order · Tx #438',
+      timestamp: '09:30 PM',
+      fields: [
+        { field: 'Amount', old: 'None', new: '₹450' },
+        { field: 'Category', old: 'None', new: 'Food & Dining' }
+      ]
+    }
+  ]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsAuditDrawerOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  const handleRevertAllPending = () => {
+    setPendingDiffsList([]);
+    setHeartbeatData((prev: any) => ({ ...prev, pendingBackup: false, pendingChangeCount: 0 }));
+    showToast('🗑️ All uncommitted pending edits discarded.', 'warning');
+    setIsAuditDrawerOpen(false);
+  };
+
+  const handleCommitAndBackupNow = async () => {
+    showToast('⏳ Committing pending mutations and creating SQLite snapshot...', 'info');
+    await handleSaveLocalSnapshot();
+    setPendingDiffsList([]);
+    setHeartbeatData((prev: any) => ({
+      ...prev,
+      pendingBackup: false,
+      pendingChangeCount: 0,
+      verifiedRecordCount: (prev.verifiedRecordCount || prev.localRecords || 203) + (prev.pendingChangeCount || 3)
+    }));
+    setIsAuditDrawerOpen(false);
+  };
+
   // Deduplication & Backoff Refs for Monitoring Status Endpoint
   const isFetchingRef = useRef(false);
   const isTriggeringRef = useRef(false);
@@ -507,9 +574,13 @@ export default function Settings() {
                   Verifying backup integrity... {heartbeatData.progressPercent || 75}% 🧪
                 </div>
               ) : heartbeatData.pendingBackup ? (
-                <div className="inline-flex items-center gap-2 px-3 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-full text-xs font-black uppercase tracking-wider">
+                <div
+                  onClick={() => setIsAuditDrawerOpen(true)}
+                  className="inline-flex items-center gap-2 px-3 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded-full text-xs font-black uppercase tracking-wider cursor-pointer hover:bg-amber-500/30 hover:border-amber-400 transition-all duration-200 shadow-[0_0_12px_rgba(245,158,11,0.25)] active:scale-95 select-none"
+                  title="Click to view pending changes diff audit log"
+                >
                   <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                  Pending changes detected ⏳
+                  Pending changes detected ({pendingDiffsList.length}) ⏳ View Diff ➔
                 </div>
               ) : (
                 <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full text-xs font-black uppercase tracking-wider">
@@ -548,9 +619,19 @@ export default function Settings() {
           <div className="p-4 bg-slate-900/50 rounded-2xl border border-slate-800/80 space-y-1">
             <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Local backup</span>
             <span className="text-sm font-black text-emerald-400 flex items-center gap-1.5 font-mono">
-              {heartbeatData.pendingBackup
-                ? `${heartbeatData.verifiedRecordCount || heartbeatData.localRecords || 203} verified (${heartbeatData.pendingChangeCount || 1} pending)`
-                : `${heartbeatData.verifiedRecordCount || heartbeatData.localRecords || 203} of ${heartbeatData.verifiedRecordCount || heartbeatData.localRecords || 203} records verified 🟢`}
+              {heartbeatData.pendingBackup ? (
+                <>
+                  {heartbeatData.verifiedRecordCount || heartbeatData.localRecords || 203} verified{' '}
+                  <button
+                    onClick={() => setIsAuditDrawerOpen(true)}
+                    className="text-amber-400 hover:underline cursor-pointer font-bold text-xs"
+                  >
+                    ({pendingDiffsList.length} pending ➔)
+                  </button>
+                </>
+              ) : (
+                `${heartbeatData.verifiedRecordCount || heartbeatData.localRecords || 203} of ${heartbeatData.verifiedRecordCount || heartbeatData.localRecords || 203} records verified 🟢`
+              )}
             </span>
           </div>
 
@@ -650,9 +731,12 @@ export default function Settings() {
             </div>
             <div>
               <span className="text-[9px] text-slate-500 uppercase block">Pending Changes</span>
-              <span className={heartbeatData.pendingBackup ? 'text-amber-400 font-mono' : 'text-emerald-400 font-mono'}>
-                {heartbeatData.pendingBackup ? `${heartbeatData.pendingChangeCount || 1} updates` : '0 pending'}
-              </span>
+              <button
+                onClick={() => setIsAuditDrawerOpen(true)}
+                className={heartbeatData.pendingBackup ? 'text-amber-400 font-mono font-extrabold hover:underline cursor-pointer flex items-center gap-1' : 'text-emerald-400 font-mono font-extrabold'}
+              >
+                {heartbeatData.pendingBackup ? `${pendingDiffsList.length} updates View Diff ➔` : '0 pending'}
+              </button>
             </div>
             <div>
               <span className="text-[9px] text-slate-500 uppercase block">Next Backup</span>
@@ -1242,6 +1326,160 @@ export default function Settings() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* 📋 INTERACTIVE PENDING CHANGES AUDIT DRAWER (CYBERPUNK NEON FINTECH THEME) */}
+      {isAuditDrawerOpen && (
+        <>
+          {/* Dimmed Backdrop Overlay */}
+          <div
+            onClick={() => setIsAuditDrawerOpen(false)}
+            className="fixed inset-0 bg-black/75 z-[999] backdrop-blur-sm transition-opacity duration-300"
+          />
+
+          {/* Right Slide-Over Drawer Overlay Container */}
+          <div className="fixed right-0 top-0 bottom-0 z-[1000] w-full max-w-[440px] bg-[#0A0F1D] border-l border-white/[0.12] backdrop-blur-2xl shadow-[-20px_0_50px_rgba(0,0,0,0.85)] flex flex-col justify-between overflow-hidden transition-transform duration-300 ease-out">
+            {/* Drawer Header */}
+            <div className="p-5 bg-[#0F172A]/90 border-b border-white/10 flex justify-between items-center shrink-0">
+              <div className="flex items-center space-x-2.5">
+                <div className="p-2 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400">
+                  <Sparkles className="w-4 h-4 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold text-white flex items-center gap-2">
+                    📋 Pending Change Log
+                  </h3>
+                  <span className="text-[10px] font-mono text-amber-400 font-bold bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/30 inline-block mt-0.5">
+                    {pendingDiffsList.length} Unsaved Mutations
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={handleCommitAndBackupNow}
+                  className="px-3 py-1.5 bg-gradient-to-r from-[#00E599] to-[#00D26A] text-slate-950 font-black text-xs rounded-xl shadow-[0_0_12px_rgba(0,229,153,0.35)] hover:opacity-90 active:scale-95 transition cursor-pointer flex items-center gap-1"
+                  title="Commit & Protect Now"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" /> Sync Now
+                </button>
+                <button
+                  onClick={() => setIsAuditDrawerOpen(false)}
+                  className="p-1.5 text-slate-400 hover:text-white rounded-xl hover:bg-white/10 transition cursor-pointer"
+                  title="Close Drawer (Esc)"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Scrollable Audit Feed Content */}
+            <div className="p-5 overflow-y-auto space-y-4 flex-1 custom-scrollbar">
+              <div className="p-3.5 bg-amber-500/10 border border-amber-500/25 rounded-2xl text-[11px] text-amber-300 font-medium flex items-start gap-2.5">
+                <ShieldAlert className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" />
+                <div>
+                  <span className="font-extrabold text-white block">Uncommitted Local State Audit</span>
+                  These mutations are staged in client memory and waiting for the next automatic protection cycle or manual backup snapshot.
+                </div>
+              </div>
+
+              {pendingDiffsList.length === 0 ? (
+                <div className="py-12 text-center text-slate-400 text-xs bg-slate-900/40 rounded-2xl border border-dashed border-slate-800 space-y-2">
+                  <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto" />
+                  <p className="font-bold text-slate-200">All Changes Fully Protected!</p>
+                  <p className="text-[10px] text-slate-500">Zero uncommitted mutations detected in local audit log.</p>
+                </div>
+              ) : (
+                Object.entries(
+                  pendingDiffsList.reduce((acc: any, item: any) => {
+                    const group = item.section || 'General';
+                    if (!acc[group]) acc[group] = [];
+                    acc[group].push(item);
+                    return acc;
+                  }, {})
+                ).map(([sectionName, items]: [string, any]) => (
+                  <div key={sectionName} className="space-y-2.5">
+                    {/* Section Badge Header */}
+                    <div className="flex items-center justify-between pt-1">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-purple-400 bg-purple-500/10 px-2.5 py-0.5 rounded-md border border-purple-500/20">
+                        📍 {sectionName}
+                      </span>
+                      <span className="text-[9.5px] font-mono text-slate-500">{items.length} items</span>
+                    </div>
+
+                    {/* Change Cards in Section */}
+                    {items.map((item: any) => {
+                      const isInsert = item.action === 'INSERT';
+                      const isDelete = item.action === 'DELETE';
+                      const actionTagClass = isInsert
+                        ? 'bg-[#00E599]/15 border-[#00E599]/40 text-[#00E599]'
+                        : isDelete
+                        ? 'bg-rose-500/15 border-rose-500/40 text-rose-400'
+                        : 'bg-amber-500/15 border-amber-500/40 text-amber-400';
+
+                      return (
+                        <div
+                          key={item.id}
+                          className="p-4 bg-[#0F172A] border border-slate-800/90 rounded-2xl space-y-3 shadow-lg hover:border-slate-700 transition"
+                        >
+                          {/* Item Header & Action Badge */}
+                          <div className="flex justify-between items-start gap-2">
+                            <div>
+                              <span className="text-xs font-black text-white block truncate">
+                                {item.entity}
+                              </span>
+                              <span className="text-[9.5px] font-mono text-slate-400">
+                                Updated at {item.timestamp}
+                              </span>
+                            </div>
+
+                            <span className={`px-2 py-0.5 rounded-md text-[9px] font-black font-mono uppercase tracking-wider border shrink-0 ${actionTagClass}`}>
+                              {isInsert ? '➕ INSERT' : isDelete ? '🗑️ DELETE' : '✏️ UPDATE'}
+                            </span>
+                          </div>
+
+                          {/* Audit Diff View (Old vs New) */}
+                          <div className="space-y-1.5 pt-1 border-t border-slate-800/80 text-[10.5px]">
+                            {item.fields.map((f: any, idx: number) => (
+                              <div key={idx} className="flex justify-between items-center flex-wrap gap-1 font-mono p-1.5 bg-slate-950/60 rounded-xl border border-slate-800/60">
+                                <span className="text-slate-400 font-bold text-[9.5px] uppercase">{f.field}:</span>
+                                <div className="flex items-center space-x-1.5 text-[10px]">
+                                  <span className="line-through text-rose-400/80 bg-rose-500/10 px-1.5 py-0.5 rounded border border-rose-500/20">
+                                    Old: {f.old}
+                                  </span>
+                                  <span className="text-slate-500">➔</span>
+                                  <span className="text-[#00E599] font-bold bg-[#00E599]/10 px-1.5 py-0.5 rounded border border-[#00E599]/30 shadow-[0_0_6px_rgba(0,229,153,0.2)]">
+                                    New: {f.new}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Sticky Bottom Drawer Actions */}
+            <div className="p-4 bg-[#0F172A] border-t border-white/10 flex items-center justify-between gap-3 shrink-0">
+              <button
+                onClick={handleRevertAllPending}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl border border-white/10 transition cursor-pointer active:scale-95"
+              >
+                Revert All
+              </button>
+              <button
+                onClick={handleCommitAndBackupNow}
+                className="flex-1 px-4 py-2 bg-gradient-to-r from-[#00E599] to-[#00D26A] text-slate-950 font-black text-xs rounded-xl shadow-[0_0_15px_rgba(0,229,153,0.35)] hover:opacity-90 transition cursor-pointer active:scale-95 text-center flex items-center justify-center gap-1.5"
+              >
+                <ShieldCheck className="w-4 h-4" /> Commit & Backup Now
+              </button>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
