@@ -3,6 +3,7 @@ import axios from 'axios';
 import { Plus, Edit2, Trash2, ArrowLeft, Wallet, TrendingUp, TrendingDown, ArrowLeftRight, ChevronRight } from 'lucide-react';
 import Button from '../ui/Button';
 import CsvImportModal from './CsvImportModal';
+import { useAudit } from '../../context/AuditContext';
 import { formatDisplayDate } from '../../utils/date';
 
 const API = window.location.port === '5173' ? 'http://localhost:5000/api' : '/api';
@@ -115,12 +116,26 @@ export default function SavingsModule({ onBack }: SavingsModuleProps) {
     setShowAccModal(true);
   };
 
+  const { trackMutation } = useAudit();
+
   const handleAccSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const data = {
       ...accForm,
       opening_balance: Number(accForm.opening_balance)
     };
+
+    trackMutation({
+      section: 'Financial Records',
+      recordId: editingAcc ? editingAcc.id : `savings-${Date.now()}`,
+      title: `${accForm.account_name || 'Savings Account'}`,
+      type: editingAcc ? 'UPDATE' : 'INSERT',
+      fields: [
+        { field: 'ACCOUNT NAME', oldVal: editingAcc?.account_name || 'None', newVal: accForm.account_name },
+        { field: 'OPENING BALANCE', oldVal: editingAcc ? `₹${editingAcc.opening_balance}` : 'None', newVal: `₹${accForm.opening_balance}` }
+      ],
+      originalRecord: editingAcc
+    });
 
     try {
       if (editingAcc) {
@@ -137,6 +152,17 @@ export default function SavingsModule({ onBack }: SavingsModuleProps) {
 
   const handleDeleteAcc = async (id: number) => {
     if (!confirm('Are you sure you want to delete this offline account and all its transaction ledger history?')) return;
+    const target = accounts.find(a => a.id === id);
+    if (target) {
+      trackMutation({
+        section: 'Financial Records',
+        recordId: id,
+        title: `${target.account_name || 'Savings Account'}`,
+        type: 'DELETE',
+        fields: [{ field: 'STATUS', oldVal: 'Active Account', newVal: 'Deleted Account' }],
+        originalRecord: target
+      });
+    }
     try {
       await axios.delete(`${API}/records/savings/${id}`);
       setActiveAccount(null);
@@ -167,6 +193,18 @@ export default function SavingsModule({ onBack }: SavingsModuleProps) {
       amount: Number(txForm.amount),
       transfer_account_id: txForm.type === 'Transfer' ? Number(txForm.transfer_account_id) : undefined
     };
+
+    trackMutation({
+      section: 'Financial Records',
+      recordId: `savings-tx-${Date.now()}`,
+      title: `${activeAccount.account_name} · ${txForm.type} Entry`,
+      type: 'INSERT',
+      fields: [
+        { field: 'TYPE', oldVal: 'None', newVal: txForm.type },
+        { field: 'AMOUNT', oldVal: 'None', newVal: `₹${txForm.amount}` },
+        { field: 'DESCRIPTION', oldVal: 'None', newVal: txForm.description || 'General Ledger Entry' }
+      ]
+    });
 
     try {
       await axios.post(`${API}/records/savings/transactions`, data);

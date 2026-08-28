@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import Button from '../components/ui/Button';
+import { useAudit } from '../context/AuditContext';
 
 type Budget = {
   id: number;
@@ -338,8 +339,21 @@ export default function Budgets() {
     setIsModalOpen(true);
   };
 
+  const { trackMutation } = useAudit();
+
   const handleDelete = async (id: number) => {
     if (!window.confirm('Delete this budget entry? Existing transaction history will not be changed.')) return;
+    const target = budgets.find(b => b.id === id);
+    if (target) {
+      trackMutation({
+        section: 'Budget Planner',
+        recordId: id,
+        title: `${target.category_name || 'Category'} Limit`,
+        type: 'DELETE',
+        fields: [{ field: 'STATUS', oldVal: 'Active Target Limit', newVal: 'Deleted Target Limit' }],
+        originalRecord: target
+      });
+    }
     try {
       await axios.delete(`${API}/budgets/${id}`);
       fetchBudgetsAndData();
@@ -359,6 +373,36 @@ export default function Budgets() {
       setErrorMessage('Budget limit must be greater than zero.');
       setIsSubmitting(false);
       return;
+    }
+
+    const cat = categories.find(c => c.id === Number(formData.category_id));
+
+    if (editingId) {
+      const existing = budgets.find(b => b.id === editingId);
+      if (existing) {
+        trackMutation({
+          section: 'Budget Planner',
+          recordId: editingId,
+          title: `${cat?.name || existing.category_name || 'Category'} Limit`,
+          type: 'UPDATE',
+          fields: [
+            { field: 'PLANNED LIMIT', oldVal: `₹${existing.limit_amount}`, newVal: `₹${limit}` },
+            { field: 'PRIORITY', oldVal: existing.priority || 'essential', newVal: formData.priority }
+          ],
+          originalRecord: existing
+        });
+      }
+    } else {
+      trackMutation({
+        section: 'Budget Planner',
+        recordId: `budget-new-${Date.now()}`,
+        title: `${cat?.name || 'Category'} Limit`,
+        type: 'INSERT',
+        fields: [
+          { field: 'PLANNED LIMIT', oldVal: 'None', newVal: `₹${limit}` },
+          { field: 'PRIORITY', oldVal: 'None', newVal: formData.priority }
+        ]
+      });
     }
 
     try {
@@ -434,6 +478,16 @@ export default function Budgets() {
   // Atomic "Save Monthly Plan & Auto-Generate Budgets"
   const handleSaveMonthlyPlanAndGenerateBudgets = async (e: React.FormEvent) => {
     e.preventDefault();
+    trackMutation({
+      section: 'Budget Planner',
+      recordId: `plan-${selectedMonth}-${selectedYear}`,
+      title: `Monthly Salary Plan (${salaryAllocations.length} Categories)`,
+      type: 'UPDATE',
+      fields: [
+        { field: 'SALARY INCOME', oldVal: '₹74,000', newVal: `₹${salaryIncome}` },
+        { field: 'ALLOCATIONS', oldVal: 'Previous Plan', newVal: `${salaryAllocations.length} Categories Allocated` }
+      ]
+    });
     try {
       const res = await axios.post(`${API}/budgets/save-monthly-plan`, {
         month: selectedMonth,
