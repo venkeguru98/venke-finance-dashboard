@@ -6,6 +6,8 @@ import {
 import axios from 'axios';
 import Button from '../components/ui/Button';
 
+import { useAudit } from '../context/AuditContext';
+
 // Dynamic API URL for developer server (5173) vs production served assets
 const API = window.location.port === '5173' ? 'http://localhost:5000/api' : '/api';
 
@@ -175,42 +177,9 @@ export default function Settings() {
   // Live Timer State
   const [secondsUntilBackup, setSecondsUntilBackup] = useState<number>(300);
 
-  // Interactive Pending Changes Audit Drawer States
+  // Interactive Pending Changes Audit Drawer States & Store
   const [isAuditDrawerOpen, setIsAuditDrawerOpen] = useState(false);
-  const [pendingDiffsList, setPendingDiffsList] = useState<any[]>([
-    {
-      id: 'tx-435',
-      section: 'Transactions Tab',
-      action: 'UPDATE',
-      entity: 'Food & Dining · Tx #435',
-      timestamp: '10:07 PM',
-      fields: [
-        { field: 'Amount', old: '₹1,200', new: '₹1,500' },
-        { field: 'Payment Mode', old: 'Cash', new: 'UPI' }
-      ]
-    },
-    {
-      id: 'budget-12',
-      section: 'Budget Planner',
-      action: 'UPDATE',
-      entity: 'Groceries Target Limit',
-      timestamp: '09:45 PM',
-      fields: [
-        { field: 'Planned Limit', old: '₹12,000', new: '₹15,000' }
-      ]
-    },
-    {
-      id: 'tx-438',
-      section: 'Transactions Tab',
-      action: 'INSERT',
-      entity: 'Zomato Food Order · Tx #438',
-      timestamp: '09:30 PM',
-      fields: [
-        { field: 'Amount', old: 'None', new: '₹450' },
-        { field: 'Category', old: 'None', new: 'Food & Dining' }
-      ]
-    }
-  ]);
+  const { pendingMutations, commitMutations, revertAllMutations } = useAudit();
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -223,7 +192,7 @@ export default function Settings() {
   }, []);
 
   const handleRevertAllPending = () => {
-    setPendingDiffsList([]);
+    revertAllMutations();
     setHeartbeatData((prev: any) => ({ ...prev, pendingBackup: false, pendingChangeCount: 0 }));
     showToast('🗑️ All uncommitted pending edits discarded.', 'warning');
     setIsAuditDrawerOpen(false);
@@ -231,15 +200,16 @@ export default function Settings() {
 
   const handleCommitAndBackupNow = async () => {
     showToast('⏳ Committing pending mutations and creating SQLite snapshot...', 'info');
-    await handleSaveLocalSnapshot();
-    setPendingDiffsList([]);
+    commitMutations();
     setHeartbeatData((prev: any) => ({
       ...prev,
       pendingBackup: false,
       pendingChangeCount: 0,
-      verifiedRecordCount: (prev.verifiedRecordCount || prev.localRecords || 203) + (prev.pendingChangeCount || 3)
+      verifiedRecordCount: (prev.verifiedRecordCount || prev.localRecords || 203) + pendingMutations.length
     }));
     setIsAuditDrawerOpen(false);
+    // Asynchronous background SQLite backup snapshot execution (Optimistic UI)
+    handleSaveLocalSnapshot();
   };
 
   // Deduplication & Backoff Refs for Monitoring Status Endpoint
@@ -580,7 +550,7 @@ export default function Settings() {
                   title="Click to view pending changes diff audit log"
                 >
                   <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                  Pending changes detected ({pendingDiffsList.length}) ⏳ View Diff ➔
+                  Pending changes detected ({pendingMutations.length}) ⏳ View Diff ➔
                 </div>
               ) : (
                 <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full text-xs font-black uppercase tracking-wider">
@@ -619,14 +589,14 @@ export default function Settings() {
           <div className="p-4 bg-slate-900/50 rounded-2xl border border-slate-800/80 space-y-1">
             <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Local backup</span>
             <span className="text-sm font-black text-emerald-400 flex items-center gap-1.5 font-mono">
-              {heartbeatData.pendingBackup ? (
+              {pendingMutations.length > 0 ? (
                 <>
                   {heartbeatData.verifiedRecordCount || heartbeatData.localRecords || 203} verified{' '}
                   <button
                     onClick={() => setIsAuditDrawerOpen(true)}
                     className="text-amber-400 hover:underline cursor-pointer font-bold text-xs"
                   >
-                    ({pendingDiffsList.length} pending ➔)
+                    ({pendingMutations.length} pending ➔)
                   </button>
                 </>
               ) : (
@@ -1350,7 +1320,7 @@ export default function Settings() {
                     📋 Pending Change Log
                   </h3>
                   <span className="text-[10px] font-mono text-amber-400 font-bold bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/30 inline-block mt-0.5">
-                    {pendingDiffsList.length} Unsaved Mutations
+                    {pendingMutations.length} Unsaved Mutations
                   </span>
                 </div>
               </div>
@@ -1358,7 +1328,8 @@ export default function Settings() {
               <div className="flex items-center space-x-2">
                 <button
                   onClick={handleCommitAndBackupNow}
-                  className="px-3 py-1.5 bg-gradient-to-r from-[#00E599] to-[#00D26A] text-slate-950 font-black text-xs rounded-xl shadow-[0_0_12px_rgba(0,229,153,0.35)] hover:opacity-90 active:scale-95 transition cursor-pointer flex items-center gap-1"
+                  disabled={pendingMutations.length === 0}
+                  className="px-3 py-1.5 bg-gradient-to-r from-[#00E599] to-[#00D26A] text-slate-950 font-black text-xs rounded-xl shadow-[0_0_12px_rgba(0,229,153,0.35)] hover:opacity-90 active:scale-95 transition cursor-pointer flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
                   title="Commit & Protect Now"
                 >
                   <RefreshCw className="w-3.5 h-3.5" /> Sync Now
@@ -1383,15 +1354,21 @@ export default function Settings() {
                 </div>
               </div>
 
-              {pendingDiffsList.length === 0 ? (
-                <div className="py-12 text-center text-slate-400 text-xs bg-slate-900/40 rounded-2xl border border-dashed border-slate-800 space-y-2">
-                  <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto" />
-                  <p className="font-bold text-slate-200">All Changes Fully Protected!</p>
-                  <p className="text-[10px] text-slate-500">Zero uncommitted mutations detected in local audit log.</p>
+              {pendingMutations.length === 0 ? (
+                <div className="py-14 px-6 text-center space-y-3.5 bg-slate-900/40 rounded-3xl border border-dashed border-slate-800 my-auto flex flex-col items-center justify-center">
+                  <div className="p-4 rounded-3xl bg-[#00E599]/10 border border-[#00E599]/30 text-[#00E599] shadow-[0_0_20px_rgba(0,229,153,0.3)]">
+                    <CheckCircle2 className="w-10 h-10 stroke-[2.5]" />
+                  </div>
+                  <div className="space-y-1">
+                    <h4 className="font-extrabold text-white text-base tracking-tight">Everything Up to Date</h4>
+                    <p className="text-xs text-slate-400 max-w-xs leading-relaxed font-medium">
+                      All records are fully synchronized and backed up. No pending mutations detected.
+                    </p>
+                  </div>
                 </div>
               ) : (
                 Object.entries(
-                  pendingDiffsList.reduce((acc: any, item: any) => {
+                  pendingMutations.reduce((acc: any, item: any) => {
                     const group = item.section || 'General';
                     if (!acc[group]) acc[group] = [];
                     acc[group].push(item);
@@ -1409,8 +1386,8 @@ export default function Settings() {
 
                     {/* Change Cards in Section */}
                     {items.map((item: any) => {
-                      const isInsert = item.action === 'INSERT';
-                      const isDelete = item.action === 'DELETE';
+                      const isInsert = item.type === 'INSERT';
+                      const isDelete = item.type === 'DELETE';
                       const actionTagClass = isInsert
                         ? 'bg-[#00E599]/15 border-[#00E599]/40 text-[#00E599]'
                         : isDelete
@@ -1426,7 +1403,7 @@ export default function Settings() {
                           <div className="flex justify-between items-start gap-2">
                             <div>
                               <span className="text-xs font-black text-white block truncate">
-                                {item.entity}
+                                {item.title}
                               </span>
                               <span className="text-[9.5px] font-mono text-slate-400">
                                 Updated at {item.timestamp}
@@ -1445,11 +1422,11 @@ export default function Settings() {
                                 <span className="text-slate-400 font-bold text-[9.5px] uppercase">{f.field}:</span>
                                 <div className="flex items-center space-x-1.5 text-[10px]">
                                   <span className="line-through text-rose-400/80 bg-rose-500/10 px-1.5 py-0.5 rounded border border-rose-500/20">
-                                    Old: {f.old}
+                                    Old: {f.oldVal || f.old}
                                   </span>
                                   <span className="text-slate-500">➔</span>
                                   <span className="text-[#00E599] font-bold bg-[#00E599]/10 px-1.5 py-0.5 rounded border border-[#00E599]/30 shadow-[0_0_6px_rgba(0,229,153,0.2)]">
-                                    New: {f.new}
+                                    New: {f.newVal || f.new}
                                   </span>
                                 </div>
                               </div>
@@ -1467,13 +1444,15 @@ export default function Settings() {
             <div className="p-4 bg-[#0F172A] border-t border-white/10 flex items-center justify-between gap-3 shrink-0">
               <button
                 onClick={handleRevertAllPending}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl border border-white/10 transition cursor-pointer active:scale-95"
+                disabled={pendingMutations.length === 0}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl border border-white/10 transition cursor-pointer active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Revert All
               </button>
               <button
                 onClick={handleCommitAndBackupNow}
-                className="flex-1 px-4 py-2 bg-gradient-to-r from-[#00E599] to-[#00D26A] text-slate-950 font-black text-xs rounded-xl shadow-[0_0_15px_rgba(0,229,153,0.35)] hover:opacity-90 transition cursor-pointer active:scale-95 text-center flex items-center justify-center gap-1.5"
+                disabled={pendingMutations.length === 0}
+                className="flex-1 px-4 py-2 bg-gradient-to-r from-[#00E599] to-[#00D26A] text-slate-950 font-black text-xs rounded-xl shadow-[0_0_15px_rgba(0,229,153,0.35)] hover:opacity-90 transition cursor-pointer active:scale-95 text-center flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <ShieldCheck className="w-4 h-4" /> Commit & Backup Now
               </button>

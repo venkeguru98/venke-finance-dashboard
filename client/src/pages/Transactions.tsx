@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, Trash2, X, Pencil, Folder } from 'lucide-react';
 import axios from 'axios';
-import Button from '../components/ui/Button';
+import { useAudit } from '../context/AuditContext';
 
 type Transaction = {
   id: number;
@@ -226,8 +226,21 @@ export default function Transactions() {
     setIsModalOpen(true);
   };
 
+  const { trackMutation } = useAudit();
+
   const handleDelete = async (id: number) => {
     if (!window.confirm('Delete this transaction?')) return;
+    const target = transactions.find(t => t.id === id);
+    if (target) {
+      trackMutation({
+        section: 'Transactions Tab',
+        recordId: id,
+        title: `${target.category_name || 'Transaction'} · Tx #${id}`,
+        type: 'DELETE',
+        fields: [{ field: 'STATUS', oldVal: 'Active Record', newVal: 'Deleted Record' }],
+        originalRecord: target
+      });
+    }
     try {
       await axios.delete(`${API}/transactions/${id}`);
     } catch (_) {}
@@ -247,6 +260,49 @@ export default function Transactions() {
       notes: formData.notes
     };
 
+    const cat = categories.find(c => c.id === Number(formData.category_id));
+
+    if (editingId) {
+      const existing = transactions.find(t => t.id === editingId);
+      const diffFields: { field: string; oldVal: string; newVal: string }[] = [];
+      if (existing) {
+        if (existing.amount !== payload.amount) {
+          diffFields.push({ field: 'AMOUNT', oldVal: `₹${existing.amount}`, newVal: `₹${payload.amount}` });
+        }
+        if (existing.category_name !== (cat?.name || '')) {
+          diffFields.push({ field: 'CATEGORY', oldVal: existing.category_name || 'None', newVal: cat?.name || 'Unassigned' });
+        }
+        if (existing.payment_method !== payload.payment_method) {
+          diffFields.push({ field: 'PAYMENT MODE', oldVal: existing.payment_method || 'None', newVal: payload.payment_method });
+        }
+        if ((existing.notes || '') !== (payload.notes || '')) {
+          diffFields.push({ field: 'NOTES', oldVal: existing.notes || 'None', newVal: payload.notes || 'None' });
+        }
+        if (diffFields.length > 0) {
+          trackMutation({
+            section: 'Transactions Tab',
+            recordId: editingId,
+            title: `${cat?.name || existing.category_name || 'Transaction'} · Tx #${editingId}`,
+            type: 'UPDATE',
+            fields: diffFields,
+            originalRecord: existing
+          });
+        }
+      }
+    } else {
+      trackMutation({
+        section: 'Transactions Tab',
+        recordId: `new-${Date.now()}`,
+        title: `${cat?.name || 'New Expense'} Order`,
+        type: 'INSERT',
+        fields: [
+          { field: 'AMOUNT', oldVal: 'None', newVal: `₹${payload.amount}` },
+          { field: 'CATEGORY', oldVal: 'None', newVal: cat?.name || 'General' },
+          { field: 'PAYMENT MODE', oldVal: 'None', newVal: payload.payment_method }
+        ]
+      });
+    }
+
     try {
       if (editingId) {
         await axios.put(`${API}/transactions/${editingId}`, payload);
@@ -257,7 +313,6 @@ export default function Transactions() {
       setIsModalOpen(false);
     } catch (_) {
       // Offline: update UI optimistically
-      const cat = categories.find(c => c.id === Number(formData.category_id));
       if (editingId) {
         setTransactions(prev => prev.map(t => t.id === editingId
           ? { ...t, ...payload, category_name: cat?.name || '', category_color: cat?.color || '#ccc' }
