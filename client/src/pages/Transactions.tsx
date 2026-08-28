@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, Trash2, X, Pencil, Folder } from 'lucide-react';
 import axios from 'axios';
+import Button from '../components/ui/Button';
 import { useAudit } from '../context/AuditContext';
 
 type Transaction = {

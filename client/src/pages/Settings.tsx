@@ -703,9 +703,9 @@ export default function Settings() {
               <span className="text-[9px] text-slate-500 uppercase block">Pending Changes</span>
               <button
                 onClick={() => setIsAuditDrawerOpen(true)}
-                className={heartbeatData.pendingBackup ? 'text-amber-400 font-mono font-extrabold hover:underline cursor-pointer flex items-center gap-1' : 'text-emerald-400 font-mono font-extrabold'}
+                className={pendingMutations.length > 0 ? 'text-amber-400 font-mono font-extrabold hover:underline cursor-pointer flex items-center gap-1' : 'text-emerald-400 font-mono font-extrabold'}
               >
-                {heartbeatData.pendingBackup ? `${pendingDiffsList.length} updates View Diff ➔` : '0 pending'}
+                {pendingMutations.length > 0 ? `${pendingMutations.length} updates View Diff ➔` : '0 pending'}
               </button>
             </div>
             <div>
