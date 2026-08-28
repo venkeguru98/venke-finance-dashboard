@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, Clock, Trash2, Tag, AlertCircle } from 'lucide-react';
-import { PlannerTask } from '../../pages/Planner';
+import { Check, Clock, Trash2 } from 'lucide-react';
+import type { PlannerTask } from '../../pages/Planner';
 
 interface PlannerTimelineStreamProps {
   tasks: PlannerTask[];

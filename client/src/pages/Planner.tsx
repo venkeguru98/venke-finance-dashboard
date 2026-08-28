@@ -1,11 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { 
-  Sparkles, CheckSquare, StickyNote, Clock, Target, Plus, 
-  Flame, Calendar, ShieldCheck, Tag, Zap, BookOpen, Trash2, Pin, ArrowRight
+  Sparkles, StickyNote, Clock, Target, 
+  Tag, BookOpen, Trash2, Pin
 } from 'lucide-react';
-import { useTheme } from '../context/ThemeContext';
 import PlannerSuperBar from '../components/planner/PlannerSuperBar';
 import PlannerHabitHeatmap from '../components/planner/PlannerHabitHeatmap';
 import PlannerTimelineStream from '../components/planner/PlannerTimelineStream';

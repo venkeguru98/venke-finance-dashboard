@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, Calendar, Tag, Clock, X, CheckSquare, StickyNote, Target, BookOpen } from 'lucide-react';
+import { Sparkles, Tag, Clock, X, CheckSquare, StickyNote, Target } from 'lucide-react';
 
 interface PlannerSuperBarProps {
   isOpen: boolean;
