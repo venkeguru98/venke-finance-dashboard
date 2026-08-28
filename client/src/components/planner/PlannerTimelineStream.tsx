@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, Clock, Trash2, Plus, CornerDownLeft, Tag } from 'lucide-react';
+import { Check, Trash2, Plus, CornerDownLeft } from 'lucide-react';
 import type { PlannerTask } from '../../pages/Planner';
 
 interface PlannerTimelineStreamProps {
@@ -60,7 +60,7 @@ export default function PlannerTimelineStream({
   // Map tasks to slots
   const timeBlockedSlots = React.useMemo(() => {
     return HOURLY_SLOTS.map((slot, idx) => {
-      const slotTasks = filteredTasks.filter((t, tIdx) => (tIdx % HOURLY_SLOTS.length) === idx);
+      const slotTasks = filteredTasks.filter((_, tIdx) => (tIdx % HOURLY_SLOTS.length) === idx);
       return {
         ...slot,
         tasks: slotTasks

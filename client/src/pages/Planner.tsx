@@ -1,9 +1,9 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { 
-  Sparkles, StickyNote, Clock, Target, 
-  Tag, BookOpen, Trash2, Pin, Plus, X, Bell
+  Sparkles, StickyNote, Clock, 
+  Tag, BookOpen, Pin, Plus, X, Bell
 } from 'lucide-react';
 import PlannerSuperBar from '../components/planner/PlannerSuperBar';
 import PlannerHabitHeatmap from '../components/planner/PlannerHabitHeatmap';
