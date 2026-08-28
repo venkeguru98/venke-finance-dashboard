@@ -2,24 +2,16 @@ import { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  CheckSquare, Layers, Plus, RefreshCw, X, Zap, Bell
+  Sparkles, CheckSquare, StickyNote, Clock, Target, Plus, 
+  Flame, Calendar, ShieldCheck, Tag, Zap, BookOpen, Trash2, Pin, ArrowRight
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
-import Button from '../components/ui/Button';
-
-// Scoped Planner UI Subcomponents
-import PlannerAmbientBackground from '../components/planner/PlannerAmbientBackground';
-import PlannerHeader from '../components/planner/PlannerHeader';
-import PlannerSidebar, { type ViewMode } from '../components/planner/PlannerSidebar';
-import PlannerSearch from '../components/planner/PlannerSearch';
-import PlannerTaskItem from '../components/planner/PlannerTaskItem';
-import PlannerNoteCard from '../components/planner/PlannerNoteCard';
-import PlannerQuickCapture from '../components/planner/PlannerQuickCapture';
-import PlannerEmptyState from '../components/planner/PlannerEmptyState';
+import PlannerSuperBar from '../components/planner/PlannerSuperBar';
+import PlannerHabitHeatmap from '../components/planner/PlannerHabitHeatmap';
+import PlannerTimelineStream from '../components/planner/PlannerTimelineStream';
 
 const API = window.location.port === '5173' ? 'http://localhost:5000/api' : '/api';
 
-// Types
 export interface PlannerTask {
   id: number;
   title: string;
@@ -39,16 +31,15 @@ export interface PlannerNote {
   id: number;
   title: string;
   content?: string;
-  color: string; // 'default' | 'violet' | 'cyan' | 'emerald' | 'amber' | 'rose' | 'slate'
+  color: string;
   priority: string;
   pinned: number;
   archived: number;
   reminder_at?: string | null;
   tags?: string;
-  checklist?: string; // JSON string of {id, text, completed}[]
-  rotation: number; // -2 to 2 degrees
+  checklist?: string;
+  rotation: number;
   created_at?: string;
-  updated_at?: string;
 }
 
 export interface PlannerReminder {
@@ -72,16 +63,8 @@ export interface PlannerGoal {
   created_at?: string;
 }
 
-const formatLocalTime = (isoString?: string | null) => {
-  if (!isoString) return '';
-  const d = new Date(isoString);
-  if (isNaN(d.getTime())) return '';
-  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
-};
-
 export default function Planner() {
   const { themeData } = useTheme();
-  const [activeView, setActiveView] = useState<ViewMode>('today');
 
   // Data states
   const [tasks, setTasks] = useState<PlannerTask[]>([]);
@@ -89,32 +72,39 @@ export default function Planner() {
   const [reminders, setReminders] = useState<PlannerReminder[]>([]);
   const [goals, setGoals] = useState<PlannerGoal[]>([]);
 
-  // Search & Filter
-  const [searchQuery, setSearchQuery] = useState('');
-  const [tagFilter, setTagFilter] = useState<string>('all');
+  // Mood & Filter States
+  const [selectedMood, setSelectedMood] = useState<'focused' | 'relaxed' | 'deep_work'>('focused');
+  const [selectedTag, setSelectedTag] = useState<string>('all');
+  const AVAILABLE_TAGS = ['all', 'personal', 'career', 'finance', 'ideas', 'work'];
 
-  // Modals & Control States
-  const [isQuickCaptureOpen, setIsQuickCaptureOpen] = useState(false);
-  const [quickTitle, setQuickTitle] = useState('');
-  const [quickType, setQuickType] = useState<'task' | 'note' | 'reminder' | 'goal'>('task');
+  // Super-Bar Quick Capture Modal State
+  const [isSuperBarOpen, setIsSuperBarOpen] = useState(false);
 
-  // Smart Plan modal
-  const [isSmartPlanOpen, setIsSmartPlanOpen] = useState(false);
-  const [smartPlanData, setSmartPlanData] = useState<any>(null);
-  const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
+  // Debounced Micro-Diary Journal State (500ms Debounce to prevent unnecessary disk writes)
+  const [journalText, setJournalText] = useState(() => {
+    return localStorage.getItem('venke_daily_journal') || '';
+  });
 
-  // Note Modal state
-  const [editingNote, setEditingNote] = useState<PlannerNote | null>(null);
-  const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
-  const [noteTitle, setNoteTitle] = useState('');
-  const [noteContent, setNoteContent] = useState('');
-  const [noteColor, setNoteColor] = useState('default');
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      localStorage.setItem('venke_daily_journal', journalText);
+    }, 500);
+    return () => clearTimeout(handler);
+  }, [journalText]);
 
-  // Calendar State
-  const calendarDate = new Date();
-  const [calendarSubTab, setCalendarSubTab] = useState<'month' | 'week' | 'day' | 'agenda'>('month');
+  // Cmd / Ctrl + J Keydown Listener
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'j') {
+        e.preventDefault();
+        setIsSuperBarOpen(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
-  // Load all planner datasets from backend
+  // Fetch all planner datasets from backend
   const fetchPlannerData = async () => {
     try {
       const [tasksRes, notesRes, remRes, goalsRes] = await Promise.all([
@@ -136,42 +126,43 @@ export default function Planner() {
     fetchPlannerData();
   }, []);
 
-  // Quick Capture submit
-  const handleQuickCapture = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!quickTitle.trim()) return;
+  // Submit via Natural Language Super-Bar
+  const handleSuperBarSubmit = async (data: {
+    title: string;
+    type: 'task' | 'note' | 'reminder' | 'goal';
+    tags: string[];
+    parsedTime?: string;
+  }) => {
+    const tagStr = data.tags.join(',');
 
-    try {
-      if (quickType === 'task') {
-        await axios.post(`${API}/planner/tasks`, {
-          title: quickTitle.trim(),
-          priority: 'medium'
-        });
-      } else if (quickType === 'note') {
-        const randRotation = Math.floor(Math.random() * 5) - 2; // -2 to +2 deg
-        await axios.post(`${API}/planner/notes`, {
-          title: quickTitle.trim(),
-          rotation: randRotation
-        });
-      } else if (quickType === 'reminder') {
-        const defaultTime = new Date(Date.now() + 3600 * 1000).toISOString();
-        await axios.post(`${API}/planner/reminders`, {
-          title: quickTitle.trim(),
-          reminder_at: defaultTime
-        });
-      } else if (quickType === 'goal') {
-        await axios.post(`${API}/planner/goals`, {
-          title: quickTitle.trim(),
-          category: 'personal'
-        });
-      }
-
-      setQuickTitle('');
-      setIsQuickCaptureOpen(false);
-      fetchPlannerData();
-    } catch (err) {
-      console.error('Quick capture failed:', err);
+    if (data.type === 'task') {
+      await axios.post(`${API}/planner/tasks`, {
+        title: data.title,
+        priority: 'medium',
+        tags: tagStr
+      });
+    } else if (data.type === 'note') {
+      const randRotation = Math.floor(Math.random() * 5) - 2;
+      await axios.post(`${API}/planner/notes`, {
+        title: data.title,
+        color: 'amber',
+        rotation: randRotation,
+        tags: tagStr
+      });
+    } else if (data.type === 'reminder') {
+      const defaultTime = new Date(Date.now() + 3600 * 1000).toISOString();
+      await axios.post(`${API}/planner/reminders`, {
+        title: data.title,
+        reminder_at: defaultTime
+      });
+    } else if (data.type === 'goal') {
+      await axios.post(`${API}/planner/goals`, {
+        title: data.title,
+        category: 'personal'
+      });
     }
+
+    fetchPlannerData();
   };
 
   // Toggle Task Completion
@@ -188,778 +179,336 @@ export default function Planner() {
       });
       fetchPlannerData();
     } catch (err) {
-      console.error('Failed to toggle task completion:', err);
       fetchPlannerData();
     }
+  };
+
+  // Delete Task
+  const handleDeleteTask = async (id: number) => {
+    if (!window.confirm('Delete this item?')) return;
+    setTasks(prev => prev.filter(t => t.id !== id));
+    try {
+      await axios.delete(`${API}/planner/tasks/${id}`);
+      fetchPlannerData();
+    } catch (err) {}
   };
 
   // Toggle Note Pin
   const handleTogglePinNote = async (note: PlannerNote) => {
     const newPinned = note.pinned ? 0 : 1;
     setNotes(prev => prev.map(n => n.id === note.id ? { ...n, pinned: newPinned } : n));
-
     try {
-      await axios.patch(`${API}/planner/notes/${note.id}/pin`, {
-        pinned: newPinned
-      });
+      await axios.patch(`${API}/planner/notes/${note.id}/pin`, { pinned: newPinned });
       fetchPlannerData();
-    } catch (err) {
-      console.error('Failed to toggle pin:', err);
-      fetchPlannerData();
-    }
-  };
-
-  // Convert Note to Task
-  const handleConvertNoteToTask = async (note: PlannerNote) => {
-    try {
-      await axios.post(`${API}/planner/notes/${note.id}/convert-to-task`);
-      fetchPlannerData();
-    } catch (err) {
-      console.error('Failed to convert note to task:', err);
-    }
+    } catch (err) {}
   };
 
   // Delete Note
   const handleDeleteNote = async (id: number) => {
-    if (!window.confirm('Are you sure you want to delete this sticky note?')) return;
+    if (!window.confirm('Delete this sticky note?')) return;
+    setNotes(prev => prev.filter(n => n.id !== id));
     try {
       await axios.delete(`${API}/planner/notes/${id}`);
       fetchPlannerData();
-    } catch (err) {
-      console.error('Failed to delete note:', err);
-    }
+    } catch (err) {}
   };
 
-  // Delete Task
-  const handleDeleteTask = async (id: number) => {
-    if (!window.confirm('Delete this task?')) return;
-    try {
-      await axios.delete(`${API}/planner/tasks/${id}`);
-      fetchPlannerData();
-    } catch (err) {
-      console.error('Failed to delete task:', err);
-    }
-  };
-
-  // Smart Plan Generator
-  const handleGenerateSmartPlan = async () => {
-    setIsGeneratingPlan(true);
-    setIsSmartPlanOpen(true);
-    try {
-      const res = await axios.post(`${API}/planner/smart-plan`);
-      setSmartPlanData(res.data);
-    } catch (err) {
-      console.error('Smart plan failed:', err);
-    } finally {
-      setIsGeneratingPlan(false);
-    }
-  };
-
-  // Save Sticky Note
-  const handleSaveNote = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!noteTitle.trim()) return;
-
-    try {
-      if (editingNote) {
-        await axios.put(`${API}/planner/notes/${editingNote.id}`, {
-          title: noteTitle.trim(),
-          content: noteContent,
-          color: noteColor
-        });
-      } else {
-        const randRotation = Math.floor(Math.random() * 5) - 2;
-        await axios.post(`${API}/planner/notes`, {
-          title: noteTitle.trim(),
-          content: noteContent,
-          color: noteColor,
-          rotation: randRotation
-        });
-      }
-      setIsNoteModalOpen(false);
-      setEditingNote(null);
-      setNoteTitle('');
-      setNoteContent('');
-      fetchPlannerData();
-    } catch (err) {
-      console.error('Save note error:', err);
-    }
-  };
-
-  // Filtered Tasks & Notes
-  const filteredTasks = useMemo(() => {
-    return tasks.filter(t => {
-      const matchesSearch = !searchQuery || t.title.toLowerCase().includes(searchQuery.toLowerCase()) || (t.description || '').toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesTag = tagFilter === 'all' || (t.tags || '').includes(tagFilter);
-      return matchesSearch && matchesTag;
-    });
-  }, [tasks, searchQuery, tagFilter]);
-
-  const filteredNotes = useMemo(() => {
-    return notes.filter(n => {
-      const matchesSearch = !searchQuery || n.title.toLowerCase().includes(searchQuery.toLowerCase()) || (n.content || '').toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesTag = tagFilter === 'all' || (n.tags || '').includes(tagFilter);
-      return matchesSearch && matchesTag;
-    });
-  }, [notes, searchQuery, tagFilter]);
-
-  // Today focus items count
-  const todayFocusCount = tasks.filter(t => t.status !== 'completed').length;
+  // Calculate Daily Ritual Progress
+  const completedCount = useMemo(() => tasks.filter(t => t.status === 'completed').length, [tasks]);
+  const totalCount = tasks.length || 1;
+  const progressPct = Math.round((completedCount / totalCount) * 100);
 
   return (
-    <div className="w-full space-y-6 animate-fade-in-up pb-16 relative">
-      
-      {/* ── Scoped Ambient Lighting Background ───────────────────────────── */}
-      <PlannerAmbientBackground />
+    <div className="w-full min-h-screen bg-[#070A12] text-slate-100 font-sans relative overflow-x-hidden p-4 sm:p-8 space-y-8">
+      {/* Ambient Lighting Glow Orbs */}
+      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
+        <div className="absolute top-10 left-[15%] w-[600px] h-[350px] bg-purple-600/10 rounded-full blur-[140px]" />
+        <div className="absolute top-1/3 right-[10%] w-[500px] h-[300px] bg-indigo-600/10 rounded-full blur-[140px]" />
+      </div>
 
-      {/* ── 1. HEADER HERO BAR ───────────────────────────────────────────── */}
-      <PlannerHeader
-        todayFocusCount={todayFocusCount}
-        onOpenSmartPlan={handleGenerateSmartPlan}
-        onOpenQuickCapture={() => setIsQuickCaptureOpen(true)}
-      />
-
-      {/* ── 2. SPATIAL THREE-ZONE WORKSPACE LAYOUT ───────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start relative z-10">
-        
-        {/* ── LEFT ZONE: Views Navigation (3 cols) ─────────────────────── */}
-        <div className="lg:col-span-3">
-          <PlannerSidebar
-            activeView={activeView}
-            setActiveView={setActiveView}
-            tasksCount={tasks.length}
-            notesCount={notes.filter(n => !n.archived).length}
-            goalsCount={goals.length}
-            tagFilter={tagFilter}
-            setTagFilter={setTagFilter}
-          />
-        </div>
-
-        {/* ── MIDDLE ZONE: Primary Workspace (6 cols) ───────────────────── */}
-        <div className="lg:col-span-6 space-y-6">
-          
-          {/* Command-Center Search Bar */}
-          <PlannerSearch
-            searchQuery={searchQuery}
-            setSearchQuery={setSearchQuery}
-          />
-
-          {/* ── ACTIVE VIEW CONTENT RENDERING ────────────────────────────── */}
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeView}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-            >
-              {/* VIEW 1: TODAY COMMAND CENTER */}
-              {activeView === 'today' && (
-                <div className="space-y-6">
-                  
-                  {/* Focus Tasks Section */}
-                  <div 
-                    style={{ backgroundColor: `${themeData.bgCard}E6`, borderColor: themeData.borderColor }}
-                    className="planner-glass-surface rounded-3xl p-6 border shadow-xl space-y-4 backdrop-blur-2xl"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2.5">
-                        <span className="p-1.5 rounded-xl bg-purple-500/20 text-purple-400 border border-purple-500/30">
-                          <CheckSquare className="w-4 h-4" />
-                        </span>
-                        <h3 className="text-sm font-black uppercase tracking-wider" style={{ color: themeData.textPrimary }}>
-                          Today's Focus Agenda
-                        </h3>
-                      </div>
-                      <span className="text-[11px] font-mono font-extrabold px-2.5 py-0.5 rounded-full border bg-black/20" style={{ borderColor: themeData.borderColor, color: themeData.textMuted }}>
-                        {tasks.filter(t => t.status === 'completed').length} / {tasks.length} Done
-                      </span>
-                    </div>
-
-                    {filteredTasks.length === 0 ? (
-                      <PlannerEmptyState
-                        title="Your day is completely clear ✨"
-                        description="Enjoy your focus time or capture a new idea before it slips away."
-                        actionText="+ Add Focus Task"
-                        onAction={() => setIsQuickCaptureOpen(true)}
-                        iconType="sparkles"
-                      />
-                    ) : (
-                      <div className="space-y-2.5 max-h-96 overflow-y-auto custom-scrollbar pr-1">
-                        <AnimatePresence>
-                          {filteredTasks.map(t => (
-                            <PlannerTaskItem
-                              key={t.id}
-                              task={t}
-                              onToggle={handleToggleTask}
-                              onDelete={handleDeleteTask}
-                            />
-                          ))}
-                        </AnimatePresence>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Quick Sticky Notes Section */}
-                  <div className="space-y-3.5">
-                    <div className="flex items-center justify-between px-1">
-                      <h3 className="text-xs font-black uppercase tracking-wider flex items-center gap-2" style={{ color: themeData.textPrimary }}>
-                        <Layers className="w-4 h-4 text-purple-400" />
-                        Quick Sticky Notes
-                      </h3>
-                      <button 
-                        onClick={() => {
-                          setEditingNote(null);
-                          setNoteTitle('');
-                          setNoteContent('');
-                          setIsNoteModalOpen(true);
-                        }}
-                        className="text-xs font-bold flex items-center space-x-1 hover:underline text-purple-400 transition"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>New Note</span>
-                      </button>
-                    </div>
-
-                    {filteredNotes.length === 0 ? (
-                      <PlannerEmptyState
-                        title="No sticky notes captured"
-                        description="Create freeform digital notes for thoughts, checklists, and quick ideas."
-                        actionText="+ New Sticky Note"
-                        onAction={() => {
-                          setEditingNote(null);
-                          setNoteTitle('');
-                          setNoteContent('');
-                          setIsNoteModalOpen(true);
-                        }}
-                        iconType="notes"
-                      />
-                    ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                        <AnimatePresence>
-                          {filteredNotes.slice(0, 4).map(note => (
-                            <PlannerNoteCard
-                              key={note.id}
-                              note={note}
-                              onTogglePin={handleTogglePinNote}
-                              onConvertToTask={handleConvertNoteToTask}
-                              onDelete={handleDeleteNote}
-                            />
-                          ))}
-                        </AnimatePresence>
-                      </div>
-                    )}
-                  </div>
-
-                </div>
-              )}
-
-              {/* VIEW 2: STICKY NOTES WORKSPACE BOARD */}
-              {activeView === 'notes' && (
-                <div className="space-y-5">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="flex items-center space-x-2">
-                        <span className="p-1.5 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                          <Layers className="w-4 h-4" />
-                        </span>
-                        <h3 className="text-base font-black tracking-tight" style={{ color: themeData.textPrimary }}>
-                          Sticky Notes Workspace Board
-                        </h3>
-                      </div>
-                      <p className="text-xs font-semibold mt-1" style={{ color: themeData.textMuted }}>
-                        Tactile digital paper notes with natural rotation, depth, and 3D proximity interaction.
-                      </p>
-                    </div>
-                    <Button 
-                      variant="primary" 
-                      size="sm"
-                      onClick={() => {
-                        setEditingNote(null);
-                        setNoteTitle('');
-                        setNoteContent('');
-                        setIsNoteModalOpen(true);
-                      }}
-                      className="shadow-lg"
-                    >
-                      + New Note
-                    </Button>
-                  </div>
-
-                  {/* Digital Desk Board Surface */}
-                  <div 
-                    style={{ 
-                      backgroundColor: `${themeData.bgCard}B0`, 
-                      borderColor: themeData.borderColor,
-                      backgroundImage: `radial-gradient(${themeData.accentPrimary}20 1px, transparent 1px)`,
-                      backgroundSize: '24px 24px'
-                    }}
-                    className="planner-glass-surface rounded-3xl p-6 border shadow-2xl backdrop-blur-2xl min-h-[420px] relative overflow-hidden"
-                  >
-                    {/* Background Desk Ambient Glow */}
-                    <div 
-                      style={{
-                        background: `radial-gradient(circle, ${themeData.accentPrimary}25 0%, transparent 70%)`
-                      }}
-                      className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 rounded-full blur-3xl pointer-events-none opacity-40 animate-pulse"
-                    />
-
-                    {filteredNotes.length === 0 ? (
-                      <PlannerEmptyState
-                        title="Your ideas live here ✦"
-                        description="Capture thoughts, reminders, and quick ideas on tactile digital sticky notes before they disappear."
-                        actionText="+ Create Sticky Note"
-                        onAction={() => {
-                          setEditingNote(null);
-                          setNoteTitle('');
-                          setNoteContent('');
-                          setIsNoteModalOpen(true);
-                        }}
-                        iconType="notes"
-                      />
-                    ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 relative z-10">
-                        <AnimatePresence>
-                          {filteredNotes.map(n => (
-                            <PlannerNoteCard
-                              key={n.id}
-                              note={n}
-                              onTogglePin={handleTogglePinNote}
-                              onConvertToTask={handleConvertNoteToTask}
-                              onDelete={handleDeleteNote}
-                            />
-                          ))}
-                        </AnimatePresence>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* VIEW 3: TASKS LIST */}
-              {activeView === 'tasks' && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-base font-black tracking-tight" style={{ color: themeData.textPrimary }}>
-                      All Planner Tasks ({filteredTasks.length})
-                    </h3>
-                    <Button variant="primary" size="sm" onClick={() => setIsQuickCaptureOpen(true)}>
-                      + Add Task
-                    </Button>
-                  </div>
-
-                  {filteredTasks.length === 0 ? (
-                    <PlannerEmptyState
-                      title="No tasks in list"
-                      description="Create action items with priority tags and due times."
-                      actionText="+ Add Task"
-                      onAction={() => setIsQuickCaptureOpen(true)}
-                      iconType="tasks"
-                    />
-                  ) : (
-                    <div className="space-y-2.5">
-                      <AnimatePresence>
-                        {filteredTasks.map(t => (
-                          <PlannerTaskItem
-                            key={t.id}
-                            task={t}
-                            onToggle={handleToggleTask}
-                            onDelete={handleDeleteTask}
-                          />
-                        ))}
-                      </AnimatePresence>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* VIEW 4: UPCOMING TIMELINE */}
-              {activeView === 'upcoming' && (
-                <div className="space-y-6">
-                  <h3 className="text-base font-black tracking-tight" style={{ color: themeData.textPrimary }}>
-                    Upcoming Schedule Timeline
-                  </h3>
-
-                  <div className="space-y-4 relative pl-4 border-l-2" style={{ borderColor: `${themeData.accentPrimary}40` }}>
-                    {['TODAY', 'TOMORROW', 'THIS WEEK', 'LATER'].map((period, pIdx) => (
-                      <div key={period} className="space-y-2.5">
-                        <div className="flex items-center space-x-2">
-                          <span className="w-3 h-3 rounded-full -ml-[22px] border-2 border-slate-900 shadow-sm" style={{ backgroundColor: themeData.accentPrimary }} />
-                          <span className="text-xs font-black tracking-wider" style={{ color: themeData.accentPrimary }}>
-                            {period}
-                          </span>
-                        </div>
-
-                        <div className="space-y-2 pl-2">
-                          {tasks.slice(pIdx * 2, pIdx * 2 + 2).map(t => (
-                            <div 
-                              key={t.id} 
-                              style={{ backgroundColor: `${themeData.bgCard}E6`, borderColor: themeData.borderColor }} 
-                              className="planner-glass-surface p-3.5 rounded-2xl border text-xs font-bold flex justify-between items-center"
-                            >
-                              <span style={{ color: themeData.textPrimary }}>{t.title}</span>
-                              <span className="font-mono text-[10px]" style={{ color: themeData.textMuted }}>
-                                {t.due_at ? formatLocalTime(t.due_at) : 'All day'}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* VIEW 5: CALENDAR */}
-              {activeView === 'calendar' && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-base font-black tracking-tight" style={{ color: themeData.textPrimary }}>
-                      Calendar ({calendarDate.toLocaleDateString([], { month: 'long', year: 'numeric' })})
-                    </h3>
-                    <div className="flex space-x-1 p-1 rounded-2xl border bg-black/20" style={{ borderColor: themeData.borderColor }}>
-                      {['month', 'week', 'day', 'agenda'].map(tab => (
-                        <button
-                          key={tab}
-                          onClick={() => setCalendarSubTab(tab as any)}
-                          style={{
-                            backgroundColor: calendarSubTab === tab ? themeData.accentPrimary : 'transparent',
-                            color: calendarSubTab === tab ? '#FFFFFF' : themeData.textMuted
-                          }}
-                          className="px-3 py-1 rounded-xl text-xs font-extrabold capitalize transition cursor-pointer"
-                        >
-                          {tab}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div 
-                    style={{ backgroundColor: `${themeData.bgCard}E6`, borderColor: themeData.borderColor }} 
-                    className="planner-glass-surface p-6 rounded-3xl border shadow-xl text-center space-y-4 backdrop-blur-2xl"
-                  >
-                    <p className="text-xs font-medium" style={{ color: themeData.textSecondary }}>
-                      Calendar view active. Schedule mapped to your browser timezone ({Intl.DateTimeFormat().resolvedOptions().timeZone}).
-                    </p>
-                    <div className="grid grid-cols-7 gap-2 text-center text-xs font-bold">
-                      {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
-                        <span key={d} style={{ color: themeData.textMuted }}>{d}</span>
-                      ))}
-                      {Array.from({ length: 31 }).map((_, i) => (
-                        <div 
-                          key={i} 
-                          style={{ 
-                            backgroundColor: i + 1 === calendarDate.getDate() ? `${themeData.accentPrimary}35` : `${themeData.bgSecondary}B0`, 
-                            borderColor: i + 1 === calendarDate.getDate() ? themeData.accentPrimary : themeData.borderColor 
-                          }} 
-                          className="p-3 rounded-2xl border text-xs font-black transition hover:scale-105 hover:border-purple-400 cursor-pointer"
-                        >
-                          {i + 1}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* VIEW 6: GOALS */}
-              {activeView === 'goals' && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-base font-black tracking-tight" style={{ color: themeData.textPrimary }}>
-                      Personal & Career Goals ({goals.length})
-                    </h3>
-                  </div>
-
-                  {goals.length === 0 ? (
-                    <PlannerEmptyState
-                      title="No goals tracked yet"
-                      description="Create career, personal, or financial goals to track milestones."
-                      actionText="+ Add Goal"
-                      onAction={() => setIsQuickCaptureOpen(true)}
-                      iconType="sparkles"
-                    />
-                  ) : (
-                    <div className="space-y-3.5">
-                      {goals.map(g => (
-                        <div 
-                          key={g.id} 
-                          style={{ backgroundColor: `${themeData.bgCard}E6`, borderColor: themeData.borderColor }} 
-                          className="planner-glass-surface p-5 rounded-3xl border shadow-xl space-y-3 backdrop-blur-2xl"
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-extrabold" style={{ color: themeData.textPrimary }}>{g.title}</span>
-                            <span 
-                              className="text-[10px] font-black uppercase px-3 py-1 rounded-full border bg-black/20" 
-                              style={{ borderColor: themeData.borderColor, color: themeData.accentPrimary }}
-                            >
-                              {g.category}
-                            </span>
-                          </div>
-
-                          <div className="space-y-1.5">
-                            <div className="flex justify-between text-xs font-bold" style={{ color: themeData.textMuted }}>
-                              <span>Milestone Progress</span>
-                              <span>{g.progress}%</span>
-                            </div>
-                            <div className="w-full h-2 rounded-full overflow-hidden bg-black/30">
-                              <div 
-                                className="h-full transition-all duration-500 rounded-full" 
-                                style={{ 
-                                  width: `${g.progress}%`, 
-                                  background: `linear-gradient(90deg, ${themeData.accentPrimary} 0%, ${themeData.accentSecondary} 100%)` 
-                                }} 
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </motion.div>
-          </AnimatePresence>
-
-        </div>
-
-        {/* ── RIGHT ZONE: Reminders & Quick Capture Panel (3 cols) ────────── */}
-        <div className="lg:col-span-3 space-y-5">
-          
-          {/* Active Reminders Card */}
-          <div 
-            style={{ backgroundColor: `${themeData.bgCard}E6`, borderColor: themeData.borderColor }}
-            className="planner-glass-surface rounded-3xl p-5 border shadow-xl space-y-3.5 backdrop-blur-2xl"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5" style={{ color: themeData.textMuted }}>
-                <Bell className="w-3.5 h-3.5 text-purple-400" />
-                ACTIVE REMINDERS
+      <div className="relative z-10 max-w-[1500px] mx-auto space-y-8">
+        {/* ── TOP HERO HEADER & OMNI-CAPTURE BAR ─────────────────────────── */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-2">
+          {/* Ambient Greeting */}
+          <div className="space-y-2">
+            <div className="flex items-center space-x-3">
+              <span className="px-3 py-1 bg-purple-500/15 border border-purple-500/30 text-purple-300 text-xs font-black rounded-full uppercase tracking-wider flex items-center gap-1.5 shadow-[0_0_12px_rgba(168,85,247,0.3)]">
+                <Sparkles className="w-3.5 h-3.5 animate-pulse" /> Personal Life OS
               </span>
-              <span 
-                className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border" 
-                style={{ 
-                  backgroundColor: `${themeData.accentPrimary}20`, 
-                  borderColor: `${themeData.accentPrimary}40`,
-                  color: themeData.accentPrimary 
-                }}
-              >
-                {reminders.length}
+              <span className="text-xs font-mono text-slate-400">
+                {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
               </span>
             </div>
 
-            {reminders.length === 0 ? (
-              <p className="text-xs text-center py-4 font-medium" style={{ color: themeData.textMuted }}>
-                No active reminders scheduled.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {reminders.map(r => (
-                  <div 
-                    key={r.id} 
-                    style={{ backgroundColor: `${themeData.bgSecondary}B0`, borderColor: themeData.borderColor }} 
-                    className="p-3 rounded-2xl border text-xs space-y-1"
+            <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-white">
+              Good Evening, Venke ✨
+            </h1>
+
+            {/* Minimalist Mood Selector */}
+            <div className="flex items-center space-x-2 pt-1">
+              <span className="text-xs font-bold text-slate-400 mr-1">Current State:</span>
+              {[
+                { id: 'focused', label: '⚡ Focused', color: 'from-purple-600 to-indigo-600' },
+                { id: 'relaxed', label: '🌱 Relaxed', color: 'from-emerald-600 to-teal-600' },
+                { id: 'deep_work', label: '💡 Deep Work', color: 'from-amber-600 to-orange-600' }
+              ].map(mood => {
+                const isSelected = selectedMood === mood.id;
+                return (
+                  <button
+                    key={mood.id}
+                    onClick={() => setSelectedMood(mood.id as any)}
+                    className={`px-3 py-1 rounded-full text-xs font-extrabold transition-all cursor-pointer relative ${
+                      isSelected ? 'text-white shadow-lg' : 'text-slate-400 hover:text-slate-200 bg-white/5 border border-white/10'
+                    }`}
                   >
-                    <span className="font-extrabold block" style={{ color: themeData.textPrimary }}>{r.title}</span>
-                    <span className="text-[10px] font-mono block text-purple-400">
-                      {formatLocalTime(r.reminder_at)}
+                    {isSelected && (
+                      <motion.div
+                        layoutId="active_mood_pill"
+                        className={`absolute inset-0 bg-gradient-to-r ${mood.color} rounded-full shadow-[0_0_12px_rgba(168,85,247,0.4)]`}
+                        transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                      />
+                    )}
+                    <span className="relative z-10">{mood.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Quick Capture Pill & Daily Ritual Completion Ring */}
+          <div className="flex items-center space-x-4 shrink-0">
+            {/* Daily Ritual Completion Ring */}
+            <div className="p-3 bg-[#090D16] border border-white/10 rounded-2xl flex items-center space-x-3 shadow-xl">
+              <div className="relative w-10 h-10 flex items-center justify-center">
+                <svg className="w-10 h-10 transform -rotate-90">
+                  <circle cx="20" cy="20" r="16" stroke="currentColor" strokeWidth="3" className="text-slate-800" fill="transparent" />
+                  <circle
+                    cx="20" cy="20" r="16" stroke="currentColor" strokeWidth="3"
+                    className="text-purple-400 transition-all duration-500"
+                    fill="transparent"
+                    strokeDasharray={100}
+                    strokeDashoffset={100 - progressPct}
+                    strokeLinecap="round"
+                  />
+                </svg>
+                <span className="absolute text-[10px] font-mono font-black text-white">{progressPct}%</span>
+              </div>
+              <div className="flex flex-col text-left">
+                <span className="text-xs font-black text-white">{completedCount} of {tasks.length} Done</span>
+                <span className="text-[10px] font-bold text-slate-400">Daily Ritual Progress</span>
+              </div>
+            </div>
+
+            {/* Omni-Capture Trigger Button */}
+            <button
+              onClick={() => setIsSuperBarOpen(true)}
+              className="px-4 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xs rounded-2xl shadow-[0_0_20px_rgba(168,85,247,0.4)] transition-all active:scale-95 cursor-pointer flex items-center gap-2"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>Omni-Capture</span>
+              <span className="bg-white/20 px-2 py-0.5 rounded-md font-mono text-[10px]">⌘J</span>
+            </button>
+          </div>
+        </div>
+
+        {/* ── 2-COLUMN FLUID SPLIT CANVAS ───────────────────────────────── */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          {/* ── LEFT COLUMN (65% width: Timeline & Journal Flow) ─────────── */}
+          <div className="lg:col-span-8 space-y-6">
+            {/* Spatial Tag Filter Strip */}
+            <div className="p-2 bg-[#090D16] border border-white/10 rounded-2xl flex items-center space-x-1.5 overflow-x-auto no-scrollbar shadow-lg">
+              <span className="text-xs font-bold text-slate-400 px-3 flex items-center gap-1">
+                <Tag className="w-3.5 h-3.5 text-purple-400" /> Filter:
+              </span>
+              {AVAILABLE_TAGS.map(tag => {
+                const isSelected = selectedTag === tag;
+                return (
+                  <button
+                    key={tag}
+                    onClick={() => setSelectedTag(tag)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-extrabold capitalize transition-all cursor-pointer relative ${
+                      isSelected
+                        ? 'text-white'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    {isSelected && (
+                      <motion.div
+                        layoutId="active_tag_filter"
+                        className="absolute inset-0 bg-purple-600/30 border border-purple-500/50 rounded-xl shadow-md"
+                        transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                      />
+                    )}
+                    <span className="relative z-10">#{tag}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Continuous Vertical Dashed Timeline Stream */}
+            <div className="p-6 bg-[#090D16]/80 border border-white/10 rounded-3xl shadow-2xl space-y-4 backdrop-blur-xl">
+              <div className="flex items-center justify-between border-b border-white/10 pb-4">
+                <div className="flex items-center space-x-2">
+                  <Clock className="w-5 h-5 text-purple-400" />
+                  <h3 className="text-sm font-black text-white uppercase tracking-wider font-mono">
+                    Today's Chronological Stream
+                  </h3>
+                </div>
+                <span className="text-xs font-mono text-purple-300 font-bold bg-purple-500/10 px-2.5 py-1 rounded-full border border-purple-500/30">
+                  {tasks.length} Total Items
+                </span>
+              </div>
+
+              <PlannerTimelineStream
+                tasks={tasks}
+                onToggleTask={handleToggleTask}
+                onDeleteTask={handleDeleteTask}
+                selectedTag={selectedTag}
+              />
+            </div>
+
+            {/* Casual Daily Reflection (Micro-Diary Scratchpad with 500ms Debounced Storage) */}
+            <div className="p-6 bg-[#090D16]/80 border border-white/10 rounded-3xl shadow-2xl space-y-3 backdrop-blur-xl">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <BookOpen className="w-5 h-5 text-emerald-400" />
+                  <h3 className="text-sm font-black text-white tracking-tight">
+                    Casual Daily Reflection & Scratchpad
+                  </h3>
+                </div>
+                <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                  Auto-saving (500ms debounce)
+                </span>
+              </div>
+
+              <textarea
+                value={journalText}
+                onChange={e => setJournalText(e.target.value)}
+                placeholder="What went well today? Thoughts, ideas, key takeaways..."
+                rows={4}
+                className="w-full bg-[#050811] border border-white/10 rounded-2xl p-4 text-xs font-mono text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/60 shadow-inner resize-y leading-relaxed"
+              />
+            </div>
+          </div>
+
+          {/* ── RIGHT COLUMN (35% width: Context Hub & Digital Brain) ─────── */}
+          <div className="lg:col-span-4 space-y-6">
+            {/* Dynamic Mini-Calendar & Habit Heatmap */}
+            <PlannerHabitHeatmap tasks={tasks} />
+
+            {/* Masonry Pinboard (Quick Sticky Notes with Pastel Neon Tints) */}
+            <div className="p-5 bg-[#090D16] border border-white/10 rounded-3xl shadow-xl space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <StickyNote className="w-4 h-4 text-amber-400" />
+                  <span className="text-xs font-bold text-slate-200">Masonry Digital Pinboard</span>
+                </div>
+                <span className="text-[10px] font-mono text-slate-400">{notes.length} Notes</span>
+              </div>
+
+              <div className="space-y-3 max-h-[420px] overflow-y-auto custom-scrollbar pr-1">
+                {notes.length === 0 ? (
+                  <div className="py-8 text-center text-slate-500 text-xs bg-slate-900/40 rounded-2xl border border-dashed border-slate-800">
+                    No sticky notes pinned yet.
+                  </div>
+                ) : (
+                  notes.map((note) => {
+                    const colorStyles: Record<string, string> = {
+                      amber: 'bg-amber-500/10 border-amber-500/30 text-amber-200 shadow-[0_0_12px_rgba(245,158,11,0.15)]',
+                      emerald: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200 shadow-[0_0_12px_rgba(16,185,129,0.15)]',
+                      violet: 'bg-purple-500/10 border-purple-500/30 text-purple-200 shadow-[0_0_12px_rgba(168,85,247,0.15)]',
+                      cyan: 'bg-cyan-500/10 border-cyan-500/30 text-cyan-200 shadow-[0_0_12px_rgba(6,182,212,0.15)]',
+                      rose: 'bg-rose-500/10 border-rose-500/30 text-rose-200 shadow-[0_0_12px_rgba(244,63,94,0.15)]'
+                    };
+                    const noteTheme = colorStyles[note.color] || colorStyles.amber;
+
+                    return (
+                      <motion.div
+                        key={note.id}
+                        layout
+                        style={{ rotate: `${note.rotation || 0}deg` }}
+                        className={`p-4 rounded-2xl border transition-all hover:scale-[1.02] hover:z-20 ${noteTheme}`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="text-xs font-bold block truncate">
+                            {note.title}
+                          </span>
+                          <div className="flex items-center space-x-1 shrink-0">
+                            <button
+                              onClick={() => handleTogglePinNote(note)}
+                              className={`p-1 rounded hover:bg-white/10 transition cursor-pointer ${
+                                note.pinned ? 'text-amber-400' : 'text-slate-500'
+                              }`}
+                            >
+                              <Pin className="w-3 h-3" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteNote(note.id)}
+                              className="p-1 text-slate-500 hover:text-rose-400 transition cursor-pointer"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {note.content && (
+                          <p className="text-[11px] font-mono mt-2 opacity-80 leading-normal line-clamp-3">
+                            {note.content}
+                          </p>
+                        )}
+                      </motion.div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            {/* Active Radar (Reminders & Goals Countdown Badges) */}
+            <div className="p-5 bg-[#090D16] border border-white/10 rounded-3xl shadow-xl space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <Target className="w-4 h-4 text-cyan-400" />
+                  <span className="text-xs font-bold text-slate-200">Active Radar & Reminders</span>
+                </div>
+                <span className="text-[10px] font-mono text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-full border border-cyan-500/30">
+                  {reminders.length + goals.length} Radar Tokens
+                </span>
+              </div>
+
+              <div className="space-y-2.5">
+                {reminders.map(rem => (
+                  <div key={rem.id} className="p-3 bg-slate-900/80 border border-cyan-500/30 rounded-2xl flex items-center justify-between gap-2 shadow-sm">
+                    <span className="text-xs font-bold text-white truncate">{rem.title}</span>
+                    <span className="text-[9.5px] font-mono font-bold text-cyan-300 bg-cyan-500/15 px-2 py-0.5 rounded-full border border-cyan-500/30 shrink-0">
+                      In 2 hours
                     </span>
                   </div>
                 ))}
+                {goals.map(goal => (
+                  <div key={goal.id} className="p-3 bg-slate-900/80 border border-purple-500/30 rounded-2xl flex items-center justify-between gap-2 shadow-sm">
+                    <span className="text-xs font-bold text-white truncate">{goal.title}</span>
+                    <span className="text-[9.5px] font-mono font-bold text-purple-300 bg-purple-500/15 px-2 py-0.5 rounded-full border border-purple-500/30 shrink-0">
+                      {goal.category}
+                    </span>
+                  </div>
+                ))}
+                {reminders.length === 0 && goals.length === 0 && (
+                  <div className="py-6 text-center text-slate-500 text-xs bg-slate-900/40 rounded-2xl border border-dashed border-slate-800">
+                    No active radar reminders.
+                  </div>
+                )}
               </div>
-            )}
+            </div>
           </div>
-
-          {/* Quick Capture Widget */}
-          <PlannerQuickCapture
-            quickTitle={quickTitle}
-            setQuickTitle={setQuickTitle}
-            quickType={quickType}
-            setQuickType={setQuickType}
-            onSubmit={handleQuickCapture}
-          />
         </div>
-
       </div>
 
-      {/* ── SMART PLAN MODAL ───────────────────────────────────────────── */}
-      {isSmartPlanOpen && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-xl z-[1200] flex items-center justify-center p-4">
-          <div 
-            style={{ backgroundColor: themeData.bgElevated, borderColor: themeData.borderColor }} 
-            className="w-full max-w-lg rounded-3xl p-6 border shadow-2xl space-y-4 animate-in fade-in zoom-in-95"
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <Zap className="w-5 h-5 text-amber-400 fill-amber-400/30" />
-                <h3 className="text-base font-black uppercase tracking-wider" style={{ color: themeData.textPrimary }}>
-                  ✨ Plan My Day
-                </h3>
-              </div>
-              <button onClick={() => setIsSmartPlanOpen(false)} className="p-1 hover:opacity-75 text-slate-400">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {isGeneratingPlan ? (
-              <div className="py-12 text-center space-y-3">
-                <RefreshCw className="w-8 h-8 animate-spin mx-auto text-amber-400" />
-                <p className="text-xs font-bold" style={{ color: themeData.textPrimary }}>Analyzing your tasks & priorities...</p>
-              </div>
-            ) : smartPlanData && (
-              <div className="space-y-4">
-                <p className="text-xs font-medium" style={{ color: themeData.textSecondary }}>
-                  {smartPlanData.message}
-                </p>
-
-                <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
-                  {smartPlanData.suggestions?.map((item: any, idx: number) => (
-                    <div key={item.id} style={{ backgroundColor: themeData.bgCard, borderColor: themeData.borderColor }} className="p-3 rounded-2xl border flex items-center justify-between text-xs">
-                      <div className="flex items-center space-x-2.5">
-                        <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 font-extrabold flex items-center justify-center text-[10px]">
-                          {idx + 1}
-                        </span>
-                        <span className="font-bold" style={{ color: themeData.textPrimary }}>{item.title}</span>
-                      </div>
-                      <span className="font-mono text-[10px] px-2 py-0.5 rounded-md border" style={{ borderColor: themeData.borderColor, color: themeData.accentPrimary }}>
-                        {item.suggestedTime}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="flex justify-end space-x-2 pt-2">
-                  <Button variant="secondary" size="sm" onClick={() => setIsSmartPlanOpen(false)}>
-                    Close
-                  </Button>
-                  <Button variant="primary" size="sm" onClick={() => setIsSmartPlanOpen(false)}>
-                    Approve Plan
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ── CREATE / EDIT NOTE MODAL ────────────────────────────────────── */}
-      {isNoteModalOpen && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-xl z-[1200] flex items-center justify-center p-4">
-          <form onSubmit={handleSaveNote} style={{ backgroundColor: themeData.bgElevated, borderColor: themeData.borderColor }} className="w-full max-w-lg rounded-3xl p-6 border shadow-2xl space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-black uppercase tracking-wider" style={{ color: themeData.textPrimary }}>
-                {editingNote ? 'Edit Sticky Note' : 'Create Sticky Note'}
-              </h3>
-              <button type="button" onClick={() => setIsNoteModalOpen(false)} className="p-1 hover:opacity-75 text-slate-400">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <input
-              type="text"
-              placeholder="Note Title..."
-              value={noteTitle}
-              onChange={(e) => setNoteTitle(e.target.value)}
-              style={{ backgroundColor: themeData.bgSecondary, borderColor: themeData.borderColor, color: themeData.textPrimary }}
-              className="w-full text-xs p-3 rounded-2xl border outline-none font-bold placeholder:text-slate-500"
-              required
-            />
-
-            <textarea
-              placeholder="Write your note thoughts here..."
-              rows={4}
-              value={noteContent}
-              onChange={(e) => setNoteContent(e.target.value)}
-              style={{ backgroundColor: themeData.bgSecondary, borderColor: themeData.borderColor, color: themeData.textPrimary }}
-              className="w-full text-xs p-3 rounded-2xl border outline-none font-medium placeholder:text-slate-500 resize-none"
-            />
-
-            <div className="flex items-center justify-between">
-              <div className="flex space-x-1.5">
-                {['default', 'violet', 'cyan', 'emerald', 'amber', 'rose'].map(c => (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => setNoteColor(c)}
-                    className={`w-6 h-6 rounded-full border-2 transition ${noteColor === c ? 'scale-125 border-white' : 'border-transparent'}`}
-                    style={{
-                      backgroundColor: c === 'violet' ? '#8B5CF6' :
-                                       c === 'cyan' ? '#06B6D4' :
-                                       c === 'emerald' ? '#10B981' :
-                                       c === 'amber' ? '#F59E0B' :
-                                       c === 'rose' ? '#F43F5E' : themeData.bgCard
-                    }}
-                  />
-                ))}
-              </div>
-
-              <div className="flex space-x-2">
-                <Button type="button" variant="secondary" size="sm" onClick={() => setIsNoteModalOpen(false)}>
-                  Cancel
-                </Button>
-                <Button type="submit" variant="primary" size="sm">
-                  Save Note
-                </Button>
-              </div>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* ── QUICK CAPTURE MODAL ────────────────────────────────────── */}
-      {isQuickCaptureOpen && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-xl z-[1200] flex items-center justify-center p-4">
-          <div style={{ backgroundColor: themeData.bgElevated, borderColor: themeData.borderColor }} className="w-full max-w-md rounded-3xl p-6 border shadow-2xl space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-black uppercase tracking-wider" style={{ color: themeData.textPrimary }}>
-                ⚡ Quick Capture
-              </h3>
-              <button type="button" onClick={() => setIsQuickCaptureOpen(false)} className="p-1 hover:opacity-75 text-slate-400">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleQuickCapture} className="space-y-3">
-              <input
-                type="text"
-                placeholder="What do you want to remember?"
-                value={quickTitle}
-                onChange={(e) => setQuickTitle(e.target.value)}
-                style={{ backgroundColor: themeData.bgSecondary, borderColor: themeData.borderColor, color: themeData.textPrimary }}
-                className="w-full text-xs p-3.5 rounded-2xl border outline-none font-bold placeholder:text-slate-500"
-                autoFocus
-              />
-
-              <div className="flex gap-1.5">
-                {(['task', 'note', 'reminder', 'goal'] as const).map(t => (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => setQuickType(t)}
-                    style={{
-                      backgroundColor: quickType === t ? themeData.accentPrimary : themeData.bgSecondary,
-                      color: quickType === t ? '#FFFFFF' : themeData.textMuted
-                    }}
-                    className="flex-1 text-[10px] font-extrabold py-2 rounded-xl capitalize transition"
-                  >
-                    {t}
-                  </button>
-                ))}
-              </div>
-
-              <div className="flex justify-end space-x-2 pt-2">
-                <Button type="button" variant="secondary" size="sm" onClick={() => setIsQuickCaptureOpen(false)}>
-                  Cancel
-                </Button>
-                <Button type="submit" variant="primary" size="sm">
-                  + Capture
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
+      {/* Natural Language Super-Bar Modal */}
+      <PlannerSuperBar
+        isOpen={isSuperBarOpen}
+        onClose={() => setIsSuperBarOpen(false)}
+        onSubmit={handleSuperBarSubmit}
+      />
     </div>
   );
 }
