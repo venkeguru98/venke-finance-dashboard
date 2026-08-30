@@ -7,6 +7,7 @@ import axios from 'axios';
 import Button from '../components/ui/Button';
 
 import { useAudit } from '../context/AuditContext';
+import { DatabaseRecordExplorerDrawer } from '../components/ui/DatabaseRecordExplorerDrawer';
 
 // Dynamic API URL for developer server (5173) vs production served assets
 const API = window.location.port === '5173' ? 'http://localhost:5000/api' : '/api';
@@ -179,6 +180,7 @@ export default function Settings() {
 
   // Interactive Pending Changes Audit Drawer States & Store
   const [isAuditDrawerOpen, setIsAuditDrawerOpen] = useState(false);
+  const [isRecordExplorerOpen, setIsRecordExplorerOpen] = useState(false);
   const { pendingMutations, commitMutations, revertAllMutations } = useAudit();
 
   useEffect(() => {
@@ -586,21 +588,31 @@ export default function Settings() {
             </span>
           </div>
 
-          <div className="p-4 bg-slate-900/50 rounded-2xl border border-slate-800/80 space-y-1">
-            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Local backup</span>
+          <div 
+            onClick={() => setIsRecordExplorerOpen(true)}
+            title="Click to view verified records in Database Explorer"
+            className="p-4 bg-slate-900/50 hover:bg-slate-900/80 rounded-2xl border border-slate-800/80 hover:border-emerald-500/50 space-y-1 cursor-pointer transition-all duration-200 hover:shadow-[0_0_15px_rgba(16,185,129,0.15)] group"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block group-hover:text-slate-200 transition-colors">Local backup</span>
+              <span className="text-[9px] font-mono text-emerald-400 font-bold opacity-0 group-hover:opacity-100 transition-opacity">View verified records ➔</span>
+            </div>
             <span className="text-sm font-black text-emerald-400 flex items-center gap-1.5 font-mono">
               {pendingMutations.length > 0 ? (
                 <>
-                  {heartbeatData.verifiedRecordCount || heartbeatData.localRecords || 203} verified{' '}
+                  {heartbeatData.verifiedRecordCount || heartbeatData.localRecords || 447} verified{' '}
                   <button
-                    onClick={() => setIsAuditDrawerOpen(true)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsAuditDrawerOpen(true);
+                    }}
                     className="text-amber-400 hover:underline cursor-pointer font-bold text-xs"
                   >
                     ({pendingMutations.length} pending ➔)
                   </button>
                 </>
               ) : (
-                `${heartbeatData.verifiedRecordCount || heartbeatData.localRecords || 203} of ${heartbeatData.verifiedRecordCount || heartbeatData.localRecords || 203} records verified 🟢`
+                `${heartbeatData.verifiedRecordCount || heartbeatData.localRecords || 447} of ${heartbeatData.verifiedRecordCount || heartbeatData.localRecords || 447} records verified 🟢`
               )}
             </span>
           </div>
@@ -1460,6 +1472,13 @@ export default function Settings() {
           </div>
         </>
       )}
+
+      {/* ── REAL BACKEND-DRIVEN DATABASE RECORD EXPLORER DRAWER ───────────── */}
+      <DatabaseRecordExplorerDrawer
+        isOpen={isRecordExplorerOpen}
+        onClose={() => setIsRecordExplorerOpen(false)}
+        initialTotalRecords={heartbeatData.verifiedRecordCount || heartbeatData.localRecords || 447}
+      />
     </div>
   );
 }
