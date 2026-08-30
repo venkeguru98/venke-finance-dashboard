@@ -2,6 +2,7 @@ import { Router } from 'express';
 import path from 'path';
 import fs from 'fs';
 import { EnterpriseRecoveryService, getBackupRootDir } from '../services/EnterpriseRecoveryService';
+import { query } from '../database';
 
 const router = Router();
 
