@@ -87,9 +87,21 @@ export interface HealthScoreResult {
 
 export type BackupStatus = 'idle' | 'scheduled' | 'running' | 'verifying' | 'completed' | 'failed';
 
+export interface PendingChangeEvent {
+  id: string;
+  module: 'transaction' | 'budget' | 'lic' | 'chit' | 'investment' | 'insurance' | 'savings' | 'recurring_rule' | 'import' | 'other';
+  operation: 'created' | 'updated' | 'deleted';
+  tableName: string;
+  recordId?: string | number;
+  timestamp: string;
+  description: string;
+}
+
+const PENDING_CHANGES_FILE_NAME = 'pending_changes.json';
+
 export class EnterpriseRecoveryService {
   private static isBackupRunning = false;
-  private static pendingSnapshotFlag = true;
+  private static pendingSnapshotFlag = false;
   private static cronTasks: ScheduledTask[] = [];
   private static watchdogTimer: NodeJS.Timeout | null = null;
 
@@ -103,14 +115,139 @@ export class EnterpriseRecoveryService {
   private static lastVerifiedRecordsCount: number = 0;
   private static pendingChangeCount: number = 0;
   private static lastMutationTime: string = '';
+  private static pendingChangesQueue: PendingChangeEvent[] = [];
+  private static isInitialized = false;
 
-  public static notifyDataMutation() {
+  private static getPendingChangesFilePath(): string {
+    return path.join(BACKUP_ROOT, 'latest', PENDING_CHANGES_FILE_NAME);
+  }
+
+  // Save pending change events to disk so server reboot or refresh preserves them
+  public static savePendingChangesToDisk() {
+    try {
+      const latestDir = path.join(BACKUP_ROOT, 'latest');
+      if (!fs.existsSync(latestDir)) fs.mkdirSync(latestDir, { recursive: true });
+      const filePath = EnterpriseRecoveryService.getPendingChangesFilePath();
+      fs.writeFileSync(
+        filePath,
+        JSON.stringify({
+          pending: EnterpriseRecoveryService.pendingSnapshotFlag,
+          count: EnterpriseRecoveryService.pendingChangesQueue.length,
+          lastMutationTime: EnterpriseRecoveryService.lastMutationTime,
+          changes: EnterpriseRecoveryService.pendingChangesQueue
+        }, null, 2),
+        'utf-8'
+      );
+    } catch (_) {}
+  }
+
+  // Load pending changes from disk on server startup
+  public static loadPendingChangesFromDisk() {
+    try {
+      const filePath = EnterpriseRecoveryService.getPendingChangesFilePath();
+      if (fs.existsSync(filePath)) {
+        const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+        if (data && Array.isArray(data.changes)) {
+          EnterpriseRecoveryService.pendingChangesQueue = data.changes;
+          EnterpriseRecoveryService.pendingChangeCount = data.changes.length;
+          EnterpriseRecoveryService.pendingSnapshotFlag = data.pending !== false && data.changes.length > 0;
+          EnterpriseRecoveryService.lastMutationTime = data.lastMutationTime || (data.changes[0]?.timestamp || '');
+          if (EnterpriseRecoveryService.pendingSnapshotFlag && EnterpriseRecoveryService.currentBackupStatus === 'idle') {
+            EnterpriseRecoveryService.currentBackupStatus = 'scheduled';
+            EnterpriseRecoveryService.backupStatusMessage = `Pending changes detected (${EnterpriseRecoveryService.pendingChangeCount} updates). Scheduled protection in 5 mins.`;
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  // Centralized Change Event Model: Record any financial mutation across all modules
+  public static recordChangeEvent(event: {
+    module: PendingChangeEvent['module'];
+    operation: PendingChangeEvent['operation'];
+    tableName: string;
+    recordId?: string | number;
+    description?: string;
+  }) {
+    const timestamp = new Date().toISOString();
+    const desc = event.description || `${event.operation.charAt(0).toUpperCase() + event.operation.slice(1)} record in ${event.tableName}`;
+
+    // Idempotency check: merge recent identical edits within 2s to prevent duplicate spam
+    const existingIndex = event.recordId 
+      ? EnterpriseRecoveryService.pendingChangesQueue.findIndex(item => item.tableName === event.tableName && item.recordId === event.recordId && item.operation === event.operation)
+      : -1;
+
+    if (existingIndex >= 0) {
+      EnterpriseRecoveryService.pendingChangesQueue[existingIndex].timestamp = timestamp;
+      EnterpriseRecoveryService.pendingChangesQueue[existingIndex].description = desc;
+    } else {
+      const newEntry: PendingChangeEvent = {
+        id: `change-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        module: event.module,
+        operation: event.operation,
+        tableName: event.tableName,
+        recordId: event.recordId,
+        timestamp,
+        description: desc
+      };
+      EnterpriseRecoveryService.pendingChangesQueue.push(newEntry);
+    }
+
     EnterpriseRecoveryService.pendingSnapshotFlag = true;
-    EnterpriseRecoveryService.pendingChangeCount += 1;
-    EnterpriseRecoveryService.lastMutationTime = new Date().toISOString();
+    EnterpriseRecoveryService.pendingChangeCount = EnterpriseRecoveryService.pendingChangesQueue.length;
+    EnterpriseRecoveryService.lastMutationTime = timestamp;
     EnterpriseRecoveryService.currentBackupStatus = 'scheduled';
     EnterpriseRecoveryService.nextScheduledEpoch = Date.now() + (5 * 60 * 1000);
     EnterpriseRecoveryService.backupStatusMessage = `Pending changes detected (${EnterpriseRecoveryService.pendingChangeCount} updates). Scheduled protection in 5 mins.`;
+
+    EnterpriseRecoveryService.savePendingChangesToDisk();
+  }
+
+  // Database SQL Interceptor Hook
+  public static notifyDataMutation(sql: string = '', _params: any[] = []) {
+    if (!sql) {
+      EnterpriseRecoveryService.pendingSnapshotFlag = true;
+      EnterpriseRecoveryService.pendingChangeCount = Math.max(1, EnterpriseRecoveryService.pendingChangeCount + 1);
+      EnterpriseRecoveryService.lastMutationTime = new Date().toISOString();
+      EnterpriseRecoveryService.currentBackupStatus = 'scheduled';
+      EnterpriseRecoveryService.nextScheduledEpoch = Date.now() + (5 * 60 * 1000);
+      EnterpriseRecoveryService.savePendingChangesToDisk();
+      return;
+    }
+
+    let moduleName: PendingChangeEvent['module'] = 'other';
+    let operation: PendingChangeEvent['operation'] = 'updated';
+    let tableName = 'financial_data';
+
+    const cleanSql = sql.trim().toUpperCase();
+    if (cleanSql.startsWith('INSERT')) operation = 'created';
+    else if (cleanSql.startsWith('DELETE')) operation = 'deleted';
+    else if (cleanSql.startsWith('UPDATE')) operation = 'updated';
+
+    const match = sql.match(/(?:INTO|FROM|UPDATE)\s+["`]?([a-z0-9_]+)["`]?/i);
+    if (match && match[1]) {
+      tableName = match[1].toLowerCase();
+    }
+
+    if (tableName.includes('transaction')) moduleName = 'transaction';
+    else if (tableName.includes('budget')) moduleName = 'budget';
+    else if (tableName.includes('lic')) moduleName = 'lic';
+    else if (tableName.includes('chit')) moduleName = 'chit';
+    else if (tableName.includes('saving')) moduleName = 'savings';
+    else if (tableName.includes('gold') || tableName.includes('mutual') || tableName.includes('deposit') || tableName.includes('investment')) moduleName = 'investment';
+    else if (tableName.includes('debt') || tableName.includes('loan')) moduleName = 'other';
+    else if (tableName.includes('recurring')) moduleName = 'recurring_rule';
+
+    // Format human-friendly description
+    const formattedTable = tableName.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    const desc = `${operation.charAt(0).toUpperCase() + operation.slice(1)} ${formattedTable} entry`;
+
+    EnterpriseRecoveryService.recordChangeEvent({
+      module: moduleName,
+      operation,
+      tableName,
+      description: desc
+    });
   }
 
   public static readonly TARGET_TABLES = [
@@ -162,6 +299,10 @@ export class EnterpriseRecoveryService {
       } catch (_) {}
     }
     EnterpriseRecoveryService.initializeSqliteLedger();
+    if (!EnterpriseRecoveryService.isInitialized) {
+      EnterpriseRecoveryService.isInitialized = true;
+      EnterpriseRecoveryService.loadPendingChangesFromDisk();
+    }
   }
 
   public static setPendingSnapshotFlag() {
@@ -652,6 +793,8 @@ export class EnterpriseRecoveryService {
       EnterpriseRecoveryService.backupStatusMessage = `Backup completed & verified (${liveStats.totalRecords} records).`;
       EnterpriseRecoveryService.pendingSnapshotFlag = false;
       EnterpriseRecoveryService.pendingChangeCount = 0;
+      EnterpriseRecoveryService.pendingChangesQueue = [];
+      EnterpriseRecoveryService.savePendingChangesToDisk();
       EnterpriseRecoveryService.lastBackupEpoch = now.getTime();
       EnterpriseRecoveryService.lastVerifiedEpoch = now.getTime();
       EnterpriseRecoveryService.lastVerifiedRecordsCount = liveStats.totalRecords;
@@ -907,8 +1050,8 @@ export class EnterpriseRecoveryService {
       cloudRecords,
       localRecords,
       difference: diff,
-      pendingChanges: pendingBackup,
-      pendingCount: pendingChangeCount,
+      pendingChanges: EnterpriseRecoveryService.pendingChangesQueue,
+      pendingCount: EnterpriseRecoveryService.pendingChangesQueue.length,
       lastBackupDate: dateStr,
       certificateId: cert?.certificate_id || `VF-${dateStr.replace(/-/g, '')}-235900`,
       externalPath: extDir,

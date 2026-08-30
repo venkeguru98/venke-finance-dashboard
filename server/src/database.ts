@@ -111,7 +111,7 @@ export const query = async (sql: string, params: any[] = []): Promise<any[]> => 
   if (/^\s*(INSERT|UPDATE|DELETE|ALTER|DROP|TRUNCATE)/i.test(sql)) {
     try {
       const { EnterpriseRecoveryService } = require('./services/EnterpriseRecoveryService');
-      EnterpriseRecoveryService.notifyDataMutation();
+      EnterpriseRecoveryService.notifyDataMutation(sql, params);
     } catch (_) {}
   }
 

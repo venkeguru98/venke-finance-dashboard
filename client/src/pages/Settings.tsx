@@ -193,12 +193,44 @@ export default function Settings() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const handleRevertAllPending = () => {
-    revertAllMutations();
-    setHeartbeatData((prev: any) => ({ ...prev, pendingBackup: false, pendingChangeCount: 0 }));
-    showToast('🗑️ All uncommitted pending edits discarded.', 'warning');
-    setIsAuditDrawerOpen(false);
-  };
+  // Unified Pending Changes List (Combining Server-side & Client-side mutations)
+  const allPendingChanges = useMemo(() => {
+    const list: any[] = [];
+
+    if (heartbeatData.pendingChanges && Array.isArray(heartbeatData.pendingChanges)) {
+      heartbeatData.pendingChanges.forEach((ch: any) => {
+        const moduleMap: Record<string, string> = {
+          transaction: 'Transactions Ledger',
+          budget: 'Budget Planner',
+          lic: 'LIC Policies',
+          chit: 'Chit Funds',
+          savings: 'Savings Accounts',
+          investment: 'Savings & Investments',
+          recurring_rule: 'Recurring Rules',
+          other: 'General Financial Data'
+        };
+        const opUpper = (ch.operation || 'updated').toUpperCase();
+        list.push({
+          id: ch.id || `be-${Math.random()}`,
+          section: moduleMap[ch.module] || 'Financial Data',
+          title: ch.description || `${opUpper} in ${ch.tableName || 'database'}`,
+          type: opUpper === 'CREATED' ? 'INSERT' : opUpper === 'DELETED' ? 'DELETE' : 'UPDATE',
+          timestamp: ch.timestamp ? new Date(ch.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Pending backup',
+          fields: []
+        });
+      });
+    }
+
+    if (pendingMutations && pendingMutations.length > 0) {
+      pendingMutations.forEach((pm: any) => {
+        if (!list.some(item => item.id === pm.id || (item.title === pm.title && item.section === pm.section))) {
+          list.push(pm);
+        }
+      });
+    }
+
+    return list;
+  }, [heartbeatData.pendingChanges, pendingMutations]);
 
   const handleCommitAndBackupNow = async () => {
     showToast('⏳ Committing pending mutations and creating SQLite snapshot...', 'info');
@@ -545,14 +577,14 @@ export default function Settings() {
                   <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
                   Verifying backup integrity... {heartbeatData.progressPercent || 75}% 🧪
                 </div>
-              ) : heartbeatData.pendingBackup ? (
+              ) : allPendingChanges.length > 0 ? (
                 <div
                   onClick={() => setIsAuditDrawerOpen(true)}
                   className="inline-flex items-center gap-2 px-3 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded-full text-xs font-black uppercase tracking-wider cursor-pointer hover:bg-amber-500/30 hover:border-amber-400 transition-all duration-200 shadow-[0_0_12px_rgba(245,158,11,0.25)] active:scale-95 select-none"
                   title="Click to view pending changes diff audit log"
                 >
                   <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                  Pending changes detected ({pendingMutations.length}) ⏳ View Diff ➔
+                  Pending changes detected ({allPendingChanges.length}) ⏳ View Diff ➔
                 </div>
               ) : (
                 <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full text-xs font-black uppercase tracking-wider">
@@ -598,7 +630,7 @@ export default function Settings() {
               <span className="text-[9px] font-mono text-emerald-400 font-bold opacity-0 group-hover:opacity-100 transition-opacity">View verified records ➔</span>
             </div>
             <span className="text-sm font-black text-emerald-400 flex items-center gap-1.5 font-mono">
-              {pendingMutations.length > 0 ? (
+              {allPendingChanges.length > 0 ? (
                 <>
                   {heartbeatData.verifiedRecordCount || heartbeatData.localRecords || 447} verified{' '}
                   <button
@@ -608,7 +640,7 @@ export default function Settings() {
                     }}
                     className="text-amber-400 hover:underline cursor-pointer font-bold text-xs"
                   >
-                    ({pendingMutations.length} pending ➔)
+                    ({allPendingChanges.length} pending ➔)
                   </button>
                 </>
               ) : (
@@ -1366,7 +1398,7 @@ export default function Settings() {
                 </div>
               </div>
 
-              {pendingMutations.length === 0 ? (
+              {allPendingChanges.length === 0 ? (
                 <div className="py-14 px-6 text-center space-y-3.5 bg-slate-900/40 rounded-3xl border border-dashed border-slate-800 my-auto flex flex-col items-center justify-center">
                   <div className="p-4 rounded-3xl bg-[#00E599]/10 border border-[#00E599]/30 text-[#00E599] shadow-[0_0_20px_rgba(0,229,153,0.3)]">
                     <CheckCircle2 className="w-10 h-10 stroke-[2.5]" />
@@ -1380,7 +1412,7 @@ export default function Settings() {
                 </div>
               ) : (
                 Object.entries(
-                  pendingMutations.reduce((acc: any, item: any) => {
+                  allPendingChanges.reduce((acc: any, item: any) => {
                     const group = item.section || 'General';
                     if (!acc[group]) acc[group] = [];
                     acc[group].push(item);
@@ -1456,14 +1488,14 @@ export default function Settings() {
             <div className="p-4 bg-[#0F172A] border-t border-white/10 flex items-center justify-between gap-3 shrink-0">
               <button
                 onClick={handleRevertAllPending}
-                disabled={pendingMutations.length === 0}
+                disabled={allPendingChanges.length === 0}
                 className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl border border-white/10 transition cursor-pointer active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Revert All
               </button>
               <button
                 onClick={handleCommitAndBackupNow}
-                disabled={pendingMutations.length === 0}
+                disabled={allPendingChanges.length === 0}
                 className="flex-1 px-4 py-2 bg-gradient-to-r from-[#00E599] to-[#00D26A] text-slate-950 font-black text-xs rounded-xl shadow-[0_0_15px_rgba(0,229,153,0.35)] hover:opacity-90 transition cursor-pointer active:scale-95 text-center flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <ShieldCheck className="w-4 h-4" /> Commit & Backup Now
