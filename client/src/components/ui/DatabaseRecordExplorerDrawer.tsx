@@ -1,12 +1,19 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Database, Search, X, ChevronRight, ArrowLeft, ShieldCheck, 
-  RefreshCw, CheckCircle2, ChevronLeft, FileText, AlertCircle, Lock
+  RefreshCw, ChevronLeft, FileText, AlertCircle, Lock
 } from 'lucide-react';
 import axios from 'axios';
 import { useTheme } from '../../context/ThemeContext';
-import { formatIndianRupee } from '../../utils/currency';
+
+function formatIndianRupee(amount: number): string {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 2
+  }).format(amount);
+}
 
 const API = window.location.port === '5173' ? 'http://localhost:5000/api' : '/api';
 
