@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   Moon, Sun, User, Palette, Database, Trash2, Download, Plus, X, 
   ShieldAlert, Send, ShieldCheck, CheckCircle2, Lock, Sparkles, HardDrive, Copy, Check, RefreshCw
@@ -231,6 +231,13 @@ export default function Settings() {
 
     return list;
   }, [heartbeatData.pendingChanges, pendingMutations]);
+
+  const handleRevertAllPending = () => {
+    revertAllMutations();
+    setHeartbeatData((prev: any) => ({ ...prev, pendingBackup: false, pendingChangeCount: 0, pendingChanges: [] }));
+    showToast('🗑️ All uncommitted pending edits discarded.', 'warning');
+    setIsAuditDrawerOpen(false);
+  };
 
   const handleCommitAndBackupNow = async () => {
     showToast('⏳ Committing pending mutations and creating SQLite snapshot...', 'info');
